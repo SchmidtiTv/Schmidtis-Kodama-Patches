@@ -47,7 +47,8 @@ def export_audio(video_id: str) -> RouteResponse:
         "year": year,
         "thumbnail": data.get("thumbnail", ""),
     }
-    service.start(video_id, output_path, fmt, meta)
+    if service.start(video_id, output_path, fmt, meta) is False:
+        return jsonify({"error": "export queue is full"}), 429
     return jsonify({"ok": True, "status": "exporting"})
 
 

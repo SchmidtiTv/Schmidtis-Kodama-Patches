@@ -379,7 +379,9 @@ export function PlaylistLayout({
         if (!response.ok || cancelled) return;
         const job = await response.json();
         setMixConfig((config) => ({ ...config, trackAnalysis: job.tracks || {} }));
-        if (job.status !== "complete") timeoutId = window.setTimeout(() => poll(jobId), 800);
+        if (!["complete", "cancelled", "failed"].includes(job.status)) {
+          timeoutId = window.setTimeout(() => poll(jobId), 800);
+        }
       } catch {
         // Analysis failures never interrupt ordinary playlist playback.
       }

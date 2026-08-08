@@ -24,7 +24,8 @@ def download_song(video_id: str) -> RouteResponse:
         "duration": data.get("duration", ""),
         "thumbnail": data.get("thumbnail", ""),
     }
-    service.start(video_id, meta)
+    if service.start(video_id, meta) is False:
+        return jsonify({"error": "download queue is full"}), 429
     return jsonify({"ok": True, "status": "downloading"})
 
 

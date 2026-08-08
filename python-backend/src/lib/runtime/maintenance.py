@@ -1,5 +1,6 @@
 """Small process-maintenance helpers."""
 
+import heapq
 import os
 import threading
 import time
@@ -13,17 +14,52 @@ Value = TypeVar("Value")
 
 
 class DelayedCleanup:
-    """Schedules temporary entries to be removed from mutable mappings."""
+    """Schedules temporary entries with one shared daemon worker."""
 
-    @staticmethod
+    _condition = threading.Condition()
+    _entries: list[tuple[float, int, MutableMapping[object, object], object]] = []
+    _latest_tokens: dict[tuple[int, object], int] = {}
+    _next_token = 0
+    _worker_started = False
+
     # Old server.py: _schedule_cleanup
-    def schedule_removal(data: MutableMapping[Key, Value], key: Key, delay: float = 300) -> None:
+    @classmethod
+    def schedule_removal(cls, data: MutableMapping[Key, Value], key: Key, delay: float = 300) -> None:
         """Remove *key* from *data* after *delay* seconds."""
-        def cleanup() -> None:
-            time.sleep(delay)
-            data.pop(key, None)
+        with cls._condition:
+            cls._next_token += 1
+            token = cls._next_token
+            entry_key = (id(data), key)
+            cls._latest_tokens[entry_key] = token
+            heapq.heappush(cls._entries, (time.monotonic() + delay, token, data, key))
+            if not cls._worker_started:
+                threading.Thread(target=cls._run, daemon=True, name="delayed-cleanup").start()
+                cls._worker_started = True
+            cls._condition.notify()
 
-        threading.Thread(target=cleanup, daemon=True).start()
+    @classmethod
+    def cancel_removal(cls, data: MutableMapping[Key, Value], key: Key) -> None:
+        """Keep a newly reused entry from being removed by an older schedule."""
+        with cls._condition:
+            cls._latest_tokens.pop((id(data), key), None)
+
+    @classmethod
+    def _run(cls) -> None:
+        while True:
+            with cls._condition:
+                while not cls._entries:
+                    cls._condition.wait()
+                deadline, token, data, key = cls._entries[0]
+                remaining = deadline - time.monotonic()
+                if remaining > 0:
+                    cls._condition.wait(timeout=remaining)
+                    continue
+                heapq.heappop(cls._entries)
+                entry_key = (id(data), key)
+                if cls._latest_tokens.get(entry_key) != token:
+                    continue
+                del cls._latest_tokens[entry_key]
+            data.pop(key, None)
 
 
 class DirectoryInspector:

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import { API } from "@/shared/api/client.js";
 import { translate } from "@/shared/i18n/i18n.js";
@@ -31,11 +31,14 @@ export function useDownloadManager({ addToast, language }) {
   const [downloadBatches, setDownloadBatches] = useState([]); // [{id, title, thumbnail, artists, videoIds[], completedCount, errorCount}]
   const [pendingDownloadQueue, setPendingDownloadQueue] = useState([]); // tracks waiting for a free slot
   const [downloadQueueMin, setDownloadQueueMin] = useState(false); // download queue card minimized
+  const exportingIdsRef = useRef(new Set());
 
   // Global queue poll — runs whenever there are active downloads
   useEffect(() => {
     if (downloadingIds.size === 0) return;
-    const poll = setInterval(async () => {
+    let cancelled = false;
+    let timeoutId;
+    const poll = async () => {
       try {
         const r = await fetch(`${API}/downloads/queue`);
         const d = await r.json();
@@ -81,9 +84,15 @@ export function useDownloadManager({ addToast, language }) {
         }
       } catch {
         /* intentionally ignored */
+      } finally {
+        if (!cancelled) timeoutId = window.setTimeout(poll, 1500);
       }
-    }, 1500);
-    return () => clearInterval(poll);
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [downloadingIds.size]);
 
   // Remove fully-finished batches after a short delay
@@ -106,7 +115,7 @@ export function useDownloadManager({ addToast, language }) {
         return;
       setDownloadingIds((prev) => new Set(prev).add(track.videoId));
       try {
-        await fetch(`${API}/song/download/${track.videoId}`, {
+        const response = await fetch(`${API}/song/download/${track.videoId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -117,6 +126,7 @@ export function useDownloadManager({ addToast, language }) {
             thumbnail: track.thumbnail,
           }),
         });
+        if (!response.ok) throw new Error("Could not start download");
       } catch {
         setDownloadingIds((prev) => {
           const s = new Set(prev);
@@ -247,6 +257,8 @@ export function useDownloadManager({ addToast, language }) {
               : [{ name: "OPUS", extensions: ["opus", "webm"] }],
         });
         if (!filePath) return;
+        if (exportingIdsRef.current.has(track.videoId)) return;
+        exportingIdsRef.current.add(track.videoId);
         const dir = filePath.replace(/[\\/][^\\/]+$/, "");
         if (dir && shouldRememberExportDirectory(localStorage)) {
           localStorage.setItem(EXPORT_DIRECTORY_KEY, dir);
@@ -254,7 +266,7 @@ export function useDownloadManager({ addToast, language }) {
         const artistStr2 = Array.isArray(track.artists)
           ? track.artists.map((a) => (typeof a === "string" ? a : a.name)).join(", ")
           : track.artists || "";
-        await fetch(`${API}/song/export/${track.videoId}`, {
+        const response = await fetch(`${API}/song/export/${track.videoId}`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -268,23 +280,32 @@ export function useDownloadManager({ addToast, language }) {
             thumbnail: track.thumbnail || "",
           }),
         });
+        if (!response.ok) throw new Error("Could not start export");
         addToast(translate(language, "exportStarted"), "info");
-        const poll = setInterval(async () => {
+        const poll = async () => {
           try {
             const r = await fetch(`${API}/song/export/status/${track.videoId}`);
+            if (!r.ok) throw new Error("Could not read export status");
             const d = await r.json();
             if (d.status === "done") {
-              clearInterval(poll);
+              exportingIdsRef.current.delete(track.videoId);
               addToast(translate(language, "exportDone"), "success");
             } else if (d.status === "error") {
-              clearInterval(poll);
+              exportingIdsRef.current.delete(track.videoId);
+              addToast(translate(language, "exportError"), "error");
+            } else if (d.status === "exporting") {
+              window.setTimeout(poll, 2000);
+            } else {
+              exportingIdsRef.current.delete(track.videoId);
               addToast(translate(language, "exportError"), "error");
             }
           } catch {
-            clearInterval(poll);
+            exportingIdsRef.current.delete(track.videoId);
           }
-        }, 2000);
+        };
+        poll();
       } catch {
+        exportingIdsRef.current.delete(track.videoId);
         /* intentionally ignored */
       }
     },

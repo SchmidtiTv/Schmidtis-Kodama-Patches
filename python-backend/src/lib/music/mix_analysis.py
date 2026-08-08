@@ -11,7 +11,9 @@ import threading
 import time
 import uuid
 from collections.abc import Mapping
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
+import sqlite3
 from typing import Protocol
 
 from src.lib.integrations.ffmpeg import FFmpeg
@@ -137,7 +139,7 @@ class NumpyTrackAnalyzer:
 
 
 class MixAnalysisService:
-    """Owns bounded background jobs and source-level analysis caching."""
+    """Owns one-at-a-time playlist analysis jobs and source-level caching."""
 
     _CATEGORY = "mix_audio_analysis"
 
@@ -147,40 +149,88 @@ class MixAnalysisService:
         self._playlist_mix = playlist_mix
         self._analyzer = analyzer
         self._jobs: dict[str, dict[str, object]] = {}
+        self._active_jobs: dict[tuple[str, str], str] = {}
+        self._cancel_events: dict[str, threading.Event] = {}
+        self._futures: dict[str, Future[None]] = {}
         self._lock = threading.Lock()
+        # Audio decoding and NumPy analysis are CPU-intensive. One worker keeps
+        # rapid playlist updates from multiplying that work across CPU cores.
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mix-analysis")
 
     def start(self, profile_name: str | None, playlist_id: str, tracks: list[dict[str, str]]) -> dict[str, object]:
+        profile_key = profile_name or "default"
+        active_key = (profile_key, playlist_id)
+        signature = tuple((track["instanceId"], track["videoId"]) for track in tracks)
         job_id = uuid.uuid4().hex
         job = {
             "jobId": job_id,
             "playlistId": playlist_id,
-            "_profile": profile_name or "default",
+            "_profile": profile_key,
+            "_signature": signature,
             "status": "queued",
             "total": len(tracks),
             "completed": 0,
             "tracks": {},
         }
         with self._lock:
+            active_job_id = self._active_jobs.get(active_key)
+            active_job = self._jobs.get(active_job_id) if active_job_id else None
+            if active_job and active_job["status"] in {"queued", "running"}:
+                if active_job["_signature"] == signature:
+                    return self._public_job(active_job)
+                self._cancel_events[active_job_id].set()
+                active_job["status"] = "cancelled"
+                if future := self._futures.get(active_job_id):
+                    if future.cancel():
+                        del self._futures[active_job_id]
             self._jobs[job_id] = job
-        threading.Thread(target=self._run, args=(job_id, profile_name, playlist_id, tracks), daemon=True, name="mix-analysis").start()
-        return {key: value for key, value in job.items() if not key.startswith("_")}
+            self._cancel_events[job_id] = threading.Event()
+            self._active_jobs[active_key] = job_id
+            future = self._executor.submit(self._run, job_id, profile_name, playlist_id, tracks)
+            self._futures[job_id] = future
+            if future.done():
+                self._futures.pop(job_id, None)
+        return self._public_job(job)
 
     def get_job(self, profile_name: str | None, playlist_id: str, job_id: str) -> dict[str, object] | None:
         with self._lock:
             job = self._jobs.get(job_id)
             if not job or job["playlistId"] != playlist_id or job["_profile"] != (profile_name or "default"):
                 return None
-            return {key: value for key, value in job.items() if not key.startswith("_")}
+            return self._public_job(job)
 
     def _run(self, job_id: str, profile_name: str | None, playlist_id: str, tracks: list[dict[str, str]]) -> None:
-        results: dict[str, dict[str, object]] = {}
-        self._update_job(job_id, status="running")
-        for track in tracks:
-            result = self._analyze_track(track["videoId"])
-            results[track["instanceId"]] = result
-            self._playlist_mix.store_analysis(profile_name, playlist_id, tracks, results)
-            self._update_job(job_id, completed=len(results), tracks=dict(results))
-        self._update_job(job_id, status="complete")
+        try:
+            if self._is_cancelled(job_id):
+                return
+            results: dict[str, dict[str, object]] = {}
+            self._update_job(job_id, status="running")
+            for track in tracks:
+                if self._is_cancelled(job_id):
+                    return
+                result = self._analyze_track(track["videoId"])
+                if self._is_cancelled(job_id):
+                    return
+                results[track["instanceId"]] = result
+                self._playlist_mix.store_analysis(profile_name, playlist_id, tracks, results)
+                self._update_job(job_id, completed=len(results), tracks=dict(results))
+            self._update_job(job_id, status="complete")
+        except sqlite3.Error:
+            self._update_job(job_id, status="failed", error="analysis cache unavailable")
+        finally:
+            with self._lock:
+                self._futures.pop(job_id, None)
+                job = self._jobs.get(job_id)
+                if job and self._active_jobs.get((job["_profile"], playlist_id)) == job_id:
+                    del self._active_jobs[(job["_profile"], playlist_id)]
+
+    def _is_cancelled(self, job_id: str) -> bool:
+        with self._lock:
+            return self._cancel_events[job_id].is_set()
+
+    @staticmethod
+    def _public_job(job: Mapping[str, object]) -> dict[str, object]:
+        return {key: value for key, value in job.items() if not key.startswith("_")}
 
     def _analyze_track(self, video_id: str) -> dict[str, object]:
         cache_key = f"v1:{video_id}"

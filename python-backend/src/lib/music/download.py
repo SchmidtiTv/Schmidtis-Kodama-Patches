@@ -5,6 +5,7 @@ import logging
 import os
 import threading
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, cast
 
 from src.config import config_dirs, config_ytdlp
@@ -14,6 +15,9 @@ from src.lib.runtime.maintenance import DelayedCleanup
 
 class DownloadService:
     """Downloads songs to the permanent song cache and tracks their progress."""
+
+    MAX_CONCURRENT_DOWNLOADS = 5
+    MAX_QUEUED_DOWNLOADS = 20
 
     # Old server.py: mime map in serve_cached_song
     MIME_BY_EXT = {".opus": "audio/opus", ".m4a": "audio/mp4", ".webm": "audio/webm", ".mp3": "audio/mpeg"}
@@ -25,6 +29,12 @@ class DownloadService:
         self.status: dict[str, str] = {}
         # Old server.py: _download_queue — video_id -> {title, artists, thumbnail, status, progress}
         self.queue: dict[str, dict[str, object]] = {}
+        self._start_lock = threading.Lock()
+        self._executor = ThreadPoolExecutor(
+            max_workers=self.MAX_CONCURRENT_DOWNLOADS,
+            thread_name_prefix="song-download",
+        )
+        self._slots = threading.BoundedSemaphore(self.MAX_QUEUED_DOWNLOADS)
 
     # Old server.py: _song_audio_path
     @staticmethod
@@ -109,18 +119,32 @@ class DownloadService:
             self._logger.error(f"[download] {video_id}: {type(e).__name__}: {e}")
 
     # Old server.py: the state-setup portion of download_song
-    def start(self, video_id: str, meta: Mapping[str, object]) -> None:
-        """Mark a song as downloading and spawn the background worker."""
-        self.status[video_id] = "downloading"
-        self.queue[video_id] = {
-            "videoId": video_id,
-            "title": meta.get("title", ""),
-            "artists": meta.get("artists", ""),
-            "thumbnail": meta.get("thumbnail", ""),
-            "status": "downloading",
-            "progress": 0.0,
-        }
-        threading.Thread(target=self._download_bg, args=(video_id, meta), daemon=True).start()
+    def start(self, video_id: str, meta: Mapping[str, object]) -> bool:
+        """Queue one download, ignoring a duplicate request for the same song."""
+        with self._start_lock:
+            if self.status.get(video_id) == "downloading":
+                return True
+            if not self._slots.acquire(blocking=False):
+                return False
+            DelayedCleanup.cancel_removal(self.status, video_id)
+            DelayedCleanup.cancel_removal(self.queue, video_id)
+            self.status[video_id] = "downloading"
+            self.queue[video_id] = {
+                "videoId": video_id,
+                "title": meta.get("title", ""),
+                "artists": meta.get("artists", ""),
+                "thumbnail": meta.get("thumbnail", ""),
+                "status": "downloading",
+                "progress": 0.0,
+            }
+            self._executor.submit(self._run_download, video_id, meta)
+            return True
+
+    def _run_download(self, video_id: str, meta: Mapping[str, object]) -> None:
+        try:
+            self._download_bg(video_id, meta)
+        finally:
+            self._slots.release()
 
     # Old server.py: downloads_queue
     def queue_snapshot(self) -> list[dict[str, object]]:

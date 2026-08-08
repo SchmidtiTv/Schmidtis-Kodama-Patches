@@ -4,6 +4,7 @@ import logging
 import os
 import threading
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional, cast
 
 from src.config import config_ytdlp
@@ -15,12 +16,21 @@ from src.lib.runtime.maintenance import DelayedCleanup
 class ExportService:
     """Downloads/converts a song to a user path and tags it with cover art."""
 
+    MAX_CONCURRENT_EXPORTS = 2
+    MAX_QUEUED_EXPORTS = 6
+
     def __init__(self, ytdlp: YTDLP, ffmpeg: FFmpeg, logger: Optional[logging.Logger] = None) -> None:
         self._ytdlp = ytdlp
         self._ffmpeg = ffmpeg
         self._logger = logger or logging.getLogger(__name__)
         # Old server.py: _export_status — video_id -> "exporting" | "done" | "error"
         self.status: dict[str, str] = {}
+        self._start_lock = threading.Lock()
+        self._executor = ThreadPoolExecutor(
+            max_workers=self.MAX_CONCURRENT_EXPORTS,
+            thread_name_prefix="audio-export",
+        )
+        self._slots = threading.BoundedSemaphore(self.MAX_QUEUED_EXPORTS)
 
     # Old server.py: _embed_metadata
     def embed_metadata(self, file_path: str, meta: Mapping[str, object], fmt: str = "opus") -> None:
@@ -288,6 +298,19 @@ class ExportService:
             print(f"Audio export error for {video_id}: {e}")
 
     # Old server.py: the thread-spawn portion of export_audio
-    def start(self, video_id: str, output_path: str, fmt: str, meta: Mapping[str, object]) -> None:
-        self.status[video_id] = "exporting"
-        threading.Thread(target=self._export_bg, args=(video_id, output_path, fmt, meta), daemon=True).start()
+    def start(self, video_id: str, output_path: str, fmt: str, meta: Mapping[str, object]) -> bool:
+        with self._start_lock:
+            if self.status.get(video_id) == "exporting":
+                return True
+            if not self._slots.acquire(blocking=False):
+                return False
+            DelayedCleanup.cancel_removal(self.status, video_id)
+            self.status[video_id] = "exporting"
+            self._executor.submit(self._run_export, video_id, output_path, fmt, meta)
+            return True
+
+    def _run_export(self, video_id: str, output_path: str, fmt: str, meta: Mapping[str, object]) -> None:
+        try:
+            self._export_bg(video_id, output_path, fmt, meta)
+        finally:
+            self._slots.release()
