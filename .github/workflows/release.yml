@@ -123,7 +123,8 @@ jobs:
           path: out/*
 
   build-macos:
-    runs-on: macos-14
+    # Icon Composer requires Tahoe / Xcode 26 to compile appIconMacos.icon.
+    runs-on: macos-26
     steps:
       - uses: actions/checkout@v4
         with:
@@ -202,9 +203,10 @@ jobs:
         with:
           workspaces: src-tauri
           key: macos
-      - name: Build signed Tauri app (.dmg + updater)
+      - name: Build signed Tauri app + updater
         uses: tauri-apps/tauri-action@v0
         env:
+          KODAMA_APP_ICON_STYLE: adaptive
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           # NO macOS code signing: ad-hoc signing the app bundle enables library validation,
@@ -213,7 +215,14 @@ jobs:
           # the app unsigned keeps the nested framework loadable; Gatekeeper is handled by the
           # curl install.sh (curl-downloaded apps get no quarantine flag).
         with:
-          args: --target aarch64-apple-darwin --bundles app,dmg
+          args: --target aarch64-apple-darwin --bundles app
+      - name: Build Tahoe-compatible branded DMG
+        run: |
+          python3 -m pip install --user dmgbuild
+          python3 scripts/build-macos-dmg.py \
+            --icon-style adaptive \
+            --app src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Kodama.app \
+            --output src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Kodama.dmg
       - name: Collect macOS artifacts
         run: |
           mkdir -p out

@@ -61,6 +61,23 @@
     "externalBin": [
       "binaries/kodama-server"
     ],
+    "macOS": {
+      "dmg": {
+        "background": "icons/dmg-background.png",
+        "windowSize": {
+          "width": 900,
+          "height": 520
+        },
+        "appPosition": {
+          "x": 250,
+          "y": 260
+        },
+        "applicationFolderPosition": {
+          "x": 600,
+          "y": 260
+        }
+      }
+    },
     "resources": {
       "../public/App-Icons/*.png": "App-Icons/"
     }

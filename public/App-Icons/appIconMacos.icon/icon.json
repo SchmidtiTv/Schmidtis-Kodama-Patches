@@ -1,0 +1,40 @@
+{
+  "fill" : "automatic",
+  "groups" : [
+    {
+      "layers" : [
+        {
+          "blend-mode" : "normal",
+          "fill" : {
+            "solid" : "extended-srgb:0.79608,0.18824,0.87843,1.00000"
+          },
+          "glass" : true,
+          "hidden" : false,
+          "image-name" : "Kodama Logo.png",
+          "name" : "Kodama Logo",
+          "position" : {
+            "scale" : 0.75,
+            "translation-in-points" : [
+              0,
+              0
+            ]
+          }
+        }
+      ],
+      "shadow" : {
+        "kind" : "neutral",
+        "opacity" : 0.5
+      },
+      "translucency" : {
+        "enabled" : true,
+        "value" : 0.3
+      }
+    }
+  ],
+  "supported-platforms" : {
+    "circles" : [
+      "watchOS"
+    ],
+    "squares" : "shared"
+  }
+}

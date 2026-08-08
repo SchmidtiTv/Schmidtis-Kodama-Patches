@@ -6,11 +6,22 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 TARGET="aarch64-apple-darwin"
 PYTHON="$ROOT_DIR/python-backend/.venv/bin/python"
+ICON_STYLE="${KODAMA_APP_ICON_STYLE:-adaptive}"
 
 fail() {
   print -u2 -- "Error: $*"
   exit 1
 }
+
+case "${1:-}" in
+  "") ;;
+  --adaptive-icon) ICON_STYLE="adaptive" ;;
+  --classic-icon) ICON_STYLE="classic" ;;
+  *) fail "Usage: $0 [--adaptive-icon|--classic-icon]" ;;
+esac
+
+[[ "$ICON_STYLE" == "adaptive" || "$ICON_STYLE" == "classic" ]] || \
+  fail "KODAMA_APP_ICON_STYLE must be 'adaptive' or 'classic'."
 
 [[ "$(uname -s)" == "Darwin" ]] || fail "This script must run on macOS."
 [[ "$(uname -m)" == "arm64" ]] || fail "Only Apple Silicon is supported by the bundled macOS sidecar."
@@ -56,11 +67,11 @@ print -- "==> Building the Python sidecar"
 )
 chmod +x "$ROOT_DIR/src-tauri/binaries/kodama-server-aarch64-apple-darwin"
 
-print -- "==> Building the macOS app"
-CI=true npm run tauri -- build --target "$TARGET"
+print -- "==> Building the macOS app ($ICON_STYLE icon)"
+CI=true KODAMA_APP_ICON_STYLE="$ICON_STYLE" npm run build:macos:dmg
 
 print -- "Build complete. Artifacts:"
-print -- "  $ROOT_DIR/src-tauri/target/$TARGET/release/bundle/"
+print -- "  $ROOT_DIR/src-tauri/target/$TARGET/release/bundle/dmg/Kodama-branded.dmg"
 
 print -- "==> Opening Build Artifacts"
-open "$ROOT_DIR/src-tauri/target/$TARGET/release/bundle/"
+open -R "$ROOT_DIR/src-tauri/target/$TARGET/release/bundle/dmg/Kodama-branded.dmg"

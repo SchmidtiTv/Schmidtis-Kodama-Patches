@@ -236,6 +236,11 @@ fn main() {
         .manage(PlaybackEngine::new())
         .manage(CloseTray(AtomicBool::new(true)))
         .setup(|app| {
+            #[cfg(target_os = "macos")]
+            unsafe {
+                appicon::clear_legacy_macos_bundle_icon();
+            }
+
             let playback_engine = app.state::<PlaybackEngine>().inner().clone();
             let audio_tx = start_audio_thread(app.handle().clone(), playback_engine);
             app.state::<AudioPlayer>().set_sender(audio_tx.clone());
@@ -325,6 +330,7 @@ fn main() {
             remove_window_border_for,
             lock_square_for,
             clear_discord_rpc,
+            appicon::app_icon_customization_available,
             appicon::set_app_icon,
             audio_play, audio_pause, audio_resume,
             audio_stop, audio_seek, audio_set_analysis_enabled, audio_set_volume,

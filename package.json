@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "build:macos:dmg": "KODAMA_APP_ICON_STYLE=\"${KODAMA_APP_ICON_STYLE:-adaptive}\"; export KODAMA_APP_ICON_STYLE; npm run tauri -- build --target aarch64-apple-darwin --bundles app && python3 scripts/build-macos-dmg.py --icon-style \"$KODAMA_APP_ICON_STYLE\" --app src-tauri/target/aarch64-apple-darwin/release/bundle/macos/Kodama.app --output src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/Kodama-branded.dmg",
     "tauri": "tauri",
     "tauri:dev": "tauri dev",
     "e2e:browser": "wdio run e2e/wdio.browser.conf.cjs",

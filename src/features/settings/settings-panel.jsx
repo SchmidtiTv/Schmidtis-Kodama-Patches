@@ -87,6 +87,7 @@ export function SettingsPanel({
     accentLight,
     onAccentLightChange,
     appIcon = APP_ICON_DEFAULT,
+    appIconCustomizationAvailable,
     onAppIconChange,
     theme,
     onThemeChange,
@@ -539,6 +540,7 @@ export function SettingsPanel({
                 animations={animations}
                 appFontScale={appFontScale}
                 appIcon={appIcon}
+                appIconCustomizationAvailable={appIconCustomizationAvailable}
                 onAccentChange={onAccentChange}
                 onAccentDynamicChange={onAccentDynamicChange}
                 onAccentLightChange={onAccentLightChange}

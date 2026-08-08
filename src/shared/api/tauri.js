@@ -32,6 +32,8 @@ export const native = {
   clearDiscordRpc: () => invoke("clear_discord_rpc"),
   /** @param {string} file @returns {Promise<void>} @example await native.setAppIcon("forest.png") */
   setAppIcon: (file) => invoke("set_app_icon", { file }),
+  /** @returns {Promise<boolean>} Whether this build supports selecting a runtime app icon. */
+  appIconCustomizationAvailable: () => invoke("app_icon_customization_available"),
 
   /** @param {string} url @param {number} seekTo @returns {Promise<void>} @example await native.audioPlay("http://localhost:9847/audio", 0) */
   audioPlay: (url, seekTo) => invoke("audio_play", { url, seekTo }),

@@ -648,26 +648,47 @@ export default function App() {
   const [appIcon, setAppIcon] = useState(
     () => localStorage.getItem("kodama-app-icon") || APP_ICON_DEFAULT
   );
+  const [appIconCustomizationAvailable, setAppIconCustomizationAvailable] = useState(
+    () => !IS_MAC
+  );
+  useEffect(() => {
+    let active = true;
+    native
+      .appIconCustomizationAvailable()
+      .then((available) => {
+        if (active) setAppIconCustomizationAvailable(available);
+      })
+      .catch(() => {
+        if (active) setAppIconCustomizationAvailable(true);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
   const applyAppIcon = useCallback(async (file) => {
+    if (!appIconCustomizationAvailable) return;
     try {
       await native.setAppIcon(file);
     } catch (e) {
       console.error("[AppIcon] set failed:", e);
     }
-  }, []);
+  }, [appIconCustomizationAvailable]);
   const handleAppIconChange = useCallback(
     (file) => {
+      if (!appIconCustomizationAvailable) return;
       setAppIcon(file);
       localStorage.setItem("kodama-app-icon", file);
       applyAppIcon(file);
     },
-    [applyAppIcon]
+    [appIconCustomizationAvailable, applyAppIcon]
   );
 
   useEffect(() => {
     const stored = localStorage.getItem("kodama-app-icon");
-    if (stored && stored !== APP_ICON_DEFAULT) applyAppIcon(stored);
-  }, [applyAppIcon]);
+    if (appIconCustomizationAvailable && stored && stored !== APP_ICON_DEFAULT) {
+      applyAppIcon(stored);
+    }
+  }, [appIconCustomizationAvailable, applyAppIcon]);
 
   const profile = useProfiles({
     setPinnedIds,
@@ -755,6 +776,7 @@ export default function App() {
       accentLight,
       onAccentLightChange: handleAccentLightChange,
       appIcon,
+      appIconCustomizationAvailable,
       onAppIconChange: handleAppIconChange,
       theme,
       onThemeChange: handleThemeChange,
@@ -825,6 +847,7 @@ export default function App() {
       accentLight,
       handleAccentLightChange,
       appIcon,
+      appIconCustomizationAvailable,
       handleAppIconChange,
       theme,
       handleThemeChange,

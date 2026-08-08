@@ -30,6 +30,7 @@ export function AppearanceSettingsTab({
   animations,
   appFontScale,
   appIcon,
+  appIconCustomizationAvailable,
   onAccentChange,
   onAccentDynamicChange,
   onAccentLightChange,
@@ -187,7 +188,7 @@ export function AppearanceSettingsTab({
         </div>
       </div>
 
-      <div
+      {appIconCustomizationAvailable && <div
         id="set-sec-ap-icon"
         data-settings-section="ap-icon"
         style={{
@@ -285,7 +286,7 @@ export function AppearanceSettingsTab({
             </div>
           </div>
         ))}
-      </div>
+      </div>}
 
       <div
         id="set-sec-ap-colors"

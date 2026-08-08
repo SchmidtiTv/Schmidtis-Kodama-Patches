@@ -4,14 +4,33 @@
 // Windows and the menu-bar tray icon — via Tauri's own Image API. This is what the user
 // sees while the app is open. The static pinned-shortcut / .exe icon is NOT touched.
 //
-// Stufe 3 (macOS only): additionally set the Dock icon (NSApplication, live) and write a
-// custom icon onto the .app bundle (NSWorkspace, persists in Finder/Dock even when the app
-// isn't running). Both Cocoa calls must run on the main thread.
+// Stufe 3 (macOS only): additionally set the Dock icon (NSApplication, live). We intentionally
+// leave the .app bundle icon alone so macOS can render the bundled layered icon in Finder, the
+// Dock, and Cmd–Tab. Cocoa calls must run on the main thread.
 
 use tauri::Manager;
 
+#[cfg(target_os = "macos")]
+fn macos_custom_app_icons_enabled() -> bool {
+    matches!(option_env!("KODAMA_APP_ICON_STYLE"), Some("classic"))
+}
+
+#[tauri::command]
+pub fn app_icon_customization_available() -> bool {
+    #[cfg(target_os = "macos")]
+    return macos_custom_app_icons_enabled();
+
+    #[cfg(not(target_os = "macos"))]
+    true
+}
+
 #[tauri::command]
 pub fn set_app_icon(app: tauri::AppHandle, file: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    if !macos_custom_app_icons_enabled() {
+        return Err("App icon customization is unavailable in adaptive icon builds.".into());
+    }
+
     // Guard against path traversal: only a bare file name is allowed.
     if file.contains('/') || file.contains('\\') || file.contains("..") {
         return Err("invalid icon name".into());
@@ -32,7 +51,7 @@ pub fn set_app_icon(app: tauri::AppHandle, file: String) -> Result<(), String> {
         let _ = tray.0.set_icon(Some(image.clone()));
     }
 
-    // Stufe 3: macOS Dock (live) + .app bundle (persistent).
+    // Stufe 3: macOS Dock (live).
     #[cfg(target_os = "macos")]
     {
         let path_str = icon_path.to_string_lossy().to_string();
@@ -40,6 +59,20 @@ pub fn set_app_icon(app: tauri::AppHandle, file: String) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+#[cfg(target_os = "macos")]
+#[allow(unexpected_cfgs)]
+pub unsafe fn clear_legacy_macos_bundle_icon() {
+    use cocoa::base::{id, nil};
+    use objc::{class, msg_send, sel, sel_impl};
+
+    // Older versions wrote a custom `Icon\r` resource onto the app bundle. That
+    // overrides the bundled Icon Composer asset, even after the app is updated.
+    let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
+    let bundle: id = msg_send![class!(NSBundle), mainBundle];
+    let bundle_path: id = msg_send![bundle, bundlePath];
+    let _: bool = msg_send![workspace, setIcon: nil forFile: bundle_path options: 0u64];
 }
 
 #[cfg(target_os = "macos")]
@@ -94,9 +127,4 @@ unsafe fn set_macos_icon(png_path: &str) {
     let nsapp: id = msg_send![class!(NSApplication), sharedApplication];
     let _: () = msg_send![nsapp, setApplicationIconImage: image];
 
-    // Persistent custom icon on the .app bundle (survives relaunch, shows in Finder/Dock).
-    let workspace: id = msg_send![class!(NSWorkspace), sharedWorkspace];
-    let bundle: id = msg_send![class!(NSBundle), mainBundle];
-    let bundle_path: id = msg_send![bundle, bundlePath];
-    let _: bool = msg_send![workspace, setIcon: image forFile: bundle_path options: 0u64];
 }
