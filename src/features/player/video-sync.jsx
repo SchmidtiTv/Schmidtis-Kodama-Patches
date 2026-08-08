@@ -13,7 +13,7 @@ import { fetchLyrics } from "@/features/lyrics/fetch.js";
 import { DEFAULT_LYRICS_PROVIDERS } from "@/features/lyrics/providers.js";
 import { parseDurationToSeconds } from "@/features/lyrics/parse.js";
 import { paintLineWords } from "@/features/lyrics/paint.js";
-import { sustainedLineScale } from "@/features/lyrics/sustained-line.js";
+import { sustainedWordScale } from "@/features/lyrics/sustained-line.js";
 
 // Real-world calibration (2026-07-18): a confirmed correct match ("Nachos") scored 10.5, a
 // second plausible one scored 5.2 — but a confidence of 3.38 turned out to be a false positive
@@ -336,16 +336,14 @@ function useCaptionLine(track, audioRef, enabled, showTranslation, translationLa
 // without fighting the parent's re-renders.
 function KaraokeLine({ line, timeRef, fluid, syllableZoom, mainFontSize, bgFontSize }) {
   const brightRefs = useRef([]);
-  const sustainedLineRef = useRef(null);
+  const sustainedWordRefs = useRef([]);
+  const sustainedWordRef = useRef(null);
   const wordIdxRef = useRef({}).current; // plain mutable bag (paintWordSeq indexes it by string key)
   const zoomMaxRef = useRef(-1);
 
   useEffect(() => {
     let raf = 0;
     const loop = () => {
-      if (sustainedLineRef.current) {
-        sustainedLineRef.current.style.transform = `scale(${sustainedLineScale(line, timeRef.current).toFixed(4)})`;
-      }
       paintLineWords(
         line,
         brightRefs.current,
@@ -354,6 +352,16 @@ function KaraokeLine({ line, timeRef, fluid, syllableZoom, mainFontSize, bgFontS
         syllableZoom ? zoomMaxRef : null,
         fluid
       );
+      const activeWordIdx = wordIdxRef.current ?? -1;
+      const activeWord = (line.words || []).filter((word) => !word.isSpace)[activeWordIdx];
+      const sustainedWordEl = sustainedWordRefs.current[activeWordIdx] || null;
+      if (sustainedWordRef.current && sustainedWordRef.current !== sustainedWordEl) {
+        sustainedWordRef.current.style.transform = "";
+      }
+      sustainedWordRef.current = sustainedWordEl;
+      if (sustainedWordEl) {
+        sustainedWordEl.style.transform = `scale(${sustainedWordScale(line, activeWord, timeRef.current).toFixed(4)})`;
+      }
       raf = requestAnimationFrame(loop);
     };
     raf = requestAnimationFrame(loop);
@@ -369,46 +377,55 @@ function KaraokeLine({ line, timeRef, fluid, syllableZoom, mainFontSize, bgFontS
   // words first, then all non-space bg words — `offset` is where THIS row's non-space words
   // start counting from within that combined array.
   let ns = 0;
-  const renderRow = (wordsAll, offset) =>
+  const renderRow = (wordsAll, offset, scaleWords = false) =>
     wordsAll.map((word, wordIndex) => {
       if (word.isSpace) return <span key={wordIndex}>{word.text}</span>;
       const globalIndex = offset + ns;
       ns += 1;
       return (
-        <span key={wordIndex} style={{ position: "relative", display: "inline-block" }}>
-          <span style={{ color: "rgba(255,255,255,0.25)" }}>{word.text}</span>
-          <span
-            ref={(element) => {
-              brightRefs.current[globalIndex] = element;
-            }}
-            style={{
-              position: "absolute",
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              color: "white",
-              opacity: 0,
-              WebkitMaskImage: "linear-gradient(to right, black -6px, transparent 6px)",
-              maskImage: "linear-gradient(to right, black -6px, transparent 6px)",
-              pointerEvents: "none",
-            }}
-          >
-            {word.text}
+        <span
+          key={wordIndex}
+          ref={
+            scaleWords
+              ? (element) => {
+                  sustainedWordRefs.current[globalIndex] = element;
+                }
+              : undefined
+          }
+          style={{ display: "inline-block", transformOrigin: "center center" }}
+        >
+          <span style={{ position: "relative", display: "inline-block" }}>
+            <span style={{ color: "rgba(255,255,255,0.25)" }}>{word.text}</span>
+            <span
+              ref={(element) => {
+                brightRefs.current[globalIndex] = element;
+              }}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                color: "white",
+                opacity: 0,
+                WebkitMaskImage: "linear-gradient(to right, black -6px, transparent 6px)",
+                maskImage: "linear-gradient(to right, black -6px, transparent 6px)",
+                pointerEvents: "none",
+              }}
+            >
+              {word.text}
+            </span>
           </span>
         </span>
       );
     });
 
-  const mainRow = renderRow(mainWordsAll, 0);
+  const mainRow = renderRow(mainWordsAll, 0, true);
   ns = 0;
   const bgRow = bgWordsAll.length ? renderRow(bgWordsAll, mainNonSpaceCount) : null;
 
   return (
-    <div
-      ref={sustainedLineRef}
-      style={{ transformOrigin: "center center", willChange: "transform" }}
-    >
+    <div>
       <span style={{ whiteSpace: "pre-wrap", fontSize: mainFontSize }}>
         {line.wordSync ? mainRow : line.text}
       </span>

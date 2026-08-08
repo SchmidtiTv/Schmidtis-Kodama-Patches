@@ -31,6 +31,21 @@ export class IpcAudio {
         if (payload.paused !== this._paused) this._paused = payload.paused;
         this._fire("timeupdate");
       });
+      listen("playback-track-changed", ({ payload }) => {
+        if (this._fallback || !payload?.track?.videoId) return;
+        // Progress events arrive independently from selection changes. Clear the outgoing
+        // track's clock as soon as native playback commits a new track so consumers such as
+        // synced lyrics cannot render the new song at the old song's timestamp while waiting
+        // for its first audio-progress event.
+        this._currentTime = 0;
+        this._duration = 0;
+        // The new source may still be loading. Do not let consumers interpolate from zero
+        // during that gap; audio-progress marks this false only once native playback reports
+        // the new source's actual transport state.
+        this._paused = true;
+        this._fire("pause");
+        this._fire("timeupdate");
+      });
       listen("audio-ended", () => {
         if (this._fallback) return;
         this._paused = true;

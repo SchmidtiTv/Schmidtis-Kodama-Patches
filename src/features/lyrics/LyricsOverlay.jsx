@@ -12,7 +12,7 @@ import { fetchLyrics } from "@/features/lyrics/fetch.js";
 import { DEFAULT_LYRICS_PROVIDERS } from "@/features/lyrics/providers.js";
 import { LyricsBrowserModal } from "@/features/lyrics/lyrics-browser-modal.jsx";
 import { openComposer } from "./composer-window.js";
-import { sustainedLineScale } from "./sustained-line.js";
+import { sustainedWordScale } from "./sustained-line.js";
 
 // zoomMaxRef: pass a ref to enable the per-syllable zoom (active line); pass null to
 // disable it (trailing line — it just finishes its wipe quietly, no attention-grab).
@@ -39,7 +39,7 @@ function wordGroupIndices(allWords) {
 }
 
 function paintWordSeq(words, els, idxRef, idxKey, t, zoomMaxRef, glow, groups) {
-  if (!words.length || !els.length) return;
+  if (!words.length || !els.length) return -1;
   let curWordIdx = -1;
   for (let wi = 0; wi < words.length; wi++) {
     if (t >= words[wi].time) curWordIdx = wi;
@@ -120,17 +120,18 @@ function paintWordSeq(words, els, idxRef, idxKey, t, zoomMaxRef, glow, groups) {
       el.style.maskImage = `linear-gradient(to right, black calc(${pct.toFixed(1)}% - 6px), transparent calc(${pct.toFixed(1)}% + 6px))`;
     }
   }
+  return curWordIdx;
 }
 
 function paintLineWords(line, els, wordIdxRef, t, zoomMaxRef = null, glow = false) {
-  if (!line || !els || els.length === 0) return;
+  if (!line || !els || els.length === 0) return -1;
   // DOM order of bright spans: main words first, then bg words. Split and paint each
   // as its own sequence so the two vocal streams never bleed into each other's fill.
   const mainWords = (line.words || []).filter((w) => !w.isSpace);
   const bgWords = (line.bgWords || []).filter((w) => !w.isSpace);
   const mainEls = mainWords.length ? els.slice(0, mainWords.length) : [];
   const bgEls = bgWords.length ? els.slice(mainWords.length) : [];
-  paintWordSeq(
+  const activeMainWordIdx = paintWordSeq(
     mainWords,
     mainEls,
     wordIdxRef,
@@ -150,6 +151,7 @@ function paintLineWords(line, els, wordIdxRef, t, zoomMaxRef = null, glow = fals
     glow,
     wordGroupIndices(line.bgWords)
   );
+  return activeMainWordIdx;
 }
 
 // A different track or explicit refetch is a new lyrics session. Resetting at this boundary
@@ -296,7 +298,8 @@ function LyricsOverlayContent({
   });
   const trailingIdxRef = useRef(-1); // mirror of trailingIdx for RAF access without stale closure
   const wordElsRef = useRef([]); // DOM refs to active line's word spans
-  const activeLineRef = useRef(null); // visual-only sustained-vocal scale target
+  const sustainedWordElsRef = useRef([]); // per-word visual-only sustained-vocal scale targets
+  const sustainedWordRef = useRef(null); // current target, cleared as the timed word changes
   const activeWordIdxRef = useRef(-1); // tracks active word within line
   const activeWordMaxRef = useRef(-1); // highest syllable already zoomed (dedupes the pop)
   const trailWordElsRef = useRef([]); // DOM refs to trailing line's word spans
@@ -433,7 +436,8 @@ function LyricsOverlayContent({
       if (displayIdx !== lastIdxRef.current) {
         // React does not own the frame-by-frame transform, so clear it explicitly before this
         // line is rendered as past/trailing content.
-        if (activeLineRef.current) activeLineRef.current.style.transform = "";
+        if (sustainedWordRef.current) sustainedWordRef.current.style.transform = "";
+        sustainedWordRef.current = null;
         const prevIdx = lastIdxRef.current;
         // If the previous line's endTime hasn't been reached yet, keep it visible as
         // a "trailing" line so it finishes naturally while the new line is already active.
@@ -455,6 +459,7 @@ function LyricsOverlayContent({
         activeWordIdxRef.bgCurrent = -1;
         activeWordMaxRef.current = -1; // reset zoom dedupe for the new active line
         wordElsRef.current = []; // cleared until useLayoutEffect repopulates after render
+        sustainedWordElsRef.current = [];
         bgContainerRef.current = null; // clear so RAF doesn't update the old line's element
       }
 
@@ -498,11 +503,8 @@ function LyricsOverlayContent({
       // endTime) keeps animating in parallel so it finishes its syllable wipe instead
       // of snapping fully white. Both run through the same paintLineWords routine.
       const lyrLine = lyr?.[newIdx];
-      if (activeLineRef.current) {
-        activeLineRef.current.style.transform = `scale(${sustainedLineScale(lyrLine, t).toFixed(4)})`;
-      }
       // Zoom enabled only when the setting is on (pass null to disable per-syllable pop).
-      paintLineWords(
+      const activeMainWordIdx = paintLineWords(
         lyrLine,
         wordElsRef.current,
         activeWordIdxRef,
@@ -510,6 +512,15 @@ function LyricsOverlayContent({
         syllableZoomRef.current ? activeWordMaxRef : null,
         fluidLyricsRef.current
       );
+      const activeWord = lyrLine?.words?.filter((word) => !word.isSpace)[activeMainWordIdx];
+      const sustainedWordEl = sustainedWordElsRef.current[activeMainWordIdx] || null;
+      if (sustainedWordRef.current && sustainedWordRef.current !== sustainedWordEl) {
+        sustainedWordRef.current.style.transform = "";
+      }
+      sustainedWordRef.current = sustainedWordEl;
+      if (sustainedWordEl) {
+        sustainedWordEl.style.transform = `scale(${sustainedWordScale(lyrLine, activeWord, t).toFixed(4)})`;
+      }
       if (trailingIdxRef.current >= 0) {
         // Trailing line: no zoom (null) — it only finishes its wipe quietly.
         paintLineWords(
@@ -548,11 +559,14 @@ function LyricsOverlayContent({
       const lineEl = root.querySelector(`[data-lyric-idx="${idx}"]`);
       wordElsRef.current = lineEl ? Array.from(lineEl.querySelectorAll("[data-word-bright]")) : [];
       bgContainerRef.current = lineEl ? lineEl.querySelector("[data-bg-container]") : null;
-      activeLineRef.current = lineEl ? lineEl.querySelector("[data-lyric-sustain]") : null;
+      sustainedWordElsRef.current = lineEl
+        ? Array.from(lineEl.querySelectorAll("[data-word-sustain]"))
+        : [];
     } else {
       wordElsRef.current = [];
       bgContainerRef.current = null;
-      activeLineRef.current = null;
+      sustainedWordElsRef.current = [];
+      sustainedWordRef.current = null;
     }
     // Trailing line: cache its word spans and paint them immediately so already-sung
     // syllables stay bright (no 1-frame dim flash) while the line finishes its wipe.
@@ -1503,32 +1517,38 @@ function LyricsOverlayContent({
                   textAlign,
                 }}
               >
-                <div data-lyric-sustain="true" style={{ transformOrigin: "center center" }}>
+                <div>
                   {(isActive || isTrailing) && line.wordSync ? (
                     <span style={{ whiteSpace: "pre-wrap" }}>
                       {renderWords.map((word, wi) =>
                         word.isSpace ? (
                           <span key={wi}>{word.text}</span>
                         ) : (
-                          <span key={wi} style={{ position: "relative", display: "inline-block" }}>
-                            <span style={{ color: "rgba(255,255,255,0.25)" }}>{word.text}</span>
-                            <span
-                              data-word-bright="true"
-                              style={{
-                                position: "absolute",
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                bottom: 0,
-                                color: "white",
-                                opacity: 0,
-                                WebkitMaskImage:
-                                  "linear-gradient(to right, black -6px, transparent 6px)",
-                                maskImage: "linear-gradient(to right, black -6px, transparent 6px)",
-                                pointerEvents: "none",
-                              }}
-                            >
-                              {word.text}
+                          <span
+                            key={wi}
+                            data-word-sustain="true"
+                            style={{ display: "inline-block", transformOrigin: "center center" }}
+                          >
+                            <span style={{ position: "relative", display: "inline-block" }}>
+                              <span style={{ color: "rgba(255,255,255,0.25)" }}>{word.text}</span>
+                              <span
+                                data-word-bright="true"
+                                style={{
+                                  position: "absolute",
+                                  top: 0,
+                                  left: 0,
+                                  right: 0,
+                                  bottom: 0,
+                                  color: "white",
+                                  opacity: 0,
+                                  WebkitMaskImage:
+                                    "linear-gradient(to right, black -6px, transparent 6px)",
+                                  maskImage: "linear-gradient(to right, black -6px, transparent 6px)",
+                                  pointerEvents: "none",
+                                }}
+                              >
+                                {word.text}
+                              </span>
                             </span>
                           </span>
                         )
