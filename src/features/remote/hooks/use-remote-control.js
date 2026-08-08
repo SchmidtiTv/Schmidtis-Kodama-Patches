@@ -100,22 +100,26 @@ export function useRemoteControl() {
   useEffect(() => {
     if (!remoteEnabled) return;
     let stop = false;
+    let timeoutId;
     // Only update state when the device list actually changed — a fresh array reference
     // every poll would re-render the whole app even when nothing changed.
     const sig = (arr) => (arr || []).map((x) => `${x.id}:${x.status}:${x.online}`).join("|");
-    const tick = () =>
-      fetch(`${API}/remote/_status`)
-        .then((r) => r.json())
-        .then((d) => {
-          if (stop || !d || !d.devices) return;
-          setRemoteDevices((prev) => (sig(prev) === sig(d.devices) ? prev : d.devices));
-        })
-        .catch(() => {});
+    const tick = async () => {
+      try {
+        const response = await fetch(`${API}/remote/_status`);
+        const d = await response.json();
+        if (stop || !d || !d.devices) return;
+        setRemoteDevices((prev) => (sig(prev) === sig(d.devices) ? prev : d.devices));
+      } catch {
+        // The remote server may be stopping or unavailable.
+      } finally {
+        if (!stop) timeoutId = window.setTimeout(tick, pairModalOpen ? 2000 : 5000);
+      }
+    };
     tick();
-    const iv = setInterval(tick, pairModalOpen ? 2000 : 5000);
     return () => {
       stop = true;
-      clearInterval(iv);
+      window.clearTimeout(timeoutId);
     };
   }, [remoteEnabled, pairModalOpen]);
 

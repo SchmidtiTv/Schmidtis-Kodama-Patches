@@ -303,16 +303,24 @@ export function DebugFloatingWindow({ onClose }) {
   posRef.current = pos;
 
   const fetchInfo = useCallback(() => {
-    fetch(`${API}/debug/info`)
+    return fetch(`${API}/debug/info`)
       .then((r) => r.json())
       .then(setInfo)
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    fetchInfo();
-    const id = setInterval(fetchInfo, 3000);
-    return () => clearInterval(id);
+    let cancelled = false;
+    let timeoutId;
+    const poll = async () => {
+      await fetchInfo();
+      if (!cancelled) timeoutId = window.setTimeout(poll, 3000);
+    };
+    poll();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [fetchInfo]);
 
   const allLogs = useMemo(() => {
