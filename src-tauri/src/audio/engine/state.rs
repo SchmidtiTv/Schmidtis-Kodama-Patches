@@ -40,7 +40,6 @@ pub(super) struct EngineState {
     pub policy: TransitionPolicy,
     pub pending_crossfade: Option<CrossfadeRequest>,
     pub failed_crossfade_from: Option<String>,
-    pub shuffle_state: u64,
     pub integrations: PlaybackIntegrationSettings,
     pub current_track_liked: bool,
 }
@@ -52,7 +51,6 @@ impl Default for EngineState {
             policy: TransitionPolicy::default(),
             pending_crossfade: None,
             failed_crossfade_from: None,
-            shuffle_state: 0x9e37_79b9_7f4a_7c15,
             integrations: PlaybackIntegrationSettings::default(),
             current_track_liked: false,
         }

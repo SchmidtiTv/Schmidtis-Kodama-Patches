@@ -323,31 +323,17 @@ fn integration_preferences_are_shared_and_validated() {
 }
 
 #[test]
-fn checking_crossfade_early_does_not_consume_shuffle_choice() {
-    let first = PlaybackEngine::new();
-    let second = PlaybackEngine::new();
-    let queue: Vec<_> = ["a", "b", "c", "d", "e", "f"]
-        .into_iter()
-        .map(track)
-        .collect();
-    for engine in [&first, &second] {
-        engine.replace_queue(queue.clone()).unwrap();
-        engine.set_current_track(Some(track("a"))).unwrap();
-        engine
-            .update_transport(TransportUpdate {
-                shuffle: Some(true),
-                ..TransportUpdate::default()
-            })
-            .unwrap();
-    }
+fn shuffle_advances_through_the_queue_order() {
+    let engine = engine_with_queue();
+    engine
+        .update_transport(TransportUpdate {
+            shuffle: Some(true),
+            ..TransportUpdate::default()
+        })
+        .unwrap();
 
-    for _ in 0..37 {
-        assert!(first.prepare_crossfade(10.0, 200.0).unwrap().is_none());
-    }
-
-    let first_next = first.advance_after_end().unwrap().unwrap();
-    let second_next = second.advance_after_end().unwrap().unwrap();
-    assert_eq!(first_next.track.video_id, second_next.track.video_id);
+    let next = engine.select_next().unwrap().unwrap();
+    assert_eq!(next.track.video_id, "two");
 }
 
 #[test]

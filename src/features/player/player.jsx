@@ -24,6 +24,7 @@ import {
 } from "./player-context.jsx";
 import { useDownloadState, useDownloadActions } from "../downloads/download-context.jsx";
 import { useNativePlaybackEngine } from "./hooks/use-native-playback-engine.js";
+import { shuffleQueueAfterCurrent } from "./shuffle-queue.js";
 import { useVideoAudioSync } from "./hooks/use-video-audio-sync.js";
 import {
   nextNative,
@@ -72,7 +73,7 @@ export function Player({
   const { playerBarControls } = useAppearanceSettings();
   const { queue } = useQueueState();
   const { crossfade, crossfadeOverrides, playbackProgressive, mixTransitionsEnabled, mixTempoLockEnabled } = usePlaybackConfig();
-  const { setTrack, setIsPlaying, startSongRadio } = usePlayerActions();
+  const { setQueue, setTrack, setIsPlaying, startSongRadio } = usePlayerActions();
   // Cached/downloading id sets + download/export/premium-detected actions come from
   // DownloadContext rather than props.
   const { cachedSongIds, downloadingIds } = useDownloadState();
@@ -117,7 +118,6 @@ export function Player({
   const urlCache = useRef(new Map());
 
   const repeatRef = useRef(repeat);
-  const shuffleRef = useRef(shuffle);
   const queueRef = useRef(queue);
   const trackRef = useRef(track);
   // A restored session should make the last song visible and ready to play, but reopening the
@@ -152,9 +152,6 @@ export function Player({
   useEffect(() => {
     repeatRef.current = repeat;
   }, [repeat]);
-  useEffect(() => {
-    shuffleRef.current = shuffle;
-  }, [shuffle]);
   useEffect(() => {
     queueRef.current = queue;
   }, [queue]);
@@ -215,10 +212,7 @@ export function Player({
     if (!q.length || !t) return null;
     const idx = q.findIndex((x) => x.videoId === t.videoId);
     if (idx === -1) return null;
-    if (dir === "next") {
-      if (shuffleRef.current) return q[Math.floor(Math.random() * q.length)];
-      return q[(idx + 1) % q.length];
-    }
+    if (dir === "next") return q[(idx + 1) % q.length];
     return q[(idx - 1 + q.length) % q.length];
   }, []);
 
@@ -337,8 +331,7 @@ export function Player({
   // Preload upcoming tracks in the background so sequential listening (album/playlist/queue)
   // has near-instant transitions and "next". Warm the next TWO tracks (most listening is
   // in order) plus the previous one. Sequential (not concurrent) to avoid starving the
-  // current song's own download of bandwidth. Shuffle's "next" is random/unpredictable, so
-  // there we only warm the immediate in-order neighbour as a cheap best-effort.
+  // current song's own download of bandwidth.
   const preloadAdjacent = useCallback(async () => {
     await new Promise((res) => setTimeout(res, 1500)); // let the current song's download get ahead
     const q = queueRef.current;
@@ -346,9 +339,11 @@ export function Player({
     if (!q.length || !t) return;
     const idx = q.findIndex((x) => x.videoId === t.videoId);
     if (idx === -1) return;
-    const targets = shuffleRef.current
-      ? [q[(idx + 1) % q.length]]
-      : [q[(idx + 1) % q.length], q[(idx + 2) % q.length], q[(idx - 1 + q.length) % q.length]];
+    const targets = [
+      q[(idx + 1) % q.length],
+      q[(idx + 2) % q.length],
+      q[(idx - 1 + q.length) % q.length],
+    ];
     for (const tk of targets) {
       if (!tk || tk.videoId === t.videoId) continue;
       if (playbackProgressiveRef.current) {
@@ -529,6 +524,11 @@ export function Player({
   };
 
   const toggleShuffle = () => {
+    if (!shuffle) {
+      setQueue((currentQueue) =>
+        shuffleQueueAfterCurrent(currentQueue, trackRef.current?.videoId)
+      );
+    }
     if (nativeAvailable) {
       setNativeShuffle(!shuffle);
     } else {

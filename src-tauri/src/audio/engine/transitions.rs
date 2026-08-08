@@ -78,10 +78,6 @@ impl PlaybackEngine {
         if seconds <= 0.0 || remaining > seconds || remaining <= 0.05 {
             return Ok(None);
         }
-        if state.snapshot.shuffle && state.snapshot.queue.len() > 1 {
-            advance_shuffle_state(&mut state);
-        }
-
         let mix_transition = state
             .policy
             .mix_enabled
@@ -231,18 +227,6 @@ impl PlaybackEngine {
         }
 
         let next_index = match direction {
-            ManualDirection::Next if state.snapshot.shuffle && state.snapshot.queue.len() > 1 => {
-                let next_shuffle_state = state
-                    .shuffle_state
-                    .wrapping_mul(6_364_136_223_846_793_005)
-                    .wrapping_add(1);
-                let mut index = (next_shuffle_state as usize) % (state.snapshot.queue.len() - 1);
-                if index >= current_index {
-                    index += 1;
-                }
-                advance_shuffle_state(&mut state);
-                index
-            }
             ManualDirection::Next => (current_index + 1) % state.snapshot.queue.len(),
             ManualDirection::Previous => {
                 (current_index + state.snapshot.queue.len() - 1) % state.snapshot.queue.len()
@@ -281,11 +265,7 @@ fn transition_seconds(state: &EngineState, current: &PlaybackTrack, next: &Playb
 }
 
 fn choose_next_track(state: &mut EngineState) -> Option<PlaybackTrack> {
-    let next = peek_next_track(state);
-    if next.is_some() && state.snapshot.shuffle && state.snapshot.queue.len() > 1 {
-        advance_shuffle_state(state);
-    }
-    next
+    peek_next_track(state)
 }
 
 fn peek_next_track(state: &EngineState) -> Option<PlaybackTrack> {
@@ -295,31 +275,12 @@ fn peek_next_track(state: &EngineState) -> Option<PlaybackTrack> {
         .queue
         .iter()
         .position(|track| track.video_id == current.video_id)?;
-    if state.snapshot.shuffle && state.snapshot.queue.len() > 1 {
-        let next_shuffle_state = state
-            .shuffle_state
-            .wrapping_mul(6_364_136_223_846_793_005)
-            .wrapping_add(1);
-        let mut next_index =
-            (next_shuffle_state as usize) % (state.snapshot.queue.len().saturating_sub(1));
-        if next_index >= current_index {
-            next_index += 1;
-        }
-        return state.snapshot.queue.get(next_index).cloned();
-    }
     if let Some(next) = state.snapshot.queue.get(current_index + 1) {
         return Some(next.clone());
     }
     (state.snapshot.repeat == RepeatMode::All)
         .then(|| state.snapshot.queue.first().cloned())
         .flatten()
-}
-
-fn advance_shuffle_state(state: &mut EngineState) {
-    state.shuffle_state = state
-        .shuffle_state
-        .wrapping_mul(6_364_136_223_846_793_005)
-        .wrapping_add(1);
 }
 
 fn normalize_crossfade_overrides(
