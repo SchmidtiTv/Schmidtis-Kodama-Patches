@@ -8,7 +8,7 @@ export const SPLIT_MIN = 0.22; // min/max cover-pane fraction in the fullscreen 
 export const SPLIT_MAX = 0.78;
 export const QUEUE_DEFAULT = 360; // default queue panel width
 export const QUEUE_MIN = 320; // min when dragging
-export const QUEUE_MAX = 620; // max when dragging
+export const QUEUE_MAX = SIDEBAR_MAX; // keep the queue panel within the sidebar's maximum width
 
 export const SIDEBAR_WIDTH_STORAGE = {
   serialize: storageCodecs.integer.serialize,

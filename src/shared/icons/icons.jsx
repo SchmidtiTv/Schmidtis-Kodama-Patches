@@ -93,6 +93,7 @@ export const Key = fa("key");
 export const Keyboard = fa("keyboard");
 export const PaintBrushBroad = fa("paintbrush-fine");
 export const HardDrives = fa("hard-drive");
+export const FolderOpen = fa("folder-open");
 export const Translate = fa("language");
 export const Robot = fa("robot");
 export const Eyedropper = fa("eye-dropper");

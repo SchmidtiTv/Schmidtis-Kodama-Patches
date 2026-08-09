@@ -921,6 +921,306 @@ body,
   z-index: 1;
 }
 
+/* Spotify-inspired now-playing card. The cover remains full-bleed while the two
+   gradients keep both text zones readable against bright and dark artwork. */
+.spotify-now-playing {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 260px;
+  overflow: hidden;
+  border-radius: 15px;
+  isolation: isolate;
+  background: #17191d;
+  color: #fff;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.28);
+}
+
+.queue-about__now-playing {
+  width: 100%;
+  aspect-ratio: 716 / 986;
+}
+
+.about-song-details {
+  display: grid;
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.about-song-card {
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 15px;
+  background: rgba(25, 25, 27, 0.9);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
+}
+
+.about-song-card h3 {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: var(--t14);
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.about-song-artist__visual {
+  position: relative;
+  height: clamp(150px, 14vw, 260px);
+  overflow: hidden;
+  background: linear-gradient(145deg, #1e2220, #090b0a);
+}
+
+.about-song-artist__image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.about-song-artist__scrim {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.62), transparent 48%, rgba(0, 0, 0, 0.18));
+  pointer-events: none;
+}
+
+.about-song-artist__visual h3 {
+  position: absolute;
+  top: 18px;
+  right: 18px;
+  left: 18px;
+  color: #fff;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
+}
+
+.about-song-artist__body,
+.about-song-credits {
+  padding: 18px;
+}
+
+.about-song-artist__heading,
+.about-song-card__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.about-song-artist__identity {
+  min-width: 0;
+}
+
+.about-song-artist__name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+  color: var(--text-primary);
+  font-size: var(--t15);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.about-song-artist__link {
+  min-width: 0;
+  height: auto;
+  justify-content: flex-start;
+  padding: 0;
+  color: inherit;
+  border-radius: 4px;
+}
+
+.about-song-artist__link:not(:disabled):hover .about-song-artist__name {
+  text-decoration: underline;
+}
+
+.about-song-artist__listeners,
+.about-song-artist__description,
+.about-song-placeholder,
+.about-song-credit__role {
+  color: var(--text-secondary);
+  font-size: var(--t12);
+}
+
+.about-song-artist__listeners {
+  margin-top: 5px;
+}
+
+.about-song-artist__description {
+  display: -webkit-box;
+  margin: 14px 0 0;
+  overflow: hidden;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.about-song-follow {
+  flex-shrink: 0;
+  gap: 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-weight: 650;
+}
+
+.about-song-card__header {
+  align-items: center;
+  margin-bottom: 14px;
+}
+
+.about-song-show-all {
+  min-width: 0;
+  height: auto;
+  padding: 4px 0;
+  color: var(--text-secondary);
+  font-weight: 650;
+}
+
+.about-song-credit-list {
+  display: grid;
+  gap: 4px;
+}
+
+.about-song-credit {
+  padding: 9px 10px;
+  border-radius: 9px;
+}
+
+.about-song-credit:first-child {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.about-song-credit__value {
+  color: var(--text-primary);
+  font-size: var(--t13);
+  line-height: 1.35;
+}
+
+.about-song-credit__role {
+  margin-top: 3px;
+  line-height: 1.4;
+}
+
+.about-song-empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-secondary);
+  font-size: var(--t12);
+}
+
+.spotify-now-playing__artwork {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.spotify-now-playing__artwork--empty {
+  background:
+    radial-gradient(circle at 74% 58%, rgba(84, 107, 132, 0.7), transparent 42%),
+    linear-gradient(160deg, #272d35, #101114 78%);
+}
+
+.spotify-now-playing__shade {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background:
+    linear-gradient(180deg, rgba(9, 10, 12, 0.82) 0%, rgba(9, 10, 12, 0.18) 29%, transparent 53%),
+    linear-gradient(0deg, rgba(5, 5, 7, 0.98) 0%, rgba(5, 5, 7, 0.63) 17%, transparent 43%);
+  pointer-events: none;
+}
+
+.spotify-now-playing__context {
+  position: absolute;
+  top: clamp(18px, 4.5%, 34px);
+  left: clamp(18px, 4.5%, 32px);
+  right: clamp(18px, 4.5%, 32px);
+  margin: 0;
+  overflow: hidden;
+  color: #fff;
+  font-size: clamp(16px, 1.65vw, 30px);
+  font-weight: 650;
+  line-height: 1.12;
+  letter-spacing: -0.025em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.42);
+}
+
+.spotify-now-playing__footer {
+  position: absolute;
+  right: clamp(16px, 4.5%, 30px);
+  bottom: clamp(18px, 4.5%, 34px);
+  left: clamp(18px, 4.5%, 32px);
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+}
+
+.spotify-now-playing__metadata {
+  min-width: 0;
+  flex: 1;
+}
+
+.spotify-now-playing__title,
+.spotify-now-playing__artist {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 14px rgba(0, 0, 0, 0.65);
+}
+
+.spotify-now-playing__title {
+  font-size: clamp(21px, 2.25vw, 42px);
+  font-weight: 700;
+  line-height: 1.06;
+  letter-spacing: -0.035em;
+}
+
+.spotify-now-playing__artist {
+  margin-top: 5px;
+  color: rgba(255, 255, 255, 0.72);
+  font-size: clamp(13px, 1.45vw, 28px);
+  font-weight: 400;
+  line-height: 1.15;
+}
+
+.spotify-now-playing__actions {
+  display: flex;
+  align-items: center;
+  gap: clamp(6px, 1vw, 14px);
+  flex-shrink: 0;
+}
+
+.spotify-now-playing__actions .spotify-now-playing__save {
+  min-width: 36px;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 999px;
+  color: #fff;
+  background: transparent;
+}
+
+.spotify-now-playing__actions .spotify-now-playing__save:hover {
+  background: rgba(255, 255, 255, 0.12);
+  transform: scale(1.04);
+}
+
+.spotify-now-playing__actions .spotify-now-playing__save {
+  border: 2px solid rgba(255, 255, 255, 0.9);
+}
+
+.spotify-now-playing__actions .spotify-now-playing__save[data-liked="true"] {
+  border-color: #1ed760;
+  color: #1ed760;
+}
+
 /* â”€â”€â”€ Desktop cursor â€” no pointer hand on interactive elements â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 button,
 a,

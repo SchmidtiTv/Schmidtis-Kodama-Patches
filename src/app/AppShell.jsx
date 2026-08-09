@@ -1052,9 +1052,10 @@ export const AppShell = memo(function AppShell({
           queueResizing={queueResizing}
           animations={animations}
           startQueueResize={startQueueResize}
-          setQueueOpen={setQueueOpen}
           likedIds={likedIds}
           handleToggleLike={handleToggleLike}
+          nowPlayingContextTitle={collection?.title}
+          onOpenArtist={(item) => openArtist(item, view)}
         />
 
         <AppOverlays

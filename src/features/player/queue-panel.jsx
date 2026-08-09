@@ -2,7 +2,6 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Button,
-  CardRoot,
   ChipLabel,
   ChipRoot,
   ScrollShadowRoot,
@@ -11,7 +10,6 @@ import {
 } from "@heroui/react";
 
 import {
-  ArrowClockwise,
   CaretLineUp,
   GripLines,
   Heart,
@@ -27,6 +25,8 @@ import { dissolve } from "@/shared/lib/particle-burst.js";
 import { useAnimations } from "@/features/settings/display-context.jsx";
 import { useLang } from "@/shared/i18n/context.jsx";
 import { FadeEditorModal } from "./fade-editor-modal.jsx";
+import { NowPlayingSidebarCard } from "./now-playing-sidebar-card.jsx";
+import { AboutSongDetails } from "./about-song-details.jsx";
 import {
   usePlaybackStatus,
   useQueueState,
@@ -172,7 +172,13 @@ function QueueRow({
   );
 }
 
-export function QueuePanel({ likedIds, onToggleLike, visible }) {
+export function QueuePanel({
+  likedIds,
+  onToggleLike,
+  visible,
+  nowPlayingContextTitle,
+  onOpenArtist,
+}) {
   const { track: currentTrack } = usePlaybackStatus();
   const { queue } = useQueueState();
   const { crossfade = 0, crossfadeOverrides = {} } = usePlaybackConfig();
@@ -375,54 +381,26 @@ export function QueuePanel({ likedIds, onToggleLike, visible }) {
         <div className="scrollable flex-1 overflow-y-auto px-4 pt-4 pb-6">
           {currentTrack ? (
             <>
-              {/* Song card */}
-              <CardRoot className="flex items-center gap-3 mb-5 px-3.5 py-3">
-                <TrackArtwork
-                  key={currentTrack.thumbnail || "missing-artwork"}
-                  thumbnail={currentTrack.thumbnail}
-                  className="w-[52px] h-[52px] rounded-[var(--r-md)] shrink-0"
+              <div className="queue-about__now-playing">
+                <NowPlayingSidebarCard
+                  track={currentTrack}
+                  contextTitle={nowPlayingContextTitle || currentTrack.album || t("nowPlaying")}
+                  isLiked={likedIds?.has(currentTrack.videoId)}
+                  onToggleLike={onToggleLike}
+                  saveLabel={t("save")}
                 />
-                <div className="min-w-0">
-                  <div className="text-t13 font-semibold text-primary truncate">
-                    {currentTrack.title}
-                  </div>
-                  <div className="text-t12 text-secondary mt-0.5 truncate">
-                    {currentTrack.artists}
-                  </div>
-                  {currentTrack.album && (
-                    <div className="text-t11 text-muted mt-0.5 truncate">{currentTrack.album}</div>
-                  )}
-                </div>
-              </CardRoot>
+              </div>
 
-              {/* Description */}
-              {songDesc === null && !songDescError && (
-                <div className="text-t12 text-muted">{t("loadingDots")}</div>
-              )}
-              {songDescError && (
-                <div className="flex flex-col gap-2">
-                  <div className="text-t12 text-muted">{t("noCredits")}</div>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    className="self-start gap-1.5 text-t11"
-                    onPress={() => {
-                      setSongDescId(null);
-                      fetchSongDesc(currentTrack?.videoId, true);
-                    }}
-                  >
-                    <ArrowClockwise size={11} /> {t("retry") || "Erneut versuchen"}
-                  </Button>
-                </div>
-              )}
-              {songDesc !== null && songDesc === "" && !songDescError && (
-                <div className="text-t12 text-muted">{t("noCredits")}</div>
-              )}
-              {songDesc && (
-                <p className="m-0 text-t12 leading-[1.7] text-secondary whitespace-pre-wrap">
-                  {songDesc}
-                </p>
-              )}
+              <AboutSongDetails
+                track={currentTrack}
+                description={songDesc}
+                descriptionError={songDescError}
+                onOpenArtist={onOpenArtist}
+                onRetryDescription={() => {
+                  setSongDescId(null);
+                  fetchSongDesc(currentTrack.videoId, true);
+                }}
+              />
             </>
           ) : (
             <div className="text-t13 text-muted text-center mt-10">{t("selectSong")}</div>

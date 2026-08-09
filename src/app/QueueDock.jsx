@@ -9,9 +9,10 @@ export function QueueDock({
   queueResizing,
   animations,
   startQueueResize,
-  setQueueOpen,
   likedIds,
   handleToggleLike,
+  nowPlayingContextTitle,
+  onOpenArtist,
 }) {
   return (
     <div
@@ -89,10 +90,11 @@ export function QueueDock({
         </div>
       )}
       <QueuePanel
-        onClose={() => setQueueOpen(false)}
         likedIds={likedIds}
         onToggleLike={handleToggleLike}
         visible={queueOpen}
+        nowPlayingContextTitle={nowPlayingContextTitle}
+        onOpenArtist={onOpenArtist}
       />
     </div>
   );
