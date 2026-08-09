@@ -30,6 +30,7 @@ describe("SMK-04 navigation", () => {
   });
 
   it("keeps Home recommendations cached when returning from the library", async () => {
+    const initialHome = await $("[data-testid='view-home']");
     await $("//*[contains(., 'Fixture Sunrise')]").waitForDisplayed();
     const requestsBeforeNavigation = await requests();
     const initialHomeRequests = requestsBeforeNavigation.filter(
@@ -39,8 +40,11 @@ describe("SMK-04 navigation", () => {
     await $("[data-testid='nav-library']").click();
     await $("[data-testid='view-library']").waitForDisplayed();
     await $("[data-testid='nav-home']").click();
-    await $("[data-testid='view-home']").waitForDisplayed();
+    const returnedHome = await $("[data-testid='view-home']");
+    await returnedHome.waitForDisplayed();
     await $("//*[contains(., 'Fixture Sunrise')]").waitForDisplayed();
+
+    assert.equal(returnedHome.elementId, initialHome.elementId);
 
     const requestsAfterNavigation = await requests();
     const returnedHomeRequests = requestsAfterNavigation.filter(

@@ -24,6 +24,7 @@ import { APP_ICON_DEFAULT } from "./settings-constants.js";
 import {
   useAppearanceSettings,
   usePlaybackSettings,
+  usePlaybackPreviewSettings,
   useLyricsSettings,
   useIntegrationSettings,
   useShortcutSettings,
@@ -31,7 +32,6 @@ import {
 import { AccountTabContent } from "./tabs/account-settings-tab.jsx";
 import { VisualizerSettingsTab } from "./tabs/visualizer-settings-tab.jsx";
 import { AppearanceSettingsTab } from "./tabs/appearance-settings-tab.jsx";
-import { SidebarSettingsTab } from "./tabs/sidebar-settings-tab.jsx";
 import { PlaybackSettingsTab } from "./tabs/playback-settings-tab.jsx";
 import { ConnectionsSettingsTab } from "./tabs/connections-settings-tab.jsx";
 import { LyricsSettingsTab } from "./tabs/lyrics-settings-tab.jsx";
@@ -67,13 +67,6 @@ export function SettingsPanel({
   onToggleHideUserHandle,
   tab,
   setTab,
-  sidebarCollapsed,
-  sidebarWidth,
-  sidebarMinWidth,
-  sidebarMaxWidth,
-  sidebarDefaultWidth,
-  onSidebarCollapsedChange,
-  onSidebarWidthChange,
 }) {
   const anim = useAnimations();
   const t = useLang();
@@ -113,11 +106,10 @@ export function SettingsPanel({
     onToggleInstrumentalViz,
     vizConfig,
     onUpdateViz,
-    vizPreviewTrack,
-    vizPreviewPlaying,
     playerBarControls,
     onPlayerBarControlToggle,
   } = useAppearanceSettings();
+  const { vizPreviewTrack, vizPreviewPlaying } = usePlaybackPreviewSettings();
   const {
     autoplay,
     onAutoplayChange,
@@ -556,16 +548,6 @@ export function SettingsPanel({
                 theme={theme}
                 uiZoom={uiZoom}
                 vizPreviewTrack={vizPreviewTrack}
-              />
-              <SidebarSettingsTab
-                collapsed={sidebarCollapsed}
-                defaultWidth={sidebarDefaultWidth}
-                maxWidth={sidebarMaxWidth}
-                minWidth={sidebarMinWidth}
-                onCollapsedChange={onSidebarCollapsedChange}
-                onWidthChange={onSidebarWidthChange}
-                t={t}
-                width={sidebarWidth}
               />
             </>
           )}

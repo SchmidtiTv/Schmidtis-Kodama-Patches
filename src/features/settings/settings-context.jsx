@@ -3,6 +3,7 @@ import { createContext, useContext, useMemo } from "react";
 
 const AppearanceSettingsContext = createContext(null);
 const PlaybackSettingsContext = createContext(null);
+const PlaybackPreviewSettingsContext = createContext(null);
 const LyricsSettingsContext = createContext(null);
 const IntegrationSettingsContext = createContext(null);
 const ShortcutSettingsContext = createContext(null);
@@ -19,6 +20,7 @@ function useRequiredContext(context, name) {
 export function SettingsProviders({
   appearance,
   playback,
+  playbackPreview,
   lyrics,
   integrations,
   shortcuts,
@@ -26,6 +28,7 @@ export function SettingsProviders({
 }) {
   const appearanceValue = useMemo(() => appearance, [appearance]);
   const playbackValue = useMemo(() => playback, [playback]);
+  const playbackPreviewValue = useMemo(() => playbackPreview, [playbackPreview]);
   const lyricsValue = useMemo(() => lyrics, [lyrics]);
   const integrationValue = useMemo(() => integrations, [integrations]);
   const shortcutValue = useMemo(() => shortcuts, [shortcuts]);
@@ -33,13 +36,15 @@ export function SettingsProviders({
   return (
     <AppearanceSettingsContext.Provider value={appearanceValue}>
       <PlaybackSettingsContext.Provider value={playbackValue}>
-        <LyricsSettingsContext.Provider value={lyricsValue}>
-          <IntegrationSettingsContext.Provider value={integrationValue}>
-            <ShortcutSettingsContext.Provider value={shortcutValue}>
-              {children}
-            </ShortcutSettingsContext.Provider>
-          </IntegrationSettingsContext.Provider>
-        </LyricsSettingsContext.Provider>
+        <PlaybackPreviewSettingsContext.Provider value={playbackPreviewValue}>
+          <LyricsSettingsContext.Provider value={lyricsValue}>
+            <IntegrationSettingsContext.Provider value={integrationValue}>
+              <ShortcutSettingsContext.Provider value={shortcutValue}>
+                {children}
+              </ShortcutSettingsContext.Provider>
+            </IntegrationSettingsContext.Provider>
+          </LyricsSettingsContext.Provider>
+        </PlaybackPreviewSettingsContext.Provider>
       </PlaybackSettingsContext.Provider>
     </AppearanceSettingsContext.Provider>
   );
@@ -57,6 +62,8 @@ export const useAppearanceSettings = () =>
   useRequiredContext(AppearanceSettingsContext, "useAppearanceSettings");
 export const usePlaybackSettings = () =>
   useRequiredContext(PlaybackSettingsContext, "usePlaybackSettings");
+export const usePlaybackPreviewSettings = () =>
+  useRequiredContext(PlaybackPreviewSettingsContext, "usePlaybackPreviewSettings");
 export const useLyricsSettings = () =>
   useRequiredContext(LyricsSettingsContext, "useLyricsSettings");
 export const useIntegrationSettings = () =>

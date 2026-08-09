@@ -34,9 +34,8 @@ import { usePlayerActions } from "../../player/player-context.jsx";
 import { useAnimations } from "@/features/settings/display-context.jsx";
 import { shuffleTracks } from "@/features/music/shuffle-tracks.js";
 
-// Home is unmounted when the user navigates to another primary view. Keep the
-// response in memory per profile so returning to it is instant, while still
-// allowing the sidebar's explicit refresh action to request new data.
+// Keep responses in memory across profile/app-shell remounts while still allowing the sidebar's
+// explicit refresh action to request new data. Primary-view navigation normally keeps Home mounted.
 const homeCache = new Map();
 
 function readHomeCache(profileKey) {

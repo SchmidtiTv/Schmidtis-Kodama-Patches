@@ -2,15 +2,66 @@ import "@kodama/e2e-network-guard";
 import "@kodama/e2e-runtime-controls";
 import "@kodama/e2e-bridge";
 
+import { lazy, Suspense, useCallback, useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
+import { Spinner } from "@heroui/react";
 import App from "@/app/App.jsx";
-import OverlayEditorApp from "@/features/overlay/OverlayEditorApp.jsx";
-import MiniPlayerApp from "@/features/player/miniplayer/MiniPlayerApp.jsx";
 // Big Picture mode is reachable via F10 or Settings > Experimental. The old
 // gamepad spike remains intentionally unmounted.
-import { BigPicture } from "@/features/big-picture/BigPicture.jsx";
 import { installErrorCapture } from "@/app/diagnostics/error-capture.js";
 import "@/app/styles/index.css";
+
+const OverlayEditorApp = lazy(() => import("@/features/overlay/OverlayEditorApp.jsx"));
+const MiniPlayerApp = lazy(() => import("@/features/player/miniplayer/MiniPlayerApp.jsx"));
+const BigPicture = lazy(() =>
+  import("@/features/big-picture/BigPicture.jsx").then(({ BigPicture: Component }) => ({
+    default: Component,
+  }))
+);
+const modeLoadingFallback = (
+  <div
+    role="status"
+    aria-label="Loading"
+    style={{ position: "fixed", inset: 0, display: "grid", placeItems: "center" }}
+  >
+    <Spinner size="lg" />
+  </div>
+);
+
+function BigPictureLauncher() {
+  const [loadBigPicture, setLoadBigPicture] = useState(false);
+  const [openRequested, setOpenRequested] = useState(false);
+
+  useEffect(() => {
+    const activate = () => {
+      setLoadBigPicture(true);
+      setOpenRequested(true);
+    };
+    const onKeyDown = (event) => {
+      if (event.key !== "F10") return;
+      event.preventDefault();
+      activate();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    window.addEventListener("kodama-open-bigpicture", activate);
+    return () => {
+      window.removeEventListener("keydown", onKeyDown);
+      window.removeEventListener("kodama-open-bigpicture", activate);
+    };
+  }, []);
+
+  const openWhenReady = useCallback(() => {
+    if (!openRequested) return;
+    window.dispatchEvent(new Event("kodama-open-bigpicture"));
+    setOpenRequested(false);
+  }, [openRequested]);
+
+  return loadBigPicture ? (
+    <Suspense fallback={modeLoadingFallback}>
+      <BigPicture onReady={openWhenReady} />
+    </Suspense>
+  ) : null;
+}
 
 installErrorCapture(); // capture frontend errors for the bug-report tool
 
@@ -33,11 +84,19 @@ const isMiniPlayer = params.get("miniPlayer") === "1";
 
 ReactDOM.createRoot(document.getElementById("root")).render(
   isMiniPlayer ? (
-    <MiniPlayerApp />
+    <Suspense fallback={modeLoadingFallback}>
+      <MiniPlayerApp />
+    </Suspense>
   ) : (
     <>
-      {isOverlayEditor ? <OverlayEditorApp /> : <App />}
-      <BigPicture />
+      {isOverlayEditor ? (
+        <Suspense fallback={modeLoadingFallback}>
+          <OverlayEditorApp />
+        </Suspense>
+      ) : (
+        <App />
+      )}
+      {!isOverlayEditor && <BigPictureLauncher />}
     </>
   )
 );

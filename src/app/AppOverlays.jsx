@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { lazy, memo, Suspense, useEffect, useState } from "react";
 import { Button, CardRoot, InputRoot, Spinner, TextFieldRoot } from "@heroui/react";
 import { WebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { API } from "@/shared/api/client.js";
@@ -8,28 +8,107 @@ import { CheckCircle, X } from "@/shared/icons/icons.jsx";
 import { translate } from "@/shared/i18n/i18n.js";
 import { usePlaybackStatus } from "@/features/player/player-context.jsx";
 import { useProfileActions } from "@/features/profiles/profile-context.jsx";
-import { SettingsPanel } from "@/features/settings/settings-panel.jsx";
-import { DebugFloatingWindow } from "@/features/settings/settings-support.jsx";
 import { setSettingsSectionStore } from "@/features/settings/section-store.js";
-import { RemotePairModal } from "@/features/remote/remote-control.jsx";
-import { NewsModal } from "@/app/news-modal.jsx";
-import { BugReportModal } from "@/app/diagnostics/bug-report-modal.jsx";
-import { ProfileSwitcherModal } from "@/features/profiles/profile-switcher-modal.jsx";
-import {
-  CreatePlaylistModal,
-  DeletePlaylistModal,
-  RenamePlaylistModal,
-} from "@/features/music/modals/playlist-modals.jsx";
-import { AddToPlaylistModal } from "@/features/music/modals/add-to-playlist-modal.jsx";
-import { DownloadQueueCard } from "@/features/downloads/download-queue-card.jsx";
-import { TrackContextMenu } from "@/features/music/components/track-context-menu.jsx";
-import { PlaylistContextMenu } from "@/features/music/components/playlist-context-menu.jsx";
 import { dissolve } from "@/shared/lib/particle-burst.js";
 import { SIDEBAR_COLLAPSED } from "./shell-constants.js";
+
+const SettingsPanel = lazy(() =>
+  import("@/features/settings/settings-panel.jsx").then(({ SettingsPanel: Component }) => ({
+    default: Component,
+  }))
+);
+const DebugFloatingWindow = lazy(() =>
+  import("@/features/settings/settings-support.jsx").then(({ DebugFloatingWindow: Component }) => ({
+    default: Component,
+  }))
+);
+const RemotePairModal = lazy(() =>
+  import("@/features/remote/remote-control.jsx").then(({ RemotePairModal: Component }) => ({
+    default: Component,
+  }))
+);
+const NewsModal = lazy(() =>
+  import("@/app/news-modal.jsx").then(({ NewsModal: Component }) => ({ default: Component }))
+);
+const BugReportModal = lazy(() =>
+  import("@/app/diagnostics/bug-report-modal.jsx").then(({ BugReportModal: Component }) => ({
+    default: Component,
+  }))
+);
+const ProfileSwitcherModal = lazy(() =>
+  import("@/features/profiles/profile-switcher-modal.jsx").then(
+    ({ ProfileSwitcherModal: Component }) => ({ default: Component })
+  )
+);
+const CreatePlaylistModal = lazy(() =>
+  import("@/features/music/modals/playlist-modals.jsx").then(
+    ({ CreatePlaylistModal: Component }) => ({
+      default: Component,
+    })
+  )
+);
+const RenamePlaylistModal = lazy(() =>
+  import("@/features/music/modals/playlist-modals.jsx").then(
+    ({ RenamePlaylistModal: Component }) => ({
+      default: Component,
+    })
+  )
+);
+const DeletePlaylistModal = lazy(() =>
+  import("@/features/music/modals/playlist-modals.jsx").then(
+    ({ DeletePlaylistModal: Component }) => ({
+      default: Component,
+    })
+  )
+);
+const AddToPlaylistModal = lazy(() =>
+  import("@/features/music/modals/add-to-playlist-modal.jsx").then(
+    ({ AddToPlaylistModal: Component }) => ({
+      default: Component,
+    })
+  )
+);
+const DownloadQueueCard = lazy(() =>
+  import("@/features/downloads/download-queue-card.jsx").then(
+    ({ DownloadQueueCard: Component }) => ({
+      default: Component,
+    })
+  )
+);
+const TrackContextMenu = lazy(() =>
+  import("@/features/music/components/track-context-menu.jsx").then(
+    ({ TrackContextMenu: Component }) => ({
+      default: Component,
+    })
+  )
+);
+const PlaylistContextMenu = lazy(() =>
+  import("@/features/music/components/playlist-context-menu.jsx").then(
+    ({ PlaylistContextMenu: Component }) => ({ default: Component })
+  )
+);
 
 // Injected from src-tauri/tauri.conf.json at build time (see vite.config.js) — the single
 // source of truth, so this never drifts from the shipped version.
 const APP_VERSION = __APP_VERSION__;
+
+function SettingsPanelFallback() {
+  return (
+    <div
+      role="status"
+      aria-label="Loading settings"
+      style={{
+        width: "100%",
+        height: "100%",
+        display: "grid",
+        placeItems: "center",
+        background: "var(--bg-base)",
+      }}
+    >
+      <Spinner size="lg" />
+    </div>
+  );
+}
 
 async function openOverlayEditor() {
   const existing = await WebviewWindow.getByLabel("overlay-editor");
@@ -404,7 +483,7 @@ function LoginScreen({ onSuccess, onCancel, forcedProfileName }) {
   );
 }
 
-export function AppOverlays({
+export const AppOverlays = memo(function AppOverlays({
   language,
   addToast,
   handleLanguageChange,
@@ -413,7 +492,6 @@ export function AppOverlays({
   fullscreen,
   sidebarCollapsed,
   sidebarWidth,
-  sidebarControls,
   view,
   setView,
   collection,
@@ -527,19 +605,22 @@ export function AppOverlays({
       )}
 
       {/* LAN remote pairing / approval — top-level so it can pop up even with Settings closed. */}
-      {remoteEnabled && (
-        <RemotePairModal
-          isOpen={pairModalOpen}
-          onClose={() => setPairModalOpen(false)}
-          info={remoteInfo}
-          devices={remoteDevices}
-          onDevice={remoteDeviceAction}
-          onRemember={remoteRememberDevice}
-        />
+      {remoteEnabled && pairModalOpen && (
+        <Suspense fallback={<Spinner size="lg" />}>
+          <RemotePairModal
+            isOpen={pairModalOpen}
+            onClose={() => setPairModalOpen(false)}
+            info={remoteInfo}
+            devices={remoteDevices}
+            onDevice={remoteDeviceAction}
+            onRemember={remoteRememberDevice}
+          />
+        </Suspense>
       )}
 
       {(settingsOpen || settingsClosing) && (
         <div
+          data-sidebar-resize-offset={!fullscreen && !sidebarCollapsed ? "" : undefined}
           style={{
             position: "absolute",
             top: fullscreen ? 0 : 8,
@@ -556,44 +637,50 @@ export function AppOverlays({
               : undefined,
           }}
         >
-          <SettingsPanel
-            onClose={closeSettings}
-            onOpenOverlayEditor={openOverlayEditor}
-            onSectionChange={setSettingsSectionStore}
-            language={language}
-            onLanguageChange={handleLanguageChange}
-            updateInfo={updateInfo}
-            onCheckUpdate={checkForUpdates}
-            updateDownloading={updateDownloading}
-            updateDownloadProgress={updateDownloadProgress}
-            updateDownloaded={updateDownloaded}
-            onDownloadUpdate={downloadUpdate}
-            onInstallUpdate={installUpdate}
-            onCancelDownload={cancelUpdateDownload}
-            tab={settingsTab}
-            setTab={setSettingsTab}
-            anonStats={anonStats}
-            onAnonStatsChange={handleAnonStatsChange}
-            hideUserHandle={hideUserHandle}
-            onToggleHideUserHandle={(v) => {
-              setHideUserHandle(v);
-              localStorage.setItem("kiyoshi-hide-handle", String(v));
-            }}
-            sidebarCollapsed={sidebarControls.collapsed}
-            sidebarWidth={sidebarControls.width}
-            sidebarMinWidth={sidebarControls.minWidth}
-            sidebarMaxWidth={sidebarControls.maxWidth}
-            sidebarDefaultWidth={sidebarControls.defaultWidth}
-            onSidebarCollapsedChange={sidebarControls.setCollapsed}
-            onSidebarWidthChange={sidebarControls.setWidth}
-          />
+          <Suspense fallback={<SettingsPanelFallback />}>
+            <SettingsPanel
+              onClose={closeSettings}
+              onOpenOverlayEditor={openOverlayEditor}
+              onSectionChange={setSettingsSectionStore}
+              language={language}
+              onLanguageChange={handleLanguageChange}
+              updateInfo={updateInfo}
+              onCheckUpdate={checkForUpdates}
+              updateDownloading={updateDownloading}
+              updateDownloadProgress={updateDownloadProgress}
+              updateDownloaded={updateDownloaded}
+              onDownloadUpdate={downloadUpdate}
+              onInstallUpdate={installUpdate}
+              onCancelDownload={cancelUpdateDownload}
+              tab={settingsTab}
+              setTab={setSettingsTab}
+              anonStats={anonStats}
+              onAnonStatsChange={handleAnonStatsChange}
+              hideUserHandle={hideUserHandle}
+              onToggleHideUserHandle={(v) => {
+                setHideUserHandle(v);
+                localStorage.setItem("kiyoshi-hide-handle", String(v));
+              }}
+            />
+          </Suspense>
         </div>
       )}
 
       {/* Debug Floating Window */}
-      {debugFloat && <DebugFloatingWindow onClose={() => setDebugFloat(false)} />}
+      {debugFloat && (
+        <Suspense fallback={<Spinner size="lg" />}>
+          <DebugFloatingWindow onClose={() => setDebugFloat(false)} />
+        </Suspense>
+      )}
 
-      <ProfileSwitcherModal isOpen={showProfileSwitcher} onOpenChange={setShowProfileSwitcher} />
+      {showProfileSwitcher && (
+        <Suspense fallback={<Spinner size="lg" />}>
+          <ProfileSwitcherModal
+            isOpen={showProfileSwitcher}
+            onOpenChange={setShowProfileSwitcher}
+          />
+        </Suspense>
+      )}
       {switchingTo && (
         <div
           role="status"
@@ -633,156 +720,182 @@ export function AppOverlays({
         </div>
       )}
       {newsOpen && (
-        <NewsModal
-          news={newsItems}
-          unreadIds={newsUnreadSnapshot}
-          onRefresh={loadNews}
-          onClose={() => setNewsOpen(false)}
-          t={(key) => translate(language, key)}
-        />
+        <Suspense fallback={<Spinner size="lg" />}>
+          <NewsModal
+            news={newsItems}
+            unreadIds={newsUnreadSnapshot}
+            onRefresh={loadNews}
+            onClose={() => setNewsOpen(false)}
+            t={(key) => translate(language, key)}
+          />
+        </Suspense>
       )}
 
       {feedbackOpen && (
-        <BugReportModal
-          screenshot={feedbackShot}
-          onClose={() => setFeedbackOpen(false)}
-          t={(key) => translate(language, key)}
-          version={APP_VERSION}
-          currentTrack={
-            currentTrack ? { videoId: currentTrack.videoId, title: currentTrack.title } : null
-          }
-        />
+        <Suspense fallback={<Spinner size="lg" />}>
+          <BugReportModal
+            screenshot={feedbackShot}
+            onClose={() => setFeedbackOpen(false)}
+            t={(key) => translate(language, key)}
+            version={APP_VERSION}
+            currentTrack={
+              currentTrack ? { videoId: currentTrack.videoId, title: currentTrack.title } : null
+            }
+          />
+        </Suspense>
       )}
 
-      <CreatePlaylistModal
-        isOpen={createPlaylistOpen}
-        t={(key) => translate(language, key)}
-        onClose={() => {
-          setCreatePlaylistOpen(false);
-          setCreatePlaylistForSelection(false);
-          setCreatePlaylistTracks(null);
-        }}
-        onCreated={async (id, title) => {
-          const pending = createPlaylistTracks;
-          if (pending && pending.length > 0) {
-            try {
-              await fetch(`${API}/playlist/${id}/add`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  videoIds: pending.map((t) => t.videoId),
-                  tracks: pending,
-                }),
-              });
-            } catch {
-              /* intentionally ignored */
-            }
-            if (createPlaylistForSelection) clearSelection();
-          }
-          setCreatePlaylistTracks(null);
-          setCreatePlaylistForSelection(false);
-          openPlaylist({ playlistId: id, title, thumbnail: "" }, view);
-        }}
-      />
+      {createPlaylistOpen && (
+        <Suspense fallback={<Spinner size="lg" />}>
+          <CreatePlaylistModal
+            isOpen={createPlaylistOpen}
+            t={(key) => translate(language, key)}
+            onClose={() => {
+              setCreatePlaylistOpen(false);
+              setCreatePlaylistForSelection(false);
+              setCreatePlaylistTracks(null);
+            }}
+            onCreated={async (id, title) => {
+              const pending = createPlaylistTracks;
+              if (pending && pending.length > 0) {
+                try {
+                  await fetch(`${API}/playlist/${id}/add`, {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                      videoIds: pending.map((t) => t.videoId),
+                      tracks: pending,
+                    }),
+                  });
+                } catch {
+                  /* intentionally ignored */
+                }
+                if (createPlaylistForSelection) clearSelection();
+              }
+              setCreatePlaylistTracks(null);
+              setCreatePlaylistForSelection(false);
+              openPlaylist({ playlistId: id, title, thumbnail: "" }, view);
+            }}
+          />
+        </Suspense>
+      )}
 
       {/* Add to playlist — dedicated modal (search + rich playlist rows) */}
       {addToPlaylistFor && (
-        <AddToPlaylistModal
-          tracks={addToPlaylistFor.tracks}
-          onClose={() => setAddToPlaylistFor(null)}
-          onNewPlaylist={() => {
-            setCreatePlaylistTracks(addToPlaylistFor.tracks || null);
-            if (addToPlaylistFor.fromSelection) setCreatePlaylistForSelection(true);
-            setCreatePlaylistOpen(true);
-          }}
-          onAdded={addToPlaylistFor.fromSelection ? clearSelection : undefined}
-        />
+        <Suspense fallback={<Spinner size="lg" />}>
+          <AddToPlaylistModal
+            tracks={addToPlaylistFor.tracks}
+            onClose={() => setAddToPlaylistFor(null)}
+            onNewPlaylist={() => {
+              setCreatePlaylistTracks(addToPlaylistFor.tracks || null);
+              if (addToPlaylistFor.fromSelection) setCreatePlaylistForSelection(true);
+              setCreatePlaylistOpen(true);
+            }}
+            onAdded={addToPlaylistFor.fromSelection ? clearSelection : undefined}
+          />
+        </Suspense>
       )}
 
       {/* Download Queue — HeroUI toast-styled card with Spinner + ProgressBar */}
       {downloadBatches.length > 0 && (
-        <DownloadQueueCard
-          batches={downloadBatches}
-          minimized={downloadQueueMin}
-          onToggleMinimize={() => setDownloadQueueMin((m) => !m)}
-          onCancelBatch={handleCancelBatch}
-          language={language}
-        />
+        <Suspense fallback={<Spinner size="lg" />}>
+          <DownloadQueueCard
+            batches={downloadBatches}
+            minimized={downloadQueueMin}
+            onToggleMinimize={() => setDownloadQueueMin((m) => !m)}
+            onCancelBatch={handleCancelBatch}
+            language={language}
+          />
+        </Suspense>
       )}
 
-      <TrackContextMenu
-        menu={trackContextMenu}
-        onClose={() => setTrackContextMenu(null)}
-        language={language}
-        uiZoom={uiZoom}
-        animations={animations}
-        likedIds={likedIds}
-        handleToggleLike={handleToggleLike}
-        addToast={addToast}
-        setCollection={setCollection}
-        openAlbum={openAlbum}
-        openArtist={openArtist}
-        view={view}
-        onAddToPlaylist={(track) => setAddToPlaylistFor({ tracks: [track] })}
-      />
+      {trackContextMenu && (
+        <Suspense fallback={<Spinner size="lg" />}>
+          <TrackContextMenu
+            menu={trackContextMenu}
+            onClose={() => setTrackContextMenu(null)}
+            language={language}
+            uiZoom={uiZoom}
+            animations={animations}
+            likedIds={likedIds}
+            handleToggleLike={handleToggleLike}
+            addToast={addToast}
+            setCollection={setCollection}
+            openAlbum={openAlbum}
+            openArtist={openArtist}
+            view={view}
+            onAddToPlaylist={(track) => setAddToPlaylistFor({ tracks: [track] })}
+          />
+        </Suspense>
+      )}
 
-      <PlaylistContextMenu
-        menu={globalContextMenu}
-        onClose={() => setGlobalContextMenu(null)}
-        language={language}
-        uiZoom={uiZoom}
-        pinnedIds={pinnedIds}
-        togglePin={togglePin}
-        openAlbum={openAlbum}
-        openArtist={openArtist}
-        openPlaylist={openPlaylist}
-        view={view}
-        onRename={setRenameDialog}
-        onDelete={setDeleteDialog}
-        removeRecentPlaylist={removeRecentPlaylist}
-      />
+      {globalContextMenu && (
+        <Suspense fallback={<Spinner size="lg" />}>
+          <PlaylistContextMenu
+            menu={globalContextMenu}
+            onClose={() => setGlobalContextMenu(null)}
+            language={language}
+            uiZoom={uiZoom}
+            pinnedIds={pinnedIds}
+            togglePin={togglePin}
+            openAlbum={openAlbum}
+            openArtist={openArtist}
+            openPlaylist={openPlaylist}
+            view={view}
+            onRename={setRenameDialog}
+            onDelete={setDeleteDialog}
+            removeRecentPlaylist={removeRecentPlaylist}
+          />
+        </Suspense>
+      )}
 
       {/* Rename Playlist Dialog */}
       {renameDialog && (
-        <RenamePlaylistModal
-          dialog={renameDialog}
-          onClose={() => setRenameDialog(null)}
-          t={(key) => translate(language, key)}
-        />
+        <Suspense fallback={<Spinner size="lg" />}>
+          <RenamePlaylistModal
+            dialog={renameDialog}
+            onClose={() => setRenameDialog(null)}
+            t={(key) => translate(language, key)}
+          />
+        </Suspense>
       )}
 
       {/* Delete Playlist Confirm Dialog */}
       {deleteDialog && (
-        <DeletePlaylistModal
-          dialog={deleteDialog}
-          onClose={() => setDeleteDialog(null)}
-          t={(key) => translate(language, key)}
-          onConfirm={async () => {
-            const pid = deleteDialog.playlistId;
-            const fromCollection = view === "collection" && collection?.playlistId === pid;
-            setDeleteDialog(null);
-            removeRecentPlaylist(pid);
-            if (!fromCollection) {
-              const remove = () =>
-                window.dispatchEvent(new CustomEvent("kiyoshi-playlist-removed", { detail: pid }));
-              requestAnimationFrame(() => {
-                const el = document.querySelector(`[data-card-id="${CSS.escape(pid)}"]`);
-                if (animations && el) dissolve(el, remove);
-                else remove();
-              });
-              fetch(`${API}/playlist/${pid}`, { method: "DELETE" }).catch(() => {});
-            } else {
-              try {
-                await fetch(`${API}/playlist/${pid}`, { method: "DELETE" });
-              } catch {
-                /* intentionally ignored */
+        <Suspense fallback={<Spinner size="lg" />}>
+          <DeletePlaylistModal
+            dialog={deleteDialog}
+            onClose={() => setDeleteDialog(null)}
+            t={(key) => translate(language, key)}
+            onConfirm={async () => {
+              const pid = deleteDialog.playlistId;
+              const fromCollection = view === "collection" && collection?.playlistId === pid;
+              setDeleteDialog(null);
+              removeRecentPlaylist(pid);
+              if (!fromCollection) {
+                const remove = () =>
+                  window.dispatchEvent(
+                    new CustomEvent("kiyoshi-playlist-removed", { detail: pid })
+                  );
+                requestAnimationFrame(() => {
+                  const el = document.querySelector(`[data-card-id="${CSS.escape(pid)}"]`);
+                  if (animations && el) dissolve(el, remove);
+                  else remove();
+                });
+                fetch(`${API}/playlist/${pid}`, { method: "DELETE" }).catch(() => {});
+              } else {
+                try {
+                  await fetch(`${API}/playlist/${pid}`, { method: "DELETE" });
+                } catch {
+                  /* intentionally ignored */
+                }
+                window.dispatchEvent(new Event("kiyoshi-library-updated"));
+                setView("library");
               }
-              window.dispatchEvent(new Event("kiyoshi-library-updated"));
-              setView("library");
-            }
-          }}
-        />
+            }}
+          />
+        </Suspense>
       )}
     </>
   );
-}
+});

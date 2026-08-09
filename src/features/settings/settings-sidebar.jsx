@@ -27,6 +27,7 @@ import { APP_VERSION } from "./settings-support.jsx";
 import { getSettingsSection, subscribeSettingsSection } from "./section-store.js";
 
 export function SettingsSidebarContent({
+  appIconCustomizationAvailable,
   tab,
   setTab,
   onSectionSelect,
@@ -93,11 +94,10 @@ export function SettingsSidebarContent({
       iconEl: <PaintBrushBroad size={18} />,
       sections: [
         { id: "ap-theme", label: t("theme") },
-        { id: "ap-icon", label: t("appIcon") },
+        ...(appIconCustomizationAvailable ? [{ id: "ap-icon", label: t("appIcon") }] : []),
         { id: "ap-colors", label: t("apColors") },
         { id: "ap-others", label: t("apOthers") },
         { id: "ap-player", label: t("playerBar") },
-        { id: "ap-sidebar", label: t("sidebarSettings") },
       ],
     },
     {

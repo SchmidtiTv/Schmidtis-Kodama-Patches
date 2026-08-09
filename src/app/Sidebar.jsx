@@ -614,6 +614,7 @@ export function Sidebar({
                       <RetryingImage
                         src={thumb(currentProfileData.avatar)}
                         alt=""
+                        loading="eager"
                         className="w-full h-full object-cover"
                       />
                     ) : (
@@ -688,6 +689,7 @@ export function Sidebar({
                   <RetryingImage
                     src={thumb(currentProfileData.avatar)}
                     alt=""
+                    loading="eager"
                     className="w-full h-full object-cover"
                   />
                 ) : (

@@ -38,7 +38,7 @@ const tabOfScreen = (s) =>
 init({ debug: false, visualDebug: false });
 pause();
 
-export function BigPicture() {
+export function BigPicture({ onReady }) {
   const [open, setOpen] = useState(false);
   const [screen, setScreen] = useState("home"); // "home" | "nowplaying" | "search" | "browse-{type}" | "detail"
   const [detailItem, setDetailItem] = useState(null); // { type, item } for the detail screen
@@ -123,6 +123,10 @@ export function BigPicture() {
     window.addEventListener("kodama-open-bigpicture", onLaunch);
     return () => window.removeEventListener("kodama-open-bigpicture", onLaunch);
   }, []);
+
+  useEffect(() => {
+    onReady?.();
+  }, [onReady]);
 
   // UI sounds for main-screen navigation. This single listener catches BOTH real keyboard keys
   // and the synthetic key events the controller path dispatches, so one sound fires per input

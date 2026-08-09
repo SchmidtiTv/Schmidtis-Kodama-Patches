@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AmbientBackdrop } from "@/shared/ui/ambient-backdrop.jsx";
 import { TitleBar } from "@/shared/ui/title-bar.jsx";
 import { IS_MAC } from "@/shared/lib/platform.js";
@@ -41,7 +41,7 @@ import { getInitialLang } from "@/shared/lib/lang.js";
 const EMPTY_TRACK_SELECTION = new Map();
 const EMPTY_FAILED_LYRICS_PROVIDERS = new Set();
 
-export function AppShell({
+export const AppShell = memo(function AppShell({
   language,
   addToast,
   handleLanguageChange,
@@ -105,6 +105,7 @@ export function AppShell({
   } = shortcuts;
   const {
     animations,
+    appIconCustomizationAvailable,
     hideExplicit,
     ambientBackground,
     ambientVisualizer,
@@ -179,32 +180,53 @@ export function AppShell({
   } = useNews();
 
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [sidebarWidth, setSidebarWidth, { setTransient: setSidebarWidthTransient }] =
-    usePersistedState("kiyoshi-sidebar-width", SIDEBAR_EXPANDED, SIDEBAR_WIDTH_STORAGE);
+  const sidebarPaneRef = useRef(null);
+  const [sidebarWidth, setSidebarWidth] = usePersistedState(
+    "kiyoshi-sidebar-width",
+    SIDEBAR_EXPANDED,
+    SIDEBAR_WIDTH_STORAGE
+  );
+  const liveSidebarWidthRef = useRef(sidebarWidth);
   const [sidebarResizing, setSidebarResizing] = useState(false);
 
   const startSidebarResize = useCallback(
     (e) => {
       e.preventDefault();
+      const offsetTargets = document.querySelectorAll("[data-sidebar-resize-offset]");
+      let resizeFrame = null;
+      const applyLiveWidth = () => {
+        resizeFrame = null;
+        const width = liveSidebarWidthRef.current;
+        if (sidebarPaneRef.current) {
+          sidebarPaneRef.current.style.width = `${width}px`;
+          sidebarPaneRef.current.style.minWidth = `${width}px`;
+        }
+        offsetTargets.forEach((target) => {
+          target.style.left = `${width + 4}px`;
+        });
+      };
       setSidebarResizing(true);
       document.body.style.cursor = "ew-resize";
       document.body.style.userSelect = "none";
       const onMove = (ev) => {
         const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, ev.clientX - 4));
-        setSidebarWidthTransient(w);
+        liveSidebarWidthRef.current = w;
+        resizeFrame ??= requestAnimationFrame(applyLiveWidth);
       };
       const onUp = () => {
+        if (resizeFrame !== null) cancelAnimationFrame(resizeFrame);
+        applyLiveWidth();
         setSidebarResizing(false);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
-        setSidebarWidth((width) => width);
+        setSidebarWidth(liveSidebarWidthRef.current);
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [setSidebarWidth, setSidebarWidthTransient]
+    [setSidebarWidth]
   );
 
   const [queueWidth, setQueueWidth, { setTransient: setQueueWidthTransient }] = usePersistedState(
@@ -565,6 +587,114 @@ export function AppShell({
     splitView,
   });
 
+  const appOverlayAuth = useMemo(
+    () => ({
+      showLogin,
+      setShowLogin,
+      addingProfile,
+      setAddingProfile,
+      reauthName,
+      setReauthName,
+      switchingTo,
+    }),
+    [
+      showLogin, setShowLogin, addingProfile, setAddingProfile, reauthName, setReauthName,
+      switchingTo,
+    ]
+  );
+  const appOverlayRemote = useMemo(
+    () => ({
+      remoteEnabled,
+      pairModalOpen,
+      setPairModalOpen,
+      remoteInfo,
+      remoteDevices,
+      remoteDeviceAction,
+      remoteRememberDevice,
+    }),
+    [
+      remoteEnabled, pairModalOpen, setPairModalOpen, remoteInfo, remoteDevices,
+      remoteDeviceAction, remoteRememberDevice,
+    ]
+  );
+  const appOverlaySettingsPanel = useMemo(
+    () => ({
+      settingsOpen,
+      settingsClosing,
+      closeSettings,
+      settingsTab,
+      setSettingsTab,
+      anonStats,
+      handleAnonStatsChange,
+      hideUserHandle,
+      setHideUserHandle,
+      updateInfo,
+      checkForUpdates,
+      updateDownloading,
+      updateDownloadProgress,
+      updateDownloaded,
+      downloadUpdate,
+      installUpdate,
+      cancelUpdateDownload,
+    }),
+    [
+      settingsOpen, settingsClosing, closeSettings, settingsTab, setSettingsTab, anonStats,
+      handleAnonStatsChange, hideUserHandle, setHideUserHandle, updateInfo, checkForUpdates,
+      updateDownloading, updateDownloadProgress, updateDownloaded, downloadUpdate, installUpdate,
+      cancelUpdateDownload,
+    ]
+  );
+  const appOverlayDebugFloatState = useMemo(
+    () => ({ debugFloat, setDebugFloat }),
+    [debugFloat, setDebugFloat]
+  );
+  const appOverlayProfileSwitcher = useMemo(
+    () => ({ showProfileSwitcher, setShowProfileSwitcher }),
+    [showProfileSwitcher, setShowProfileSwitcher]
+  );
+  const appOverlayNews = useMemo(
+    () => ({ newsOpen, newsItems, newsUnreadSnapshot, loadNews, setNewsOpen }),
+    [newsOpen, newsItems, newsUnreadSnapshot, loadNews, setNewsOpen]
+  );
+  const appOverlayFeedback = useMemo(
+    () => ({ feedbackOpen, feedbackShot, setFeedbackOpen }),
+    [feedbackOpen, feedbackShot, setFeedbackOpen]
+  );
+  const appOverlayPlaylistDialogs = useMemo(
+    () => ({
+      createPlaylistOpen,
+      setCreatePlaylistOpen,
+      createPlaylistForSelection,
+      setCreatePlaylistForSelection,
+      createPlaylistTracks,
+      setCreatePlaylistTracks,
+      addToPlaylistFor,
+      setAddToPlaylistFor,
+      renameDialog,
+      setRenameDialog,
+      deleteDialog,
+      setDeleteDialog,
+    }),
+    [
+      createPlaylistOpen, setCreatePlaylistOpen, createPlaylistForSelection,
+      setCreatePlaylistForSelection, createPlaylistTracks, setCreatePlaylistTracks,
+      addToPlaylistFor, setAddToPlaylistFor, renameDialog, setRenameDialog, deleteDialog,
+      setDeleteDialog,
+    ]
+  );
+  const appOverlayDownloadQueueCard = useMemo(
+    () => ({ downloadBatches, downloadQueueMin, setDownloadQueueMin, handleCancelBatch }),
+    [downloadBatches, downloadQueueMin, setDownloadQueueMin, handleCancelBatch]
+  );
+  const appOverlayTrackMenu = useMemo(
+    () => ({ trackContextMenu, setTrackContextMenu }),
+    [trackContextMenu, setTrackContextMenu]
+  );
+  const appOverlayPlaylistMenu = useMemo(
+    () => ({ globalContextMenu, setGlobalContextMenu }),
+    [globalContextMenu, setGlobalContextMenu]
+  );
+
   return (
     <>
       {flashbang && (
@@ -595,6 +725,7 @@ export function AppShell({
         <AmbientBackdrop thumbnail={ambientBackground ? currentTrack?.thumbnail : null} />
         {!fullscreen && !IS_MAC && <TitleBar />}
         <div
+          ref={sidebarPaneRef}
           style={{
             width: fullscreen ? 0 : sidebarCollapsed ? SIDEBAR_COLLAPSED : sidebarWidth,
             minWidth: fullscreen ? 0 : sidebarCollapsed ? SIDEBAR_COLLAPSED : sidebarWidth,
@@ -647,6 +778,7 @@ export function AppShell({
           />
           {(settingsOpen || settingsClosing) && !fullscreen && (
             <SettingsSidebarContent
+              appIconCustomizationAvailable={appIconCustomizationAvailable}
               tab={settingsTab}
               setTab={setSettingsTab}
               onSectionSelect={selectSettingsSection}
@@ -934,15 +1066,6 @@ export function AppShell({
           fullscreen={fullscreen}
           sidebarCollapsed={sidebarCollapsed}
           sidebarWidth={sidebarWidth}
-          sidebarControls={{
-            collapsed: sidebarCollapsed,
-            width: sidebarWidth,
-            minWidth: SIDEBAR_MIN,
-            maxWidth: SIDEBAR_MAX,
-            defaultWidth: SIDEBAR_EXPANDED,
-            setCollapsed: setSidebarCollapsed,
-            setWidth: setSidebarWidth,
-          }}
           view={view}
           setView={setView}
           collection={collection}
@@ -956,71 +1079,19 @@ export function AppShell({
           likedIds={likedIds}
           handleToggleLike={handleToggleLike}
           clearSelection={clearSelection}
-          auth={{
-            showLogin,
-            setShowLogin,
-            addingProfile,
-            setAddingProfile,
-            reauthName,
-            setReauthName,
-            switchingTo,
-          }}
-          remote={{
-            remoteEnabled,
-            pairModalOpen,
-            setPairModalOpen,
-            remoteInfo,
-            remoteDevices,
-            remoteDeviceAction,
-            remoteRememberDevice,
-          }}
-          settingsPanel={{
-            settingsOpen,
-            settingsClosing,
-            closeSettings,
-            settingsTab,
-            setSettingsTab,
-            anonStats,
-            handleAnonStatsChange,
-            hideUserHandle,
-            setHideUserHandle,
-            updateInfo,
-            checkForUpdates,
-            updateDownloading,
-            updateDownloadProgress,
-            updateDownloaded,
-            downloadUpdate,
-            installUpdate,
-            cancelUpdateDownload,
-          }}
-          debugFloatState={{ debugFloat, setDebugFloat }}
-          profileSwitcher={{ showProfileSwitcher, setShowProfileSwitcher }}
-          news={{ newsOpen, newsItems, newsUnreadSnapshot, loadNews, setNewsOpen }}
-          feedback={{ feedbackOpen, feedbackShot, setFeedbackOpen }}
-          playlistDialogs={{
-            createPlaylistOpen,
-            setCreatePlaylistOpen,
-            createPlaylistForSelection,
-            setCreatePlaylistForSelection,
-            createPlaylistTracks,
-            setCreatePlaylistTracks,
-            addToPlaylistFor,
-            setAddToPlaylistFor,
-            renameDialog,
-            setRenameDialog,
-            deleteDialog,
-            setDeleteDialog,
-          }}
-          downloadQueueCard={{
-            downloadBatches,
-            downloadQueueMin,
-            setDownloadQueueMin,
-            handleCancelBatch,
-          }}
-          trackMenu={{ trackContextMenu, setTrackContextMenu }}
-          playlistMenu={{ globalContextMenu, setGlobalContextMenu }}
+          auth={appOverlayAuth}
+          remote={appOverlayRemote}
+          settingsPanel={appOverlaySettingsPanel}
+          debugFloatState={appOverlayDebugFloatState}
+          profileSwitcher={appOverlayProfileSwitcher}
+          news={appOverlayNews}
+          feedback={appOverlayFeedback}
+          playlistDialogs={appOverlayPlaylistDialogs}
+          downloadQueueCard={appOverlayDownloadQueueCard}
+          trackMenu={appOverlayTrackMenu}
+          playlistMenu={appOverlayPlaylistMenu}
         />
       </div>
     </>
   );
-}
+});

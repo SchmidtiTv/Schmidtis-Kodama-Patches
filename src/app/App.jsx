@@ -85,6 +85,7 @@ const FONT_SCALE_STORAGE = {
 
 const APP_ICON_DEFAULT = "Kodama App Icon - Standard Pink.png";
 const DevMenu = import.meta.env.DEV ? lazy(() => import("./dev-menu.jsx")) : null;
+const ICON_CONTEXT_VALUE = { weight: "bold" };
 
 export default function App() {
   const [showSplash, setShowSplash] = useState(true);
@@ -734,13 +735,13 @@ export default function App() {
     setView,
   });
 
-  const handleLanguageChange = (lang) => {
+  const handleLanguageChange = useCallback((lang) => {
     setLanguage(lang);
     localStorage.setItem("kiyoshi-lang", lang);
     native
       .updateTrayLabels(translate(lang, "trayShow"), translate(lang, "trayQuit"))
       .catch(() => {});
-  };
+  }, []);
 
   useEffect(() => {
     const lang = getInitialLang();
@@ -832,8 +833,6 @@ export default function App() {
       },
       vizConfig,
       onUpdateViz: updateViz,
-      vizPreviewTrack: currentTrack,
-      vizPreviewPlaying: isPlaying,
       playerBarControls,
       onPlayerBarControlToggle: handlePlayerBarControlToggle,
     }),
@@ -867,11 +866,16 @@ export default function App() {
       instrumentalViz,
       vizConfig,
       updateViz,
-      currentTrack,
-      isPlaying,
       playerBarControls,
       handlePlayerBarControlToggle,
     ]
+  );
+
+  // Current playback is transient. Its preview has its own context so it does
+  // not invalidate appearance-only settings consumers on track/progress updates.
+  const playbackPreviewSettings = useMemo(
+    () => ({ vizPreviewTrack: currentTrack, vizPreviewPlaying: isPlaying }),
+    [currentTrack, isPlaying]
   );
 
   const playbackSettings = useMemo(
@@ -1076,7 +1080,7 @@ export default function App() {
     ]
   );
 
-  const appShellNav = {
+  const appShellNav = useMemo(() => ({
     view,
     setView,
     appKey,
@@ -1095,8 +1099,13 @@ export default function App() {
     goBack,
     pinnedIds,
     togglePin,
-  };
-  const appShellUi = {
+  }), [
+    view, setView, appKey, viewRefreshKey, setViewRefreshKey, collection, setCollection,
+    artistView, searchQuery, handleSearch,
+    removeRecentPlaylist, openPlaylist, openAlbum, openArtist, navigateTo, goBack,
+    pinnedIds, togglePin,
+  ]);
+  const appShellUi = useMemo(() => ({
     overlayOpen,
     setOverlayOpen,
     queueOpen,
@@ -1109,8 +1118,11 @@ export default function App() {
     showVideoView,
     setShowVideoView,
     videoLyricsStyle,
-  };
-  const appShellShortcuts = {
+  }), [
+    overlayOpen, queueOpen, showLyrics, uiZoom, setUiZoom, videoSync, showVideoView,
+    setShowVideoView, videoLyricsStyle,
+  ]);
+  const appShellShortcuts = useMemo(() => ({
     customShortcutsRef,
     recordingShortcutRef,
     shortcutsEnabled,
@@ -1118,16 +1130,23 @@ export default function App() {
     assignShortcut,
     setShortcutLabels,
     setRecordingShortcut,
-  };
-  const appShellAppearancePrefs = {
+  }), [
+    shortcutsEnabled, customShortcuts, getShortcutParts, assignShortcut,
+    setShortcutLabels, setRecordingShortcut,
+  ]);
+  const appShellAppearancePrefs = useMemo(() => ({
     animations,
+    appIconCustomizationAvailable,
     hideExplicit,
     ambientBackground,
     ambientVisualizer,
     vizConfig,
     instrumentalViz,
-  };
-  const appShellLyricsPrefs = {
+  }), [
+    animations, appIconCustomizationAvailable, hideExplicit, ambientBackground,
+    ambientVisualizer, vizConfig, instrumentalViz,
+  ]);
+  const appShellLyricsPrefs = useMemo(() => ({
     lyricsFontSize,
     lyricsProviders,
     showLyricsTranslation,
@@ -1140,8 +1159,12 @@ export default function App() {
     showAgentTags,
     syllableZoom,
     fluidLyrics,
-  };
-  const appShellAuthGate = {
+  }), [
+    lyricsFontSize, lyricsProviders, showLyricsTranslation, lyricsTranslationLang,
+    lyricsTranslationFontSize, showRomaji, lyricsRomajiFontSize, showAgentTags,
+    syllableZoom, fluidLyrics,
+  ]);
+  const appShellAuthGate = useMemo(() => ({
     showLogin,
     setShowLogin,
     addingProfile,
@@ -1151,8 +1174,11 @@ export default function App() {
     showProfileSwitcher,
     setShowProfileSwitcher,
     switchingTo,
-  };
-  const appShellRemote = {
+  }), [
+    showLogin, setShowLogin, addingProfile, setAddingProfile, reauthName, setReauthName,
+    showProfileSwitcher, setShowProfileSwitcher, switchingTo,
+  ]);
+  const appShellRemote = useMemo(() => ({
     remoteEnabled,
     remoteInfo,
     remoteDevices,
@@ -1160,24 +1186,33 @@ export default function App() {
     setPairModalOpen,
     remoteDeviceAction,
     remoteRememberDevice,
-  };
-  const appShellNetwork = { offlineMode, isActuallyOffline, isOffline };
-  const appShellDownloadQueue = {
+  }), [
+    remoteEnabled, remoteInfo, remoteDevices, pairModalOpen, setPairModalOpen,
+    remoteDeviceAction, remoteRememberDevice,
+  ]);
+  const appShellNetwork = useMemo(
+    () => ({ offlineMode, isActuallyOffline, isOffline }),
+    [offlineMode, isActuallyOffline, isOffline]
+  );
+  const appShellDownloadQueue = useMemo(() => ({
     downloadBatches,
     downloadQueueMin,
     setDownloadQueueMin,
     handleCancelBatch,
-  };
-  const appShellPrivacySettings = {
+  }), [downloadBatches, downloadQueueMin, setDownloadQueueMin, handleCancelBatch]);
+  const appShellPrivacySettings = useMemo(() => ({
     anonStats,
     handleAnonStatsChange,
     hideUserHandle,
     setHideUserHandle,
-  };
-  const appShellBridges = { autoCoverRef, flashbangTriggerRef, resetLyricsSessionRef };
+  }), [anonStats, handleAnonStatsChange, hideUserHandle]);
+  const appShellBridges = useMemo(
+    () => ({ autoCoverRef, flashbangTriggerRef, resetLyricsSessionRef }),
+    []
+  );
 
   return (
-    <IconContext.Provider value={{ weight: "bold" }}>
+    <IconContext.Provider value={ICON_CONTEXT_VALUE}>
       <LangContext.Provider value={language}>
         <TrackNumberContext.Provider value={showTrackNumbers}>
           <AnimationContext.Provider value={animations}>
@@ -1189,6 +1224,7 @@ export default function App() {
                       <SettingsProviders
                         appearance={appearanceSettings}
                         playback={playbackSettings}
+                        playbackPreview={playbackPreviewSettings}
                         lyrics={lyricsSettings}
                         integrations={integrationSettings}
                         shortcuts={shortcutSettings}

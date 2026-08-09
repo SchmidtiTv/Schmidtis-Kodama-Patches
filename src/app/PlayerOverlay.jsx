@@ -1,10 +1,11 @@
+import { memo } from "react";
 import { LyricsOverlay } from "@/features/lyrics/LyricsOverlay.jsx";
 import { CoverView } from "@/features/player/player-ui.jsx";
 import { hiResThumb } from "@/features/player/cover-art.js";
 import { SIDEBAR_COLLAPSED } from "./shell-constants.js";
 import { VideoSyncView } from "@/features/player/video-sync.jsx";
 
-export function PlayerOverlay({
+export const PlayerOverlay = memo(function PlayerOverlay({
   overlayOpen,
   fullscreen,
   sidebarCollapsed,
@@ -53,6 +54,9 @@ export function PlayerOverlay({
 }) {
   return (
     <div
+      data-sidebar-resize-offset={
+        overlayOpen && !fullscreen && !sidebarCollapsed ? "" : undefined
+      }
       style={{
         position: "absolute",
         top: overlayOpen ? (fullscreen ? 0 : 8) : "100%",
@@ -280,4 +284,4 @@ export function PlayerOverlay({
         })()}
     </div>
   );
-}
+});
