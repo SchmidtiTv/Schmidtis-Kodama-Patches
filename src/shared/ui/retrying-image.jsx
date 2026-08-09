@@ -18,7 +18,7 @@ function retryDelay(attempt) {
 // Keeps transient proxy/network failures from leaving a browser broken-image marker in the UI.
 // Each retry has a unique query parameter so the browser does not reuse the failed response.
 export const RetryingImage = forwardRef(function RetryingImage(
-  { src, onError, onLoad, style, ...props },
+  { src, onError, onLoad, style, loading = "lazy", decoding = "async", ...props },
   ref
 ) {
   const [attempt, setAttempt] = useState(0);
@@ -50,6 +50,8 @@ export const RetryingImage = forwardRef(function RetryingImage(
       {...props}
       ref={ref}
       src={resolvedSrc}
+      loading={loading}
+      decoding={decoding}
       style={{ ...style, visibility: waitingToRetry ? "hidden" : style?.visibility }}
       onError={(event) => {
         onError?.(event);

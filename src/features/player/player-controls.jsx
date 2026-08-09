@@ -249,6 +249,7 @@ export function PlayerControls(props) {
                 <RetryingImage
                   src={thumb(hiResThumb(track.thumbnail))}
                   alt=""
+                  loading="eager"
                   style={{ width: "100%", height: "100%", objectFit: "cover" }}
                 />
               ) : (

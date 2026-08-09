@@ -541,6 +541,7 @@ export function CoverView({
             <RetryingImage
               src={thumb(hq)}
               alt=""
+              loading="eager"
               style={{ width: "100%", height: "100%", objectFit: "cover" }}
             />
           ) : (

@@ -602,6 +602,7 @@ export function PlaylistLayout({
               <RetryingImage
                 src={thumb(thumbnail)}
                 alt=""
+                loading="eager"
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             ) : (
