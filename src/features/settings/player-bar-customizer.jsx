@@ -45,7 +45,7 @@ const CONTROL_OPTIONS = [
 
 function RemovableControl({ control, onRemove, t, children }) {
   return (
-    <div className="relative flex shrink-0 items-center justify-center">
+    <div className="group/control relative flex shrink-0 items-center justify-center">
       <Button
         variant="ghost"
         isIconOnly
@@ -53,7 +53,7 @@ function RemovableControl({ control, onRemove, t, children }) {
         aria-label={`${t("playerBarRemoveControl")} ${t(control.label)}`}
         data-testid={`player-bar-remove-${control.id}`}
         onPress={() => onRemove(control.id)}
-        className="absolute -top-5 z-10 h-5 min-w-5 rounded-full border border-border bg-elevated text-muted shadow-sm hover:border-[#ff7777]/60! hover:bg-[#ff7777]/10! hover:text-[#ff7777]!"
+        className="absolute -right-1 -top-2 z-10 h-5 min-w-5 rounded-full border border-border bg-elevated text-muted opacity-0 shadow-sm transition-opacity group-hover/control:opacity-100 group-focus-within/control:opacity-100 hover:border-[#ff7777]/60! hover:bg-[#ff7777]/10! hover:text-[#ff7777]!"
       >
         <X size={10} />
       </Button>
@@ -62,13 +62,15 @@ function RemovableControl({ control, onRemove, t, children }) {
   );
 }
 
-function PreviewIconButton({ children, accent = false, wide = false }) {
+function PreviewIconButton({ children, accent = false, wide = false, emphasized = false }) {
   return (
     <div
-      className={`flex h-9 ${wide ? "w-[60px]" : "w-9"} items-center justify-center rounded-full ${
+      className={`flex ${wide ? "h-10 w-16" : "h-9 w-9"} items-center justify-center ${
         accent
-          ? "bg-accent text-white shadow-[0_4px_12px_color-mix(in_srgb,var(--accent)_40%,transparent)]"
-          : "text-secondary"
+          ? "rounded-full bg-accent text-white shadow-[0_4px_12px_color-mix(in_srgb,var(--accent)_40%,transparent)]"
+          : emphasized
+            ? "rounded-xl text-accent"
+            : "rounded-full text-secondary"
       }`}
     >
       {children}
@@ -128,147 +130,157 @@ export function PlayerBarCustomizer({ controls, onToggleControl, t, track }) {
       </div>
 
       <div className="px-3 pb-3">
-        <div className="mb-2 px-1 text-t11 font-medium text-secondary">{t("playerBarPreview")}</div>
+        <div className="mb-2 flex items-center gap-2 px-1 text-t11 font-medium text-secondary">
+          <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+          {t("playerBarPreview")}
+        </div>
         <div
-          className="overflow-x-auto rounded-2xl border border-border shadow-inner"
+          className="overflow-x-auto rounded-xl border border-border shadow-inner"
           style={{
             background:
-              "linear-gradient(105deg, color-mix(in srgb, var(--accent) 16%, var(--bg-elevated)), var(--bg-elevated))",
+              "linear-gradient(110deg, color-mix(in srgb, var(--accent) 8%, var(--bg-base)), var(--bg-base))",
           }}
         >
-          <div className="flex h-[112px] min-w-[900px] items-center gap-4 px-4 pt-5">
-            <div className="flex w-[300px] min-w-0 items-center gap-3">
-              {visible("artwork") && (
-                <RemovableControl control={optionFor("artwork")} onRemove={onToggleControl} t={t}>
-                  <div className="h-16 w-16 overflow-hidden rounded-xl bg-elevated">
-                    {track?.thumbnail ? (
-                      <img
-                        src={thumb(track.thumbnail)}
-                        alt=""
-                        className="h-full w-full object-cover"
-                      />
-                    ) : (
-                      <div className="h-full w-full bg-[linear-gradient(135deg,#47215a,#1b2746)]" />
-                    )}
-                  </div>
-                </RemovableControl>
-              )}
-              {visible("trackDetails") && (
-                <RemovableControl
-                  control={optionFor("trackDetails")}
-                  onRemove={onToggleControl}
-                  t={t}
-                >
-                  <div className="w-[148px] min-w-0">
-                    <div className="truncate text-t13 font-medium text-primary">{title}</div>
-                    <div className="mt-0.5 truncate text-t11 text-secondary">{artist}</div>
-                    <div className="mt-1 text-t10 text-muted">0:00 / 0:00</div>
-                  </div>
-                </RemovableControl>
-              )}
-              {visible("like") && (
-                <RemovableControl control={optionFor("like")} onRemove={onToggleControl} t={t}>
-                  <PreviewIconButton accent>
-                    <Heart size={17} weight="fill" />
-                  </PreviewIconButton>
-                </RemovableControl>
-              )}
+          <div className="min-w-[900px]">
+            <div className="flex h-2 items-center px-4">
+              <div className="relative h-1 w-full overflow-hidden rounded-full bg-border/70">
+                <div className="h-full w-[38%] rounded-full bg-accent" />
+              </div>
             </div>
-
-            <div className="flex flex-1 items-center justify-center gap-1">
-              {visible("shuffle") && (
-                <RemovableControl control={optionFor("shuffle")} onRemove={onToggleControl} t={t}>
-                  <PreviewIconButton>
-                    <Shuffle size={16} />
-                  </PreviewIconButton>
-                </RemovableControl>
-              )}
-              <PreviewIconButton>
-                <SkipBack size={20} />
-              </PreviewIconButton>
-              <PreviewIconButton accent wide>
-                <Play size={18} weight="fill" />
-              </PreviewIconButton>
-              <PreviewIconButton>
-                <SkipForward size={20} />
-              </PreviewIconButton>
-              {visible("repeat") && (
-                <RemovableControl control={optionFor("repeat")} onRemove={onToggleControl} t={t}>
-                  <PreviewIconButton>
-                    <Repeat size={16} />
-                  </PreviewIconButton>
-                </RemovableControl>
-              )}
-            </div>
-
-            <div className="flex w-[340px] items-center justify-end gap-1">
-              {visible("volume") && (
-                <RemovableControl control={optionFor("volume")} onRemove={onToggleControl} t={t}>
-                  <div className="flex items-center gap-2">
-                    <PreviewIconButton>
-                      <SpeakerHigh size={16} />
-                    </PreviewIconButton>
-                    <div className="h-1.5 w-[72px] overflow-hidden rounded-full bg-white/15">
-                      <div className="h-full w-3/5 rounded-full bg-accent" />
+            <div className="flex h-[88px] items-center gap-4 pr-5">
+              <div className="flex w-[340px] min-w-0 items-center gap-2.5">
+                {visible("artwork") && (
+                  <RemovableControl control={optionFor("artwork")} onRemove={onToggleControl} t={t}>
+                    <div className="h-[72px] w-[72px] overflow-hidden rounded-xl bg-elevated">
+                      {track?.thumbnail ? (
+                        <img
+                          src={thumb(track.thumbnail)}
+                          alt=""
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <div className="h-full w-full bg-[linear-gradient(135deg,#47215a,#1b2746)]" />
+                      )}
                     </div>
-                  </div>
-                </RemovableControl>
-              )}
-              {visible("sleepTimer") && (
-                <RemovableControl
-                  control={optionFor("sleepTimer")}
-                  onRemove={onToggleControl}
-                  t={t}
-                >
-                  <PreviewIconButton>
-                    <Moon size={15} />
-                  </PreviewIconButton>
-                </RemovableControl>
-              )}
-              <PreviewIconButton>
-                <DotsThreeVertical size={17} />
-              </PreviewIconButton>
-              {visible("queue") && (
-                <RemovableControl control={optionFor("queue")} onRemove={onToggleControl} t={t}>
-                  <PreviewIconButton>
-                    <Queue size={17} />
-                  </PreviewIconButton>
-                </RemovableControl>
-              )}
-              {visible("lyrics") && (
-                <RemovableControl control={optionFor("lyrics")} onRemove={onToggleControl} t={t}>
-                  <PreviewIconButton>
-                    <ChatText size={17} />
-                  </PreviewIconButton>
-                </RemovableControl>
-              )}
-              {visible("videoToggle") && (
-                <RemovableControl
-                  control={optionFor("videoToggle")}
-                  onRemove={onToggleControl}
-                  t={t}
-                >
-                  <div className="flex h-7 w-11 items-center justify-end rounded-full bg-white/10 px-1">
-                    <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-1 text-secondary">
-                      <ClapperboardPlay size={11} />
-                    </span>
-                  </div>
-                </RemovableControl>
-              )}
-              <PreviewIconButton>
-                <CaretUp size={15} />
-              </PreviewIconButton>
-              {visible("fullscreen") && (
-                <RemovableControl
-                  control={optionFor("fullscreen")}
-                  onRemove={onToggleControl}
-                  t={t}
-                >
-                  <PreviewIconButton>
-                    <ArrowsOut size={17} />
-                  </PreviewIconButton>
-                </RemovableControl>
-              )}
+                  </RemovableControl>
+                )}
+                {visible("trackDetails") && (
+                  <RemovableControl
+                    control={optionFor("trackDetails")}
+                    onRemove={onToggleControl}
+                    t={t}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-t13 font-medium text-primary">{title}</div>
+                      <div className="mt-0.5 truncate text-t11 text-secondary">{artist}</div>
+                      <div className="mt-0.5 text-t10 text-muted">0:00 / 0:00</div>
+                    </div>
+                  </RemovableControl>
+                )}
+                {visible("like") && (
+                  <RemovableControl control={optionFor("like")} onRemove={onToggleControl} t={t}>
+                    <PreviewIconButton>
+                      <Heart size={16} />
+                    </PreviewIconButton>
+                  </RemovableControl>
+                )}
+              </div>
+
+              <div className="flex flex-1 items-center justify-center gap-1">
+                {visible("shuffle") && (
+                  <RemovableControl control={optionFor("shuffle")} onRemove={onToggleControl} t={t}>
+                    <PreviewIconButton>
+                      <Shuffle size={16} />
+                    </PreviewIconButton>
+                  </RemovableControl>
+                )}
+                <PreviewIconButton emphasized>
+                  <SkipBack size={22} />
+                </PreviewIconButton>
+                <PreviewIconButton accent wide>
+                  <Play size={20} weight="fill" />
+                </PreviewIconButton>
+                <PreviewIconButton emphasized>
+                  <SkipForward size={22} />
+                </PreviewIconButton>
+                {visible("repeat") && (
+                  <RemovableControl control={optionFor("repeat")} onRemove={onToggleControl} t={t}>
+                    <PreviewIconButton>
+                      <Repeat size={16} />
+                    </PreviewIconButton>
+                  </RemovableControl>
+                )}
+              </div>
+
+              <div className="flex w-[320px] items-center justify-end gap-0.5">
+                {visible("volume") && (
+                  <RemovableControl control={optionFor("volume")} onRemove={onToggleControl} t={t}>
+                    <div className="flex items-center gap-2">
+                      <PreviewIconButton>
+                        <SpeakerHigh size={16} />
+                      </PreviewIconButton>
+                      <div className="h-1.5 w-[72px] overflow-hidden rounded-full bg-white/15">
+                        <div className="h-full w-3/5 rounded-full bg-accent" />
+                      </div>
+                    </div>
+                  </RemovableControl>
+                )}
+                {visible("sleepTimer") && (
+                  <RemovableControl
+                    control={optionFor("sleepTimer")}
+                    onRemove={onToggleControl}
+                    t={t}
+                  >
+                    <PreviewIconButton>
+                      <Moon size={15} />
+                    </PreviewIconButton>
+                  </RemovableControl>
+                )}
+                <PreviewIconButton>
+                  <DotsThreeVertical size={17} />
+                </PreviewIconButton>
+                {visible("queue") && (
+                  <RemovableControl control={optionFor("queue")} onRemove={onToggleControl} t={t}>
+                    <PreviewIconButton>
+                      <Queue size={17} />
+                    </PreviewIconButton>
+                  </RemovableControl>
+                )}
+                {visible("lyrics") && (
+                  <RemovableControl control={optionFor("lyrics")} onRemove={onToggleControl} t={t}>
+                    <PreviewIconButton>
+                      <ChatText size={17} />
+                    </PreviewIconButton>
+                  </RemovableControl>
+                )}
+                {visible("videoToggle") && (
+                  <RemovableControl
+                    control={optionFor("videoToggle")}
+                    onRemove={onToggleControl}
+                    t={t}
+                  >
+                    <div className="flex h-7 w-11 items-center justify-end rounded-full bg-white/10 px-1">
+                      <span className="flex h-5 w-5 items-center justify-center rounded-full bg-surface-1 text-secondary">
+                        <ClapperboardPlay size={11} />
+                      </span>
+                    </div>
+                  </RemovableControl>
+                )}
+                <PreviewIconButton>
+                  <CaretUp size={15} />
+                </PreviewIconButton>
+                {visible("fullscreen") && (
+                  <RemovableControl
+                    control={optionFor("fullscreen")}
+                    onRemove={onToggleControl}
+                    t={t}
+                  >
+                    <PreviewIconButton>
+                      <ArrowsOut size={17} />
+                    </PreviewIconButton>
+                  </RemovableControl>
+                )}
+              </div>
             </div>
           </div>
         </div>
