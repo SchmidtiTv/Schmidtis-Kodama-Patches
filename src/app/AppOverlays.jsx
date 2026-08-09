@@ -10,6 +10,7 @@ import { usePlaybackStatus } from "@/features/player/player-context.jsx";
 import { useProfileActions } from "@/features/profiles/profile-context.jsx";
 import { setSettingsSectionStore } from "@/features/settings/section-store.js";
 import { dissolve } from "@/shared/lib/particle-burst.js";
+import { IS_MAC } from "@/shared/lib/platform.js";
 import { SIDEBAR_COLLAPSED } from "./shell-constants.js";
 
 const SettingsPanel = lazy(() =>
@@ -125,7 +126,9 @@ async function openOverlayEditor() {
     minHeight: 600,
     resizable: true,
     center: true,
-    decorations: false,
+    // Native macOS chrome provides the traffic lights and a reliable drag surface.
+    // Windows keeps the editor's existing custom title bar and controls.
+    decorations: IS_MAC,
   });
 }
 

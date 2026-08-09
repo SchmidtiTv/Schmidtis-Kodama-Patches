@@ -655,7 +655,7 @@ pub async fn open_composer_window(
     // skip the listener registration entirely.
     init_script.push_str("\n(function(){var ff='\"Inter\", system-ui, sans-serif';var run=function(){try{if(!document.getElementById('__kodama_inter')){var l=document.createElement('link');l.id='__kodama_inter';l.rel='stylesheet';l.href='https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap';var h=document.head||document.documentElement;if(h)h.appendChild(l);}var r=document.documentElement;if(r)r.style.setProperty('--font-family-sans',ff,'important');if(document.body)document.body.style.setProperty('font-family',ff,'important');}catch(e){}};if(document.readyState==='loading'){document.addEventListener('DOMContentLoaded',run);}else{run();}window.addEventListener('load',run);})();");
 
-    let composer_win = tauri::WebviewWindowBuilder::new(
+    let composer_builder = tauri::WebviewWindowBuilder::new(
         &app,
         "unison-composer",
         tauri::WebviewUrl::External(url.parse::<url::Url>().map_err(|e| e.to_string())?),
@@ -663,14 +663,19 @@ pub async fn open_composer_window(
     .title("Boidu Composer — Kodama")
     .inner_size(1280.0, 860.0)
     .min_inner_size(900.0, 600.0)
-    .center()
-    // No native titlebar — the composer renders its own (custom titlebar in the unified
-    // header). Window controls/drag go through IPC, enabled for this remote-URL window
-    // via capabilities/composer.json.
-    .decorations(false)
-    .initialization_script(&init_script)
-    .build()
-    .map_err(|e| e.to_string())?;
+    .center();
+
+    // On macOS, the native title bar is the reliable drag surface and supplies the standard
+    // traffic lights. Other platforms retain the composer's existing custom title bar.
+    #[cfg(target_os = "macos")]
+    let composer_builder = composer_builder.decorations(true);
+    #[cfg(not(target_os = "macos"))]
+    let composer_builder = composer_builder.decorations(false);
+
+    let composer_win = composer_builder
+        .initialization_script(&init_script)
+        .build()
+        .map_err(|e| e.to_string())?;
 
     // Window subclassing (remove_window_border's top-line fix) must run on the main/UI
     // thread; this command runs on the async runtime, so dispatch it there.

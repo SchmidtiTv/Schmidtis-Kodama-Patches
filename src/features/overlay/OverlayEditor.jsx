@@ -21,6 +21,7 @@ import {
   DropdownSection,
 } from "@heroui/react";
 import { DropdownMenu } from "@/shared/ui/zoomed-heroui.jsx";
+import { IS_MAC } from "@/shared/lib/platform.js";
 import {
   ImageSquare,
   VinylRecord,
@@ -2089,11 +2090,8 @@ export default function OverlayEditor({
       className={`flex flex-col w-full overflow-hidden select-none${standalone ? "" : " rounded-xl"}`}
       style={{ height: standalone ? "100vh" : "78vh", minHeight: standalone ? undefined : 480 }}
     >
-      {/* ── Top bar (doubles as the custom title bar in standalone) ──────────────── */}
-      <div
-        className="shrink-0 flex items-center gap-2 h-12 px-3 border-b border-border"
-        {...(standalone ? { "data-tauri-drag-region": true } : {})}
-      >
+      {/* ── Top bar (doubles as the Windows custom title bar in standalone) ────────── */}
+      <div className="shrink-0 flex items-center gap-2 h-12 px-3 border-b border-border">
         <Dropdown>
           <DropdownTrigger className="flex items-center gap-1.5 h-8 pl-1.5 pr-2 rounded-lg border-0 bg-transparent hover:bg-hover transition-colors cursor-pointer">
             <img src="/Kodama%20Logo.png" alt="" width="18" height="18" />
@@ -2231,8 +2229,8 @@ export default function OverlayEditor({
           <Swatches size={14} />
           {t("ovlProfileBrowse")}
         </Button>
-        {standalone && <div className="w-px h-5 bg-border mx-1" />}
-        {standalone && <OverlayEditorWindowControls />}
+        {standalone && !IS_MAC && <div className="w-px h-5 bg-border mx-1" />}
+        {standalone && !IS_MAC && <OverlayEditorWindowControls />}
       </div>
 
       {/* ── Body (docked panels + canvas) ───────────────────────────────────────── */}
