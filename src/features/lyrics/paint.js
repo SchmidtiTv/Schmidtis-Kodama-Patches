@@ -27,12 +27,28 @@ export function wordGroupIndices(allWords) {
 // Paints a single karaoke word sequence (its own active-word index, stored under
 // idxKey on idxRef). Main vocals and background vocals are painted as INDEPENDENT
 // sequences so a bg line starting does not mark the main line as fully sung.
-export function paintWordSeq(words, els, idxRef, idxKey, t, zoomMaxRef, glow, groups) {
+export function paintWordSeq(words, timestamps, els, idxRef, idxKey, t, zoomMaxRef, glow, groups) {
   if (!words.length || !els.length) return;
-  let curWordIdx = -1;
-  for (let wi = 0; wi < words.length; wi++) {
-    if (t >= words[wi].time) curWordIdx = wi;
-    else break;
+  let curWordIdx = idxRef[idxKey] ?? -1;
+  // Normal playback only needs to inspect the next syllable. A binary search handles a seek
+  // (including a backward one) or the initial paint of a line that is already underway.
+  if (
+    curWordIdx < 0 ||
+    (curWordIdx >= 0 && t < timestamps[curWordIdx]) ||
+    (curWordIdx + 1 < timestamps.length && t >= timestamps[curWordIdx + 1])
+  ) {
+    let low = 0;
+    let high = timestamps.length - 1;
+    curWordIdx = -1;
+    while (low <= high) {
+      const mid = low + ((high - low) >> 1);
+      if (timestamps[mid] <= t) {
+        curWordIdx = mid;
+        low = mid + 1;
+      } else {
+        high = mid - 1;
+      }
+    }
   }
   const prevIdx = idxRef[idxKey] ?? -1;
   // Update non-active words only on word change (cheap)
@@ -109,34 +125,41 @@ export function paintWordSeq(words, els, idxRef, idxKey, t, zoomMaxRef, glow, gr
       el.style.maskImage = `linear-gradient(to right, black calc(${pct.toFixed(1)}% - 6px), transparent calc(${pct.toFixed(1)}% + 6px))`;
     }
   }
+  return curWordIdx;
 }
 
 export function paintLineWords(line, els, wordIdxRef, t, zoomMaxRef = null, glow = false) {
   if (!line || !els || els.length === 0) return;
   // DOM order of bright spans: main words first, then bg words. Split and paint each
   // as its own sequence so the two vocal streams never bleed into each other's fill.
-  const mainWords = (line.words || []).filter((w) => !w.isSpace);
-  const bgWords = (line.bgWords || []).filter((w) => !w.isSpace);
+  const timing = line.renderTiming;
+  const mainWords = timing?.mainWords || (line.words || []).filter((word) => !word.isSpace);
+  const bgWords = timing?.bgWords || (line.bgWords || []).filter((word) => !word.isSpace);
+  const mainTimestamps = timing?.mainTimestamps || mainWords.map((word) => word.time);
+  const bgTimestamps = timing?.bgTimestamps || bgWords.map((word) => word.time);
   const mainEls = mainWords.length ? els.slice(0, mainWords.length) : [];
   const bgEls = bgWords.length ? els.slice(mainWords.length) : [];
-  paintWordSeq(
+  const activeMainWordIdx = paintWordSeq(
     mainWords,
+    mainTimestamps,
     mainEls,
     wordIdxRef,
     "current",
     t,
     zoomMaxRef,
     glow,
-    wordGroupIndices(line.words)
+    timing?.mainWordGroups || wordGroupIndices(line.words)
   );
   paintWordSeq(
     bgWords,
+    bgTimestamps,
     bgEls,
     wordIdxRef,
     "bgCurrent",
     t,
     null,
     glow,
-    wordGroupIndices(line.bgWords)
+    timing?.bgWordGroups || wordGroupIndices(line.bgWords)
   );
+  return activeMainWordIdx;
 }

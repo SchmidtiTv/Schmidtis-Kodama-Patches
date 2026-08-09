@@ -7,152 +7,21 @@ import { API } from "@/shared/api/client.js";
 import { thumb } from "@/shared/api/thumbnails.js";
 import { translate } from "@/shared/i18n/i18n.js";
 import { useLang } from "@/shared/i18n/context.jsx";
-import { parseLrc, parseTtml, parseDurationToSeconds } from "@/features/lyrics/parse.js";
+import {
+  parseLrc,
+  parseTtml,
+  parseDurationToSeconds,
+  prepareLyrics,
+  findTimestampIndex,
+} from "@/features/lyrics/parse.js";
+import { paintLineWords } from "@/features/lyrics/paint.js";
 import { fetchLyrics } from "@/features/lyrics/fetch.js";
 import { DEFAULT_LYRICS_PROVIDERS } from "@/features/lyrics/providers.js";
 import { LyricsBrowserModal } from "@/features/lyrics/lyrics-browser-modal.jsx";
 import { openComposer } from "./composer-window.js";
 import { sustainedWordScale } from "./sustained-line.js";
 
-// zoomMaxRef: pass a ref to enable the per-syllable zoom (active line); pass null to
-// disable it (trailing line — it just finishes its wipe quietly, no attention-grab).
-// Paints a single karaoke word sequence (its own active-word index, stored under
-// idxKey on idxRef). Main vocals and background vocals are painted as INDEPENDENT
-// sequences so a bg line starting does not mark the main line as fully sung.
-// Map each non-space word entry to its space-delimited word-group index (for word-level glow).
-function wordGroupIndices(allWords) {
-  const groups = [];
-  let g = -1,
-    inWord = false;
-  for (const w of allWords || []) {
-    if (w.isSpace) {
-      inWord = false;
-    } else {
-      if (!inWord) {
-        g++;
-        inWord = true;
-      }
-      groups.push(g);
-    }
-  }
-  return groups;
-}
-
-function paintWordSeq(words, els, idxRef, idxKey, t, zoomMaxRef, glow, groups) {
-  if (!words.length || !els.length) return -1;
-  let curWordIdx = -1;
-  for (let wi = 0; wi < words.length; wi++) {
-    if (t >= words[wi].time) curWordIdx = wi;
-    else break;
-  }
-  const prevIdx = idxRef[idxKey] ?? -1;
-  // Update non-active words only on word change (cheap)
-  if (curWordIdx !== prevIdx) {
-    idxRef[idxKey] = curWordIdx;
-    // Zoom only on a genuine sequential forward step to a not-yet-zoomed syllable.
-    // Guards against (a) double-zoom from time-interpolation jitter flipping the index
-    // back and forth, and (b) a spurious zoom when the index jumps (seek / line catch-up).
-    const doZoom = zoomMaxRef && curWordIdx === prevIdx + 1 && curWordIdx > zoomMaxRef.current;
-    if (doZoom) zoomMaxRef.current = curWordIdx;
-    for (let wi = 0; wi < els.length; wi++) {
-      const el = els[wi];
-      if (!el) continue;
-      const dimEl = el.previousElementSibling;
-      if (wi === curWordIdx) {
-        // Fade-in: bright span was opacity=0 (future state) → animate to 1
-        el.style.transition = "opacity 0.15s ease-out, text-shadow 0.4s ease-out";
-        el.style.opacity = "1";
-        // Gentle karaoke zoom: a smooth, soft scale on the syllable as it activates.
-        // transform-origin left → the scale grows toward the right. No overshoot/bounce.
-        if (doZoom) {
-          const wrap = el.parentElement;
-          if (wrap && wrap.animate) {
-            // Scale the zoom duration to the syllable length so long words swell gently
-            // over their whole duration instead of a quick fixed pop. Clamped so very
-            // short syllables still read and very long ones don't drag.
-            const word = words[curWordIdx];
-            const sylMs = word ? (word.end - word.time) * 1000 : 440;
-            const durMs = Math.min(1100, Math.max(300, sylMs));
-            wrap.style.transformOrigin = "left center";
-            // Per-segment ease-in-out → velocity reaches 0 at start, peak AND end, so the
-            // swell rises and falls with no hard corner at the top. Much smoother than a
-            // single easing across the whole pulse.
-            wrap.animate(
-              [
-                { transform: "scale(1)", easing: "ease-in-out" },
-                { transform: "scale(1.05)", offset: 0.5, easing: "ease-in-out" },
-                { transform: "scale(1)" },
-              ],
-              { duration: durMs }
-            );
-          }
-        }
-      } else if (wi < curWordIdx) {
-        // Past: keep bright span fully visible (same white as active)
-        el.style.transition = "text-shadow 0.4s ease-out";
-        el.style.WebkitMaskImage = "";
-        el.style.maskImage = "";
-        el.style.opacity = "1";
-      } else {
-        // Future: instant reset
-        el.style.transition = "text-shadow 0.4s ease-out";
-        el.style.opacity = "0";
-        el.style.WebkitMaskImage = "linear-gradient(to right, black -6px, transparent 6px)";
-        el.style.maskImage = "linear-gradient(to right, black -6px, transparent 6px)";
-        if (dimEl) dimEl.style.color = "rgba(255,255,255,0.25)";
-      }
-      // Word-level glow (fluid): glow the segments of the active word that have ALREADY been
-      // sung (incl. the one wiping) so the lit part of the word keeps glowing across syllable
-      // changes; only fade out when the word itself changes. Not-yet-sung segments stay unlit.
-      el.style.textShadow =
-        glow && groups && curWordIdx >= 0 && wi <= curWordIdx && groups[wi] === groups[curWordIdx]
-          ? "0 0 7px rgba(255,255,255,0.45)"
-          : "";
-    }
-  }
-  // Update active word mask every frame for smooth wipe (opacity handled by CSS transition)
-  if (curWordIdx >= 0 && curWordIdx < els.length) {
-    const el = els[curWordIdx];
-    const word = words[curWordIdx];
-    if (el && word) {
-      const pct = Math.min(100, ((t - word.time) / Math.max(word.end - word.time, 0.001)) * 100);
-      el.style.WebkitMaskImage = `linear-gradient(to right, black calc(${pct.toFixed(1)}% - 6px), transparent calc(${pct.toFixed(1)}% + 6px))`;
-      el.style.maskImage = `linear-gradient(to right, black calc(${pct.toFixed(1)}% - 6px), transparent calc(${pct.toFixed(1)}% + 6px))`;
-    }
-  }
-  return curWordIdx;
-}
-
-function paintLineWords(line, els, wordIdxRef, t, zoomMaxRef = null, glow = false) {
-  if (!line || !els || els.length === 0) return -1;
-  // DOM order of bright spans: main words first, then bg words. Split and paint each
-  // as its own sequence so the two vocal streams never bleed into each other's fill.
-  const mainWords = (line.words || []).filter((w) => !w.isSpace);
-  const bgWords = (line.bgWords || []).filter((w) => !w.isSpace);
-  const mainEls = mainWords.length ? els.slice(0, mainWords.length) : [];
-  const bgEls = bgWords.length ? els.slice(mainWords.length) : [];
-  const activeMainWordIdx = paintWordSeq(
-    mainWords,
-    mainEls,
-    wordIdxRef,
-    "current",
-    t,
-    zoomMaxRef,
-    glow,
-    wordGroupIndices(line.words)
-  );
-  paintWordSeq(
-    bgWords,
-    bgEls,
-    wordIdxRef,
-    "bgCurrent",
-    t,
-    null,
-    glow,
-    wordGroupIndices(line.bgWords)
-  );
-  return activeMainWordIdx;
-}
+const FLUID_DRIFT_WINDOW = 6;
 
 // A different track or explicit refetch is a new lyrics session. Resetting at this boundary
 // keeps transient fetch/animation state local to the session instead of synchronously clearing
@@ -289,6 +158,8 @@ function LyricsOverlayContent({
   const lyricsDataRef = useRef(null); // rAF loop reads lyrics without closure
   const syncedRef = useRef(false); // whether the current lyrics have real timestamps (not plain)
   const lastIdxRef = useRef(-1); // tracks active line to detect changes
+  const playbackLineIdxRef = useRef(-1); // timestamp index; independent from gap display state
+  const playbackJumpRef = useRef(true); // seeked/audio discontinuity needs a binary re-sync
   const prevTRef = useRef(0); // previous loop time — to detect backward seeks/restarts
   const inGapRef = useRef(false); // tracks inter-line gap state without closure
   const instVizRef = useRef(false); // tracks instrumental-segment state without closure
@@ -318,10 +189,12 @@ function LyricsOverlayContent({
 
   // Keep lyricsDataRef in sync with state
   useEffect(() => {
-    lyricsDataRef.current = lyrics;
+    lyricsDataRef.current = prepareLyrics(lyrics);
     // Plain (unsynced) lyrics have time -1 on every line; only treat as synced if at least one
     // line carries a real timestamp.
     syncedRef.current = !!(lyrics && lyrics.some((l) => (l.time ?? -1) >= 0));
+    playbackLineIdxRef.current = -1;
+    playbackJumpRef.current = true;
   }, [lyrics]);
 
   // Fetch translations when showTranslation is enabled, lyrics change, or target language changes
@@ -372,7 +245,8 @@ function LyricsOverlayContent({
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) return;
-    const snap = () => {
+    const snap = (event) => {
+      if (event?.type === "seeked") playbackJumpRef.current = true;
       audioSnapRef.current = {
         ct: audio.currentTime,
         pt: performance.now(),
@@ -400,11 +274,22 @@ function LyricsOverlayContent({
       const t = playing ? ct + (performance.now() - pt) / 1000 : ct;
       const lyr = lyricsDataRef.current;
 
-      // Line detection — React re-render only when line changes
-      // Plain lyrics: every line has time -1, so the reduce would mark the LAST line active and
-      // auto-scroll to the bottom. No timestamps → no active line, no scroll.
-      const newIdx =
-        lyr && syncedRef.current ? lyr.reduce((b, l, i) => (l.time <= t ? i : b), -1) : -1;
+      // Line detection — normal playback advances exactly one timestamp at a time. Seeked
+      // events and clock discontinuities binary-search the parse-time timestamp array instead.
+      // Plain lyrics have no timestamps, so they intentionally never get an active line.
+      const timestamps = lyr?.timestamps || [];
+      const timeDiscontinuity = t < prevTRef.current - 0.1 || t > prevTRef.current + 1;
+      let newIdx = -1;
+      if (lyr && syncedRef.current) {
+        if (playbackJumpRef.current || timeDiscontinuity) {
+          newIdx = findTimestampIndex(timestamps, t);
+          playbackJumpRef.current = false;
+        } else {
+          newIdx = playbackLineIdxRef.current;
+          if (timestamps[newIdx + 1] <= t) newIdx += 1;
+        }
+        playbackLineIdxRef.current = newIdx;
+      }
 
       // Backward seek / restart (e.g. "previous" restarting the current song): time jumped
       // back >1s. videoId is unchanged so the song-change reset doesn't fire — handle it here.
@@ -482,17 +367,8 @@ function LyricsOverlayContent({
       // Instrumental segment: no active line and the next vocal is still ≥ INSTR_LEAD away
       // (covers a long intro, mid-song breaks, and the outro). Synced lyrics only — plain
       // lyrics have time -1 and never resolve to displayIdx -1.
-      let inst = false;
-      if (displayIdx === -1 && lyr && lyr.length) {
-        let nextStart = Infinity;
-        for (let i = 0; i < lyr.length; i++) {
-          if (lyr[i].time > t) {
-            nextStart = lyr[i].time;
-            break;
-          }
-        }
-        if (nextStart - t > 2) inst = true; // 2s lead so vocals are back before the cover clears
-      }
+      const nextStart = timestamps[newIdx + 1] ?? Infinity;
+      const inst = !!(displayIdx === -1 && lyr?.length && nextStart - t > 2);
       if (inst !== instVizRef.current) {
         instVizRef.current = inst;
         onInstChangeRef.current?.(inst);
@@ -512,7 +388,7 @@ function LyricsOverlayContent({
         syllableZoomRef.current ? activeWordMaxRef : null,
         fluidLyricsRef.current
       );
-      const activeWord = lyrLine?.words?.filter((word) => !word.isSpace)[activeMainWordIdx];
+      const activeWord = lyrLine?.renderTiming?.mainWords[activeMainWordIdx];
       const sustainedWordEl = sustainedWordElsRef.current[activeMainWordIdx] || null;
       if (sustainedWordRef.current && sustainedWordRef.current !== sustainedWordEl) {
         sustainedWordRef.current.style.transform = "";
@@ -535,7 +411,7 @@ function LyricsOverlayContent({
 
       // BG vocals: fade in container independently based on bg-vocals' own start time
       if (bgContainerRef.current && lyrLine?.bgWords?.length) {
-        const bgStart = lyrLine.bgWords.find((w) => !w.isSpace)?.time;
+        const bgStart = lyrLine.renderTiming?.bgStartTime;
         if (bgStart != null) {
           const bgActive = t >= bgStart;
           bgContainerRef.current.style.opacity = bgActive ? "1" : "0.35";
@@ -947,6 +823,7 @@ function LyricsOverlayContent({
     const wraps = container.querySelectorAll("[data-lyricdrift]");
     let raf = 0;
     let initializeFrame = 0;
+    let previousDriftIdx = -1;
     const onUserScroll = () => {
       if (!userScrollingRef.current) {
         userScrollingRef.current = true;
@@ -1008,11 +885,28 @@ function LyricsOverlayContent({
       hist.push({ t: now, s: scrollStateRef.current.position });
       while (hist.length > 2 && hist[0].t < now - 600) hist.shift();
 
-      // Staggered positional drift ("rubber-band" chain): each line is shifted to the scroll
-      // position from (distance × STAGGER) ago → it lags behind and catches up elastically.
+      // Staggered positional drift ("rubber-band" chain): only the active line and its six
+      // neighbours on either side are visible enough to need per-frame updates. Clear the old
+      // window when the active line changes so transforms never linger outside this 13-line
+      // window.
       const ai = activeIdxRef.current;
       const cur = scrollStateRef.current.position;
-      for (let n = 0; n < wraps.length; n++) {
+      const clearWindow = (center) => {
+        if (center < 0) return;
+        const start = Math.max(0, center - FLUID_DRIFT_WINDOW);
+        const end = Math.min(wraps.length - 1, center + FLUID_DRIFT_WINDOW);
+        for (let n = start; n <= end; n++) {
+          if (wraps[n]?.style.transform) wraps[n].style.transform = "";
+        }
+      };
+      if (ai !== previousDriftIdx) {
+        clearWindow(previousDriftIdx);
+        previousDriftIdx = ai;
+      }
+      if (ai < 0) return;
+      const start = Math.max(0, ai - FLUID_DRIFT_WINDOW);
+      const end = Math.min(wraps.length - 1, ai + FLUID_DRIFT_WINDOW);
+      for (let n = start; n <= end; n++) {
         const dist = Math.abs(n - ai);
         if (userScrollingRef.current || dist === 0) {
           if (wraps[n].style.transform) wraps[n].style.transform = "";
@@ -1543,7 +1437,8 @@ function LyricsOverlayContent({
                                   opacity: 0,
                                   WebkitMaskImage:
                                     "linear-gradient(to right, black -6px, transparent 6px)",
-                                  maskImage: "linear-gradient(to right, black -6px, transparent 6px)",
+                                  maskImage:
+                                    "linear-gradient(to right, black -6px, transparent 6px)",
                                   pointerEvents: "none",
                                 }}
                               >

@@ -1,6 +1,70 @@
 // Lyrics parsers (LRC / TTML / Musixmatch richsync) + small time helpers. Pure functions,
 // no external deps — extracted from App.jsx.
 
+// Rendering reads this metadata on every animation frame. Build it while lyrics are parsed so
+// the hot path does not repeatedly filter word arrays or rebuild word-group mappings. Metadata
+// is attached non-enumerably to the parsed data, so persisting lyrics does not duplicate words;
+// prepareLyrics is idempotent and also upgrades older cache entries when they are loaded.
+function prepareLyrics(lines) {
+  if (!Array.isArray(lines)) return [];
+  if (lines.timestamps && lines.every((line) => line.renderTiming)) return lines;
+  for (const line of lines) {
+    const mainWords = (line.words || []).filter((word) => !word.isSpace);
+    const bgWords = (line.bgWords || []).filter((word) => !word.isSpace);
+    Object.defineProperty(line, "renderTiming", {
+      configurable: true,
+      value: {
+        mainWords,
+        mainTimestamps: mainWords.map((word) => word.time),
+        mainWordGroups: wordGroupIndices(line.words),
+        bgWords,
+        bgTimestamps: bgWords.map((word) => word.time),
+        bgWordGroups: wordGroupIndices(line.bgWords),
+        bgStartTime: bgWords[0]?.time ?? null,
+      },
+    });
+  }
+  // This property intentionally stays on the array rather than each line: it is the sorted
+  // lookup table used to re-synchronise the active line after a seek.
+  Object.defineProperty(lines, "timestamps", {
+    configurable: true,
+    value: lines.map((line) => line.time ?? -1),
+  });
+  return lines;
+}
+
+function findTimestampIndex(timestamps, time) {
+  let low = 0;
+  let high = timestamps.length - 1;
+  let index = -1;
+  while (low <= high) {
+    const mid = low + ((high - low) >> 1);
+    if (timestamps[mid] <= time) {
+      index = mid;
+      low = mid + 1;
+    } else {
+      high = mid - 1;
+    }
+  }
+  return index;
+}
+
+function wordGroupIndices(allWords) {
+  const groups = [];
+  let group = -1;
+  let inWord = false;
+  for (const word of allWords || []) {
+    if (word.isSpace) {
+      inWord = false;
+    } else {
+      if (!inWord) group++;
+      inWord = true;
+      groups.push(group);
+    }
+  }
+  return groups;
+}
+
 // Pass `meta` ({ title, artist }) for sources that prefix their lyrics with credits — Kugou
 // does, most others do not, so the stripping only happens where it is asked for.
 function parseLrc(lrc, meta = null) {
@@ -14,23 +78,25 @@ function parseLrc(lrc, meta = null) {
     }
   }
   lines.sort((a, b) => a.time - b.time);
-  return meta ? stripLeadingCredits(lines, meta) : lines;
+  return prepareLyrics(meta ? stripLeadingCredits(lines, meta) : lines);
 }
 
 function parseRichSync(richsync) {
   // Musixmatch RichSync: [{ ts, te, l: [{c, o}], x }, ...]
   // ts/te = line start/end in seconds, l[i].c = word/char, l[i].o = offset from ts
   if (!Array.isArray(richsync)) return [];
-  return richsync
-    .filter((line) => line && typeof line.ts === "number")
-    .map((line) => {
-      const words = (line.l || []).map((w, j) => {
-        const wordStart = line.ts + (w.o || 0);
-        const wordEnd = line.l[j + 1] ? line.ts + line.l[j + 1].o : line.te;
-        return { text: w.c, time: wordStart, end: wordEnd, isSpace: (w.c || "").trim() === "" };
-      });
-      return { time: line.ts, endTime: line.te, words, wordSync: true, text: line.x || "" };
-    });
+  return prepareLyrics(
+    richsync
+      .filter((line) => line && typeof line.ts === "number")
+      .map((line) => {
+        const words = (line.l || []).map((w, j) => {
+          const wordStart = line.ts + (w.o || 0);
+          const wordEnd = line.l[j + 1] ? line.ts + line.l[j + 1].o : line.te;
+          return { text: w.c, time: wordStart, end: wordEnd, isSpace: (w.c || "").trim() === "" };
+        });
+        return { time: line.ts, endTime: line.te, words, wordSync: true, text: line.x || "" };
+      })
+  );
 }
 
 function parseTtml(ttml) {
@@ -193,7 +259,7 @@ function parseTtml(ttml) {
       lines.push(lineObj);
     }
   }
-  return lines;
+  return prepareLyrics(lines);
 }
 
 function ttmlTimeToSeconds(t) {
@@ -274,7 +340,7 @@ function parseQrc(qrc, meta = null) {
     });
   }
 
-  return stripLeadingCredits(out, meta);
+  return prepareLyrics(stripLeadingCredits(out, meta));
 }
 
 // Both QQ and NetEase ship the track header and its credits as ordinary timed lines at the
@@ -321,7 +387,7 @@ function parseNetease(data, meta = null) {
       text: words.map((w) => w.text).join(""),
     });
   }
-  return stripLeadingCredits(out, meta);
+  return prepareLyrics(stripLeadingCredits(out, meta));
 }
 
 export {
@@ -330,6 +396,8 @@ export {
   parseTtml,
   parseQrc,
   parseNetease,
+  prepareLyrics,
+  findTimestampIndex,
   ttmlTimeToSeconds,
   parseDurationToSeconds,
 };
