@@ -7,6 +7,7 @@ describe("SMK-04 navigation", () => {
   beforeEach(() => startWithProfile("local"));
 
   it("opens every primary view and follows the active navigation state", async () => {
+    const systemMixViews = new Set(["liked", "history", "downloads"]);
     const views = [
       ["home", "view-home"],
       ["library", "view-library"],
@@ -20,6 +21,9 @@ describe("SMK-04 navigation", () => {
       await navItem.click();
       await $(`[data-testid='${view}']`).waitForDisplayed();
       assert.match(await navItem.getAttribute("class"), /bg-accent-dim/);
+      if (systemMixViews.has(nav)) {
+        await $("[data-testid='mix-toggle']").waitForDisplayed();
+      }
     }
 
     await $("[data-testid='nav-library']").click();

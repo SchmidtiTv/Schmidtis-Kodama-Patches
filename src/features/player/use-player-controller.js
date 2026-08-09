@@ -35,7 +35,7 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
   const [isPlaying, setIsPlaying] = useState(false);
   const [queue, setQueue] = useState(() => restoredSession?.queue || []);
   // A queue can originate from many surfaces. Mix is deliberately available only when a
-  // playlist explicitly supplies this origin; never infer it from matching track ids.
+  // collection explicitly supplies this origin; never infer it from matching track ids.
   const [playbackOrigin, setPlaybackOrigin] = useState(null);
   const currentTrackRef = useRef(null);
 
@@ -153,8 +153,8 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
     );
     resetLyricsSessionRef.current?.();
     setPlaybackOrigin(
-      origin?.kind === "playlist" && origin.playlistId
-        ? { kind: "playlist", playlistId: origin.playlistId }
+      origin?.kind === "mixCollection" && origin.mixCollectionId
+        ? { kind: "mixCollection", mixCollectionId: origin.mixCollectionId }
         : null
     );
     if (trackList) {

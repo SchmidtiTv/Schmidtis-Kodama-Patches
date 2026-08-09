@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useAnimations } from "@/features/settings/display-context.jsx";
 import { useLang } from "@/shared/i18n/context.jsx";
 import { PlaylistLayout } from "@/features/music/components/track-table.jsx";
+import { SYSTEM_MIX_COLLECTION_IDS } from "@/features/music/mix-collection.js";
 import { particleBurst } from "@/shared/lib/particle-burst.js";
 import { Trash } from "@/shared/icons/icons.jsx";
 
@@ -82,6 +83,7 @@ export function HistoryView({
     <div data-testid="view-history">
       <PlaylistLayout
         title={t("history")}
+        mixCollectionId={SYSTEM_MIX_COLLECTION_IDS.history}
         thumbnail={null}
         tracks={tracks}
         total={tracks.length}

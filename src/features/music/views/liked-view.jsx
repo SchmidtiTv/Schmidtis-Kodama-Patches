@@ -3,6 +3,7 @@ import { API } from "@/shared/api/client.js";
 import { useLang } from "@/shared/i18n/context.jsx";
 import { LoadingState } from "@/shared/ui/loading-state.jsx";
 import { PlaylistLayout } from "@/features/music/components/track-table.jsx";
+import { SYSTEM_MIX_COLLECTION_IDS } from "@/features/music/mix-collection.js";
 
 const PAGE_SIZE = 50;
 
@@ -110,6 +111,7 @@ export function LikedView({
     <div data-testid="view-liked">
       <PlaylistLayout
         title={t("likedSongs")}
+        mixCollectionId={SYSTEM_MIX_COLLECTION_IDS.likedSongs}
         thumbnail={null}
         tracks={tracks}
         total={total}

@@ -8,6 +8,7 @@ import { Microphone, MusicNote, VinylRecord } from "@/shared/icons/icons.jsx";
 import { useDownloadState } from "@/features/downloads/download-context.jsx";
 import { usePlayerActions } from "@/features/player/player-context.jsx";
 import { shuffleTracks } from "@/features/music/shuffle-tracks.js";
+import { SYSTEM_MIX_COLLECTION_IDS } from "@/features/music/mix-collection.js";
 
 export function DownloadsView({
   onTrackContextMenu,
@@ -180,6 +181,7 @@ export function DownloadsView({
         <div style={{ marginTop: -HEADER_H, flex: 1 }}>
           <PlaylistLayout
             title={t("allSongs")}
+            mixCollectionId={SYSTEM_MIX_COLLECTION_IDS.allSongs}
             thumbnail={null}
             tracks={songs}
             total={songs.length}

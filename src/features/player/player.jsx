@@ -128,13 +128,14 @@ export function Player({
   const prevVolumeRef = useRef(volume > 0 ? volume : 0.4);
 
   useEffect(() => {
-    const playlistId = playbackOrigin?.kind === "playlist" ? playbackOrigin.playlistId : null;
-    if (!playlistId) {
+    const mixCollectionId =
+      playbackOrigin?.kind === "mixCollection" ? playbackOrigin.mixCollectionId : null;
+    if (!mixCollectionId) {
       setMixTransitions([]);
       return;
     }
     let cancelled = false;
-    getPlaylistMix(playlistId)
+    getPlaylistMix(mixCollectionId)
       .then((config) => {
         if (!cancelled) setMixTransitions(resolveMixTransitionPolicy(config, queue));
       })
