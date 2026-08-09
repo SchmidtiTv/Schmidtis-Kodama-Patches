@@ -59,6 +59,36 @@ class MetadataCacheTests(unittest.TestCase):
         self.cache.clear_audio_counterparts()
         self.assertIsNone(self.cache.get_audio_counterpart("video-id"))
 
+    def test_moves_selected_categories_to_a_separate_database(self) -> None:
+        destination = MetadataCache(Path(self.temporary_directory.name) / "mix.sqlite3")
+        self.cache.put("playlists", "playlist-1", {"title": "Cached playlist"})
+        self.cache.put("playlist_mix", "profile:playlist-1", {"enabled": True})
+        self.cache.put("mix_audio_analysis", "v1:video-1", {"bpm": 128, "camelotKey": "8A"})
+
+        self.cache.move_categories_to(
+            destination,
+            ("playlist_mix", "mix_audio_analysis"),
+        )
+
+        self.assertEqual(self.cache.get("playlists", "playlist-1"), {"title": "Cached playlist"})
+        self.assertIsNone(self.cache.get("playlist_mix", "profile:playlist-1"))
+        self.assertIsNone(self.cache.get("mix_audio_analysis", "v1:video-1"))
+        self.assertEqual(destination.get("playlist_mix", "profile:playlist-1"), {"enabled": True})
+        self.assertEqual(
+            destination.get("mix_audio_analysis", "v1:video-1"),
+            {"bpm": 128, "camelotKey": "8A"},
+        )
+
+    def test_category_migration_keeps_a_newer_destination_value(self) -> None:
+        destination = MetadataCache(Path(self.temporary_directory.name) / "mix.sqlite3")
+        self.cache.put("mix_audio_analysis", "v1:video-1", {"bpm": 120})
+        destination.put("mix_audio_analysis", "v1:video-1", {"bpm": 128})
+
+        self.cache.move_categories_to(destination, ("mix_audio_analysis",))
+
+        self.assertEqual(destination.get("mix_audio_analysis", "v1:video-1"), {"bpm": 128})
+        self.assertIsNone(self.cache.get("mix_audio_analysis", "v1:video-1"))
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -34,6 +34,8 @@ export const native = {
   setAppIcon: (file) => invoke("set_app_icon", { file }),
   /** @returns {Promise<boolean>} Whether this build supports selecting a runtime app icon. */
   appIconCustomizationAvailable: () => invoke("app_icon_customization_available"),
+  /** @returns {Promise<void>} Opens the cache root in the platform file manager. @example await native.openCacheDirectory() */
+  openCacheDirectory: () => invoke("open_cache_directory"),
 
   /** @param {string} url @param {number} seekTo @returns {Promise<void>} @example await native.audioPlay("http://localhost:9847/audio", 0) */
   audioPlay: (url, seekTo) => invoke("audio_play", { url, seekTo }),

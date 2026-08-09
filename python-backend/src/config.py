@@ -90,6 +90,7 @@ class ConfigDirs:
         self.CUSTOM_LYRICS_DIR = self.BASE_DIR / "custom_lyrics"
         self.VIDEO_SYNC_CACHE_DIR = self.BASE_DIR / "video_sync_cache"
         self.CACHE_DATABASE = self.BASE_DIR / "cache.sqlite3"
+        self.MIX_DATABASE = self.BASE_DIR / "mix.sqlite3"
         self.YTDLP_UPDATE_DIR = self.BASE_DIR / "ytdlp"
         self.BIN_DIR = self.BASE_DIR / "bin"
 

@@ -66,9 +66,15 @@ def create_app() -> Flask:
         app.extensions["profile_repository"] = profile_repository
         metadata_cache = MetadataCache(config_dirs.CACHE_DATABASE)
         app.extensions["metadata_cache"] = metadata_cache
+        mix_database = MetadataCache(config_dirs.MIX_DATABASE)
+        metadata_cache.move_categories_to(
+            mix_database,
+            ("playlist_mix", "mix_audio_analysis"),
+        )
+        app.extensions["mix_database"] = mix_database
         playlist_cache = Playlist(metadata_cache=metadata_cache)
         app.extensions["playlist_cache"] = playlist_cache
-        app.extensions["playlist_mix"] = PlaylistMix(metadata_cache)
+        app.extensions["playlist_mix"] = PlaylistMix(mix_database)
         music_session = YoutubeMusicSession(
             profiles=profile_repository,
             playlist_cache=playlist_cache,
@@ -102,7 +108,7 @@ def create_app() -> Flask:
         app.extensions["ffmpeg"] = ffmpeg
         app.extensions["mix_analysis_service"] = MixAnalysisService(
             stream_service=app.extensions["stream_service"],
-            metadata_cache=metadata_cache,
+            metadata_cache=mix_database,
             playlist_mix=app.extensions["playlist_mix"],
             analyzer=NumpyTrackAnalyzer(ffmpeg),
         )

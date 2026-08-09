@@ -90,6 +90,41 @@ class MetadataCache:
                 (category, key, payload, time.time(), len(payload.encode("utf-8"))),
             )
 
+    def move_categories_to(self, destination: "MetadataCache", categories: tuple[str, ...]) -> None:
+        """Move selected categories to another database without replacing newer values."""
+        if self.path.resolve() == destination.path.resolve() or not categories:
+            return
+        placeholders = ",".join("?" for _ in categories)
+        with self._connect() as source:
+            rows = source.execute(
+                f"""
+                SELECT category, cache_key, payload, updated_at, payload_bytes
+                FROM cache_entries
+                WHERE category IN ({placeholders})
+                """,
+                categories,
+            ).fetchall()
+        if not rows:
+            return
+        with destination._connect() as target:
+            target.executemany(
+                """
+                INSERT INTO cache_entries(category, cache_key, payload, updated_at, payload_bytes)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(category, cache_key) DO UPDATE SET
+                    payload = excluded.payload,
+                    updated_at = excluded.updated_at,
+                    payload_bytes = excluded.payload_bytes
+                WHERE excluded.updated_at > cache_entries.updated_at
+                """,
+                rows,
+            )
+        with self._connect() as source:
+            source.execute(
+                f"DELETE FROM cache_entries WHERE category IN ({placeholders})",
+                categories,
+            )
+
     def delete(self, category: str, key: str) -> None:
         with self._connect() as connection:
             connection.execute(

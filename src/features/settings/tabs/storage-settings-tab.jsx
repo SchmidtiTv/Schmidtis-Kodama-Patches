@@ -2,10 +2,12 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, CardRoot, ToggleButton, ToggleButtonGroupRoot, cn } from "@heroui/react";
 
 import { API } from "@/shared/api/client.js";
+import { native } from "@/shared/api/tauri.js";
 import {
   ArrowClockwise,
   Check,
   DownloadSimple,
+  FolderOpen,
   HardDrives,
   ImageSquare,
   Microphone,
@@ -329,6 +331,17 @@ function CacheSettings({ t }) {
     if (window.confirm(t("cacheClearAllConfirm"))) clearCategories(CACHE_KEYS, "all");
   };
 
+  const openCacheDirectory = async () => {
+    setBusy((current) => ({ ...current, openDirectory: true }));
+    try {
+      await native.openCacheDirectory();
+    } catch (error) {
+      setFetchError(error.message || String(error));
+    } finally {
+      setBusy((current) => ({ ...current, openDirectory: false }));
+    }
+  };
+
   const totalBytes = stats
     ? categories.reduce((sum, category) => sum + (stats[category.key]?.size ?? 0), 0)
     : 0;
@@ -400,16 +413,27 @@ function CacheSettings({ t }) {
                 : t("loading")}
             </div>
           </div>
-          <Button
-            isIconOnly
-            variant="ghost"
-            size="sm"
-            aria-label={t("refresh")}
-            isDisabled={refreshing}
-            onPress={load}
-          >
-            <ArrowClockwise size={15} className={refreshing ? "animate-spin" : ""} />
-          </Button>
+          <div className="flex shrink-0 items-center gap-1.5">
+            <Button
+              variant="ghost"
+              size="sm"
+              isDisabled={busy.openDirectory}
+              onPress={openCacheDirectory}
+            >
+              <FolderOpen size={14} />
+              {t("cacheOpenLocation")}
+            </Button>
+            <Button
+              isIconOnly
+              variant="ghost"
+              size="sm"
+              aria-label={t("refresh")}
+              isDisabled={refreshing}
+              onPress={load}
+            >
+              <ArrowClockwise size={15} className={refreshing ? "animate-spin" : ""} />
+            </Button>
+          </div>
         </div>
         <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-[var(--bg-base)]">
           {stats &&

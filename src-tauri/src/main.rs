@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
+use tauri_plugin_opener::OpenerExt;
 use audio::{
     audio_pause, audio_play, audio_resume, audio_seek, audio_set_analysis_enabled,
     audio_set_volume, audio_stop,
@@ -44,6 +45,56 @@ fn relaunch_app(app: tauri::AppHandle) {
 #[tauri::command]
 fn quit_app(app: tauri::AppHandle) {
     app.exit(0);
+}
+
+fn cache_data_directory() -> Result<std::path::PathBuf, String> {
+    #[cfg(debug_assertions)]
+    {
+        return Ok(std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .ok_or_else(|| "could not resolve the development cache directory".to_string())?
+            .join("python-backend"));
+    }
+
+    #[cfg(all(not(debug_assertions), windows))]
+    let data_root = std::env::var_os("LOCALAPPDATA")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::current_exe()
+                .ok()
+                .and_then(|path| path.parent().map(std::path::Path::to_path_buf))
+        })
+        .ok_or_else(|| "could not resolve the local application data directory".to_string())?;
+
+    #[cfg(all(not(debug_assertions), not(windows)))]
+    let data_root = std::env::var_os("XDG_DATA_HOME")
+        .map(std::path::PathBuf::from)
+        .or_else(|| {
+            std::env::var_os("HOME")
+                .map(std::path::PathBuf::from)
+                .map(|path| path.join(".local/share"))
+        })
+        .ok_or_else(|| "could not resolve the user data directory".to_string())?;
+
+    #[cfg(not(debug_assertions))]
+    {
+        let current = data_root.join("dev.kodama.music");
+        let legacy = data_root.join("dev.kiyoshi.music");
+        Ok(if !current.exists() && legacy.is_dir() {
+            legacy
+        } else {
+            current
+        })
+    }
+}
+
+#[tauri::command]
+fn open_cache_directory(app: tauri::AppHandle) -> Result<(), String> {
+    let directory = cache_data_directory()?;
+    std::fs::create_dir_all(&directory).map_err(|error| error.to_string())?;
+    app.opener()
+        .open_path(directory.to_string_lossy(), None::<&str>)
+        .map_err(|error| error.to_string())
 }
 
 // Capture the main window as a PNG and return it base64-encoded (for bug-report screenshots).
@@ -344,6 +395,7 @@ fn main() {
             relaunch_app, quit_app, stop_server_cmd,
             update_tray_labels, set_close_to_tray,
             capture_screenshot,
+            open_cache_directory,
             ensure_session_keeper, rotate_session_cookies, stop_session_keeper,
         ])
         .build(context)
