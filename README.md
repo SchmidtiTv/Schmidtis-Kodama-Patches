@@ -70,7 +70,7 @@ It does **not** use this fork's separate `master` branch as the baseline. See th
 
 - [Node.js](https://nodejs.org/) 18 or later
 - [Rust](https://rustup.rs/) stable
-- [Python](https://www.python.org/) 3.10 or later
+- [uv](https://docs.astral.sh/uv/) (manages Python 3.12 and backend dependencies)
 
 ### Setup
 
@@ -81,7 +81,7 @@ cd Kodama
 npm install
 
 cd python-backend
-pip install -r requirements.txt
+uv sync --locked --group dev
 cd ..
 ```
 
@@ -89,7 +89,7 @@ Optionally authenticate a YouTube account:
 
 ```bash
 cd python-backend
-python setup_auth.py
+uv run python setup_auth.py
 cd ..
 ```
 

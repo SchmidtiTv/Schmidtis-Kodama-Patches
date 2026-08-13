@@ -19,6 +19,11 @@ src-tauri/binaries/
 # Python Cache + virtualenv
 python-backend/__pycache__/
 python-backend/*.pyc
+python-backend/.cache/
+python-backend/.coverage
+python-backend/.pytest_cache/
+python-backend/.ruff_cache/
+python-backend/htmlcov/
 .venv/
 python-backend/.venv/
 venv/

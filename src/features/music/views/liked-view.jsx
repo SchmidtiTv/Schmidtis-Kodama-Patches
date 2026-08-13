@@ -101,7 +101,7 @@ export function LikedView({
               borderRadius: "var(--r-sm)",
             }}
           >
-            python server.py
+            uv run python server.py
           </code>
         </div>
       </div>

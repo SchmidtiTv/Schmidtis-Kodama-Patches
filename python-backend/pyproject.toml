@@ -1,0 +1,90 @@
+[project]
+name = "kodama-backend"
+version = "1.0.0"
+description = "Python backend for the Kodama desktop application"
+requires-python = ">=3.12"
+dependencies = [
+    "bgutil-ytdlp-pot-provider==1.3.1",
+    "cryptography>=50.0.0",
+    "flask",
+    "flask-cors",
+    "keyring>=25.7.0",
+    "mutagen",
+    "numpy",
+    "pillow",
+    "pykakasi",
+    "requests",
+    "scipy",
+    "yt-dlp",
+    "yt-dlp-ejs",
+    "ytmusicapi==1.12.1",
+]
+
+[dependency-groups]
+build = [
+    "pyinstaller",
+]
+dev = [
+    "black>=26.5.1",
+    "pre-commit>=4.6.2",
+    "pyrefly>=1.2.0",
+    "pytest>=9.1.1",
+    "pytest-cov>=7.1.0",
+    "pytest-xdist>=3.8.0",
+    "ruff>=0.16.3",
+    "types-requests>=2.33.0.20260712",
+]
+
+[tool.uv]
+package = false
+
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+
+[tool.ruff]
+cache-dir = ".cache/.ruff_cache"
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812", # Conflicts with Black's trailing-comma handling.
+    "D203",   # Prefer D211: no blank line before class docstrings.
+    "D206",   # Conflicts with formatter indentation.
+    "D213",   # Prefer D212: summary on the first docstring line.
+    "D300",   # Conflicts with formatter quote normalization.
+    "E111",   # Conflicts with formatter indentation.
+    "E114",   # Conflicts with formatter indentation.
+    "E117",   # Conflicts with formatter indentation.
+    "ISC001", # Conflicts with formatter string concatenation.
+    "Q000",   # Conflicts with formatter quote normalization.
+    "Q001",   # Conflicts with formatter quote normalization.
+    "Q002",   # Conflicts with formatter quote normalization.
+    "Q003",   # Conflicts with formatter quote normalization.
+    "W191",   # Conflicts with formatter indentation.
+]
+
+[tool.pyrefly]
+preset = "strict"
+project-includes = ["server.py", "src", "tests"]
+python-version = "3.12"
+search-path = [".", "tests"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --strict-config --strict-markers"
+cache_dir = ".cache/.pytest_cache"
+python_classes = ["*Tests"]
+pythonpath = [".", "tests"]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+data_file = ".cache/.coverage"
+source = ["src"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true

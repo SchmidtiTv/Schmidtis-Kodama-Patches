@@ -93,18 +93,20 @@ precisely named service under `src/lib/` and is injected during composition.
 
 ## Verification
 
-From `python-backend/`, use the project virtual environment when available:
+From `python-backend/`, use the uv-managed project environment:
 
 ```sh
-python -m unittest discover -s tests -p 'test_*.py'
+uv run --locked --group dev pytest
+uv run --locked --group dev black --check .
+uv run --locked --group dev ruff check .
+uv run --locked --group dev pyrefly check
 git diff --check
 ```
 
 For a lightweight syntax check that does not import optional dependencies:
 
 ```sh
-python3 -c "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8'), filename=str(p)) for p in pathlib.Path('src').rglob('*.py')]; print('AST OK')"
+uv run python -c "import ast, pathlib; [ast.parse(p.read_text(encoding='utf-8'), filename=str(p)) for p in pathlib.Path('src').rglob('*.py')]; print('AST OK')"
 ```
 
-If the system Python lacks Flask or other backend dependencies, use the project
-virtual environment rather than installing packages globally.
+Run `uv sync --locked` when the project environment has not been created yet.

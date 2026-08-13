@@ -2,6 +2,7 @@ __pycache__/
 *.py[cod]
 
 # Runtime-generated user data and diagnostics
+.cache/
 browser_cookies.txt
 server_startup.log
 profiles/

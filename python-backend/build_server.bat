@@ -2,19 +2,18 @@
 echo === Kodama - Server Build ===
 echo.
 
-python -m venv .venv
-call .venv\Scripts\activate
+where uv >nul 2>&1
+if errorlevel 1 (
+  echo FEHLER: uv ist nicht installiert.
+  exit /b 1
+)
 
-pip install --upgrade pip --quiet
-
-pip install -r requirements.txt --quiet
-
-REM Install PyInstaller and dependencies if needed
-pip install pyinstaller yt-dlp pykakasi --quiet
+uv sync --locked --group build --quiet
+if errorlevel 1 exit /b 1
 
 REM Build the server executable with the correct Tauri platform suffix
 echo Kompiliere server.py...
-pyinstaller --onefile ^
+uv run --locked --group build pyinstaller --onefile ^
   --name kodama-server-x86_64-pc-windows-msvc ^
   --distpath ..\src-tauri\binaries ^
   --workpath .\build_tmp ^

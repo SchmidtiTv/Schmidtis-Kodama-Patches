@@ -1,0 +1,23 @@
+repos:
+  - repo: local
+    hooks:
+      - id: backend-black
+        name: backend Black
+        entry: uv run --directory python-backend --locked --group dev black --check .
+        language: system
+        pass_filenames: false
+        files: ^python-backend/.*\.py$
+
+      - id: backend-ruff
+        name: backend Ruff (strict)
+        entry: uv run --directory python-backend --locked --group dev ruff check .
+        language: system
+        pass_filenames: false
+        files: ^python-backend/.*\.py$
+
+      - id: backend-pyrefly
+        name: backend Pyrefly (strict)
+        entry: uv run --directory python-backend --locked --group dev pyrefly check
+        language: system
+        pass_filenames: false
+        files: ^python-backend/.*\.py$
