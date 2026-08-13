@@ -1,13 +1,12 @@
 import threading
-import unittest
 from unittest.mock import MagicMock, call, patch
 
 from src.config import config_ytdlp
 from src.lib.music.stream import StreamService
 
 
-class StreamServiceTests(unittest.TestCase):
-    def setUp(self) -> None:
+class StreamServiceTests:
+    def setup_method(self) -> None:
         self.service = StreamService(MagicMock())
 
     def test_uses_fast_anonymous_www_resolution_before_music_client_retries(self) -> None:
@@ -22,7 +21,7 @@ class StreamServiceTests(unittest.TestCase):
         ):
             payload, status = self.service.resolve_stream("video")
 
-        self.assertEqual((payload, status), ({"url": "https://stream/audio"}, 200))
+        assert (payload, status) == ({"url": "https://stream/audio"}, 200)
         extract.assert_called_once_with(
             "video",
             config_ytdlp.AUDIO_FORMAT,
@@ -47,16 +46,13 @@ class StreamServiceTests(unittest.TestCase):
         ):
             payload, status = self.service.resolve_stream("video")
 
-        self.assertEqual((payload, status), ({"url": "https://stream/working"}, 200))
+        assert (payload, status) == ({"url": "https://stream/working"}, 200)
         cookie_stream = extract.call_args_list[1].kwargs["extra_opts"]["cookiefile"]
-        self.assertEqual(cookie_stream.getvalue(), "cookies")
-        self.assertEqual(
-            probe.call_args_list,
-            [
-                call("video", "https://stream/rejected"),
-                call("video", "https://stream/working"),
-            ],
-        )
+        assert cookie_stream.getvalue() == "cookies"
+        assert probe.call_args_list == [
+            call("video", "https://stream/rejected"),
+            call("video", "https://stream/working"),
+        ]
 
     def test_stream_resolution_is_serialized_across_video_ids(self) -> None:
         first_started = threading.Event()
@@ -73,7 +69,7 @@ class StreamServiceTests(unittest.TestCase):
                 current_call = call_count
             if current_call == 1:
                 first_started.set()
-                self.assertTrue(release_first.wait(timeout=2))
+                assert release_first.wait(timeout=2)
             else:
                 second_started.set()
             return {"url": f"https://stream/{video_id}"}
@@ -89,21 +85,18 @@ class StreamServiceTests(unittest.TestCase):
                 target=lambda: responses.append(self.service.resolve_stream("second"))
             )
             first.start()
-            self.assertTrue(first_started.wait(timeout=2))
+            assert first_started.wait(timeout=2)
             second.start()
-            self.assertFalse(second_started.wait(timeout=0.1))
+            assert not second_started.wait(timeout=0.1)
             release_first.set()
             first.join(timeout=2)
             second.join(timeout=2)
 
-        self.assertTrue(second_started.is_set())
-        self.assertEqual(
-            sorted(responses, key=lambda response: str(response[0]["url"])),
-            [
-                ({"url": "https://stream/first"}, 200),
-                ({"url": "https://stream/second"}, 200),
-            ],
-        )
+        assert second_started.is_set()
+        assert sorted(responses, key=lambda response: str(response[0]["url"])) == [
+            ({"url": "https://stream/first"}, 200),
+            ({"url": "https://stream/second"}, 200),
+        ]
 
     def test_concurrent_audio_resolution_runs_one_stream_request(self) -> None:
         started = threading.Event()
@@ -117,7 +110,7 @@ class StreamServiceTests(unittest.TestCase):
 
         def get(*_args: object, **_kwargs: object) -> Response:
             started.set()
-            self.assertTrue(release.wait(timeout=2))
+            assert release.wait(timeout=2)
             return Response()
 
         with patch("src.lib.music.stream.requests.get", side_effect=get) as request_get:
@@ -128,11 +121,11 @@ class StreamServiceTests(unittest.TestCase):
                 target=lambda: responses.append(self.service.resolve_audio_url("video"))
             )
             first.start()
-            self.assertTrue(started.wait(timeout=2))
+            assert started.wait(timeout=2)
             second.start()
             release.set()
             first.join(timeout=2)
             second.join(timeout=2)
 
-        self.assertEqual(responses, ["https://stream/audio", "https://stream/audio"])
+        assert responses == ["https://stream/audio", "https://stream/audio"]
         request_get.assert_called_once()

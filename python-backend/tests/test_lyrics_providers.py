@@ -1,4 +1,3 @@
-import unittest
 from unittest.mock import patch
 
 from src.lib.music.lyrics import LyricsService
@@ -14,9 +13,9 @@ class _Response:
         return self._payload
 
 
-class LyricsProviderTests(unittest.TestCase):
+class LyricsProviderTests:
     def test_paxsenix_picker_requires_matching_title_and_artist(self) -> None:
-        songs = [
+        songs: list[dict[str, object]] = [
             {
                 "id": 1,
                 "name": "Bad Apple (from Lovelight)",
@@ -31,26 +30,25 @@ class LyricsProviderTests(unittest.TestCase):
             },
         ]
 
-        selected = LyricsService._pick_paxsenix_song(
-            songs, "Bad Apple!!", "nomico", 220_000
-        )
+        selected = LyricsService._pick_paxsenix_song(songs, "Bad Apple!!", "nomico", 220_000)
 
-        self.assertEqual(selected["id"], 2)
+        assert selected is not None
+        assert selected["id"] == 2
 
     def test_portato_extracts_unescaped_qrc(self) -> None:
         response = _Response(
             {
                 "lyrics": (
-                    '<Lyric_1 LyricContent="[0,1000]Hello(0,500)'
-                    ' &amp; world(500,500)\\n" />'
+                    '<Lyric_1 LyricContent="[0,1000]Hello(0,500)' ' &amp; world(500,500)\\n" />'
                 )
             }
         )
 
         with patch("src.lib.music.lyrics.requests.get", return_value=response):
-            result = LyricsService._lookup_portato(
-                "Song", "Artist", "Album", "180", "portato"
-            )
+            result = LyricsService._lookup_portato("Song", "Artist", "Album", "180", "portato")
 
-        self.assertEqual(result["source"], "Better Lyrics Portato")
-        self.assertIn("& world", result["qrc"])
+        assert result is not None
+        assert result["source"] == "Better Lyrics Portato"
+        qrc = result["qrc"]
+        assert isinstance(qrc, str)
+        assert "& world" in qrc

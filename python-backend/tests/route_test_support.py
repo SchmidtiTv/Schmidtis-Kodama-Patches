@@ -1,17 +1,17 @@
 from __future__ import annotations
 
+import contextlib
 import json
-import tempfile
-import unittest
+from collections.abc import Generator, Iterable, Mapping
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Generator, Iterable, Mapping, Protocol, cast, override
+from typing import Protocol, cast
 from unittest.mock import patch
 
+import pytest
 from flask import Flask, Response
-
-from src.lib.runtime.metadata_cache import MetadataCache
 from src.lib.music.playlist_mix import PlaylistMix
+from src.lib.runtime.metadata_cache import MetadataCache
 from src.routes import register_blueprints
 
 
@@ -35,6 +35,7 @@ class TestResponse(Protocol):
     json: JsonValue
     headers: Mapping[str, str]
     content_type: str
+
     def close(self) -> None: ...
 
 
@@ -47,7 +48,11 @@ class TestClient(Protocol):
 
 
 class FakeCursor:
-    def __init__(self, rows: Iterable[tuple[object, ...]] | None = None, one: tuple[object, ...] | None | _DefaultOne = _DEFAULT_ONE) -> None:
+    def __init__(
+        self,
+        rows: Iterable[tuple[object, ...]] | None = None,
+        one: tuple[object, ...] | _DefaultOne | None = _DEFAULT_ONE,
+    ) -> None:
         self._rows = list(rows or [])
         self._one = one
 
@@ -63,7 +68,15 @@ class FakeLocalDb:
         self.liked_rows = []
         self.playlist_rows = [("local-pl", "Local Playlist", "Local description", 1)]
         self.playlist_tracks = [
-            ("local-song", "set-local-song", "Local Song", "Local Artist", "Local Album", "http://img/local.jpg", "1:23")
+            (
+                "local-song",
+                "set-local-song",
+                "Local Song",
+                "Local Artist",
+                "Local Album",
+                "http://img/local.jpg",
+                "1:23",
+            )
         ]
         self.commits = 0
 
@@ -82,7 +95,9 @@ class FakeLocalDb:
         if normalized.startswith("select playlist_id, title, description"):
             return FakeCursor(self.playlist_rows)
         if normalized.startswith("select title from playlists"):
-            row = next((playlist for playlist in self.playlist_rows if playlist[0] == params[0]), None)
+            row = next(
+                (playlist for playlist in self.playlist_rows if playlist[0] == params[0]), None
+            )
             return FakeCursor(one=(row[1],) if row else None)
         if normalized.startswith("select video_id, set_video_id"):
             return FakeCursor(self.playlist_tracks)
@@ -113,7 +128,9 @@ class FakeLocalDb:
 class FakeProfileRepository:
     def __init__(self, root: Path) -> None:
         self.root = root
-        self.metadata = {"default": {"displayName": "Default", "lastfm_session": "sk", "lastfm_user": "alice"}}
+        self.metadata = {
+            "default": {"displayName": "Default", "lastfm_session": "sk", "lastfm_user": "alice"}
+        }
         self.auth_headers = {}
         self.local_profiles = set()
         self.deleted = []
@@ -133,10 +150,8 @@ class FakeProfileRepository:
 
     def remove_auth_headers(self, name: str) -> None:
         self.auth_headers.pop(name, None)
-        try:
+        with contextlib.suppress(FileNotFoundError):
             self.profile_file_path(name).unlink()
-        except FileNotFoundError:
-            pass
 
     def read_metadata(self, name: str) -> dict[str, str]:
         return dict(self.metadata.get(name, {}))
@@ -158,7 +173,10 @@ class FakeProfileRepository:
         return self.db
 
     def list_profiles(self, current: str | None) -> list[dict[str, str | bool]]:
-        return [{"name": name, "current": name == current, **data} for name, data in sorted(self.metadata.items())]
+        return [
+            {"name": name, "current": name == current, **data}
+            for name, data in sorted(self.metadata.items())
+        ]
 
     def delete_files(self, name: str) -> None:
         self.deleted.append(name)
@@ -179,7 +197,7 @@ class FakeYoutubeClient:
         self.history_items = []
         self.liked_songs_limits = []
 
-    def search(self, query: object, filter: object="songs", limit: object=20) -> object:
+    def search(self, query: object, filter: object = "songs", limit: object = 20) -> object:
         if filter is None:
             return [
                 {
@@ -189,14 +207,14 @@ class FakeYoutubeClient:
                     "artists": [{"name": "Artist", "id": "UCartist"}],
                     "album": {"name": "Album", "id": "MPREb"},
                     "duration": "3:00",
-                    "thumbnails": cast(list[object], []),
+                    "thumbnails": cast("list[object]", []),
                 },
                 {
                     "resultType": "artist",
                     "channelId": "UCartist",
                     "title": "Artist",
                     "artist": "12K subscribers",
-                    "thumbnails": cast(list[object], []),
+                    "thumbnails": cast("list[object]", []),
                 },
                 {
                     "resultType": "album",
@@ -204,14 +222,14 @@ class FakeYoutubeClient:
                     "title": "Album",
                     "artist": "Artist",
                     "year": "2026",
-                    "thumbnails": cast(list[object], []),
+                    "thumbnails": cast("list[object]", []),
                 },
                 {
                     "resultType": "playlist",
                     "browseId": "VLPLtest",
                     "title": "Playlist",
                     "author": "Artist",
-                    "thumbnails": cast(list[object], []),
+                    "thumbnails": cast("list[object]", []),
                 },
                 # "Top result" card: the artist sits in `artists`, not `title`.
                 {
@@ -219,7 +237,7 @@ class FakeYoutubeClient:
                     "resultType": "artist",
                     "subscribers": "12K",
                     "artists": [{"name": "Top Artist", "id": "UCtop"}],
-                    "thumbnails": cast(list[object], []),
+                    "thumbnails": cast("list[object]", []),
                 },
                 # Shelf row below a top result: byline is "Song • 5:00", so
                 # ytmusicapi reports the type label as an artist without an id.
@@ -229,13 +247,27 @@ class FakeYoutubeClient:
                     "title": "Shelf Song",
                     "artists": [{"name": "Song", "id": None}],
                     "duration": "5:00",
-                    "thumbnails": cast(list[object], []),
+                    "thumbnails": cast("list[object]", []),
                 },
             ]
         if filter == "artists":
-            return [{"browseId": "UCartist", "artist": "Artist", "subscribers": "12K", "thumbnails": cast(list[object], [])}]
+            return [
+                {
+                    "browseId": "UCartist",
+                    "artist": "Artist",
+                    "subscribers": "12K",
+                    "thumbnails": cast("list[object]", []),
+                }
+            ]
         if filter == "albums":
-            return [{"browseId": "MPREb", "title": "Album", "artists": [{"name": "Artist"}], "year": "2026"}]
+            return [
+                {
+                    "browseId": "MPREb",
+                    "title": "Album",
+                    "artists": [{"name": "Artist"}],
+                    "year": "2026",
+                }
+            ]
         return [
             {
                 "videoId": "vid",
@@ -247,7 +279,7 @@ class FakeYoutubeClient:
             }
         ]
 
-    def get_home(self, limit: object=15) -> object:
+    def get_home(self, limit: object = 15) -> object:
         return [
             {
                 "title": "Listen again",
@@ -257,39 +289,83 @@ class FakeYoutubeClient:
                         "title": "Song",
                         "artists": [{"name": "Artist", "id": "UCartist"}],
                         "album": {"name": "Album", "id": "MPREb"},
-                        "thumbnails": cast(list[object], []),
+                        "thumbnails": cast("list[object]", []),
                     }
                 ],
             },
             {
                 "title": "Podcast episodes",
-                "contents": [{"videoId": "ep", "browseId": "MPEP", "title": "Episode", "description": "Show", "thumbnails": cast(list[object], [])}],
+                "contents": [
+                    {
+                        "videoId": "ep",
+                        "browseId": "MPEP",
+                        "title": "Episode",
+                        "description": "Show",
+                        "thumbnails": cast("list[object]", []),
+                    }
+                ],
             },
         ]
 
     def get_artist_albums(self, channel_id: object, params: object) -> object:
-        return [{"browseId": "MPREb", "title": "Album", "year": "2026", "type": "Album", "thumbnails": cast(list[object], [])}]
+        return [
+            {
+                "browseId": "MPREb",
+                "title": "Album",
+                "year": "2026",
+                "type": "Album",
+                "thumbnails": cast("list[object]", []),
+            }
+        ]
 
-    def get_liked_songs(self, limit: object=None) -> object:
+    def get_liked_songs(self, limit: object = None) -> object:
         self.liked_songs_limits.append(limit)
         return {"tracks": self.search("liked")}
 
     def rate_song(self, video_id: object, rating: object) -> object:
         self.ratings.append((video_id, rating))
 
-    def get_library_playlists(self, limit: object=50) -> object:
+    def get_library_playlists(self, limit: object = 50) -> object:
         self.library_playlists_limit = limit
-        return [{"playlistId": "pl", "title": "Playlist", "count": "2", "thumbnails": [{"url": "http://img/pl.jpg"}]}]
+        return [
+            {
+                "playlistId": "pl",
+                "title": "Playlist",
+                "count": "2",
+                "thumbnails": [{"url": "http://img/pl.jpg"}],
+            }
+        ]
 
-    def get_library_albums(self, limit: object=50) -> object:
+    def get_library_albums(self, limit: object = 50) -> object:
         self.library_albums_limit = limit
-        return [{"browseId": "alb", "title": "Album", "artists": [{"name": "Artist"}], "year": "2026", "thumbnails": cast(list[object], [])}]
+        return [
+            {
+                "browseId": "alb",
+                "title": "Album",
+                "artists": [{"name": "Artist"}],
+                "year": "2026",
+                "thumbnails": cast("list[object]", []),
+            }
+        ]
 
-    def get_library_artists(self, limit: object=50) -> object:
+    def get_library_artists(self, limit: object = 50) -> object:
         self.library_artists_limit = limit
-        return [{"browseId": "artist", "artist": "Artist", "songs": "10", "thumbnails": cast(list[object], [])}]
+        return [
+            {
+                "browseId": "artist",
+                "artist": "Artist",
+                "songs": "10",
+                "thumbnails": cast("list[object]", []),
+            }
+        ]
 
-    def create_playlist(self, title: object, description: object, privacy_status: object="PRIVATE", video_ids: object=None) -> object:
+    def create_playlist(
+        self,
+        title: object,
+        description: object,
+        privacy_status: object = "PRIVATE",
+        video_ids: object = None,
+    ) -> object:
         self.created_playlists.append((title, description, privacy_status, video_ids))
         return "created-pl"
 
@@ -305,7 +381,7 @@ class FakeYoutubeClient:
     def delete_playlist(self, playlist_id: object) -> object:
         self.deleted_playlists.append(playlist_id)
 
-    def get_playlist(self, playlist_id: object, limit: object=None) -> object:
+    def get_playlist(self, playlist_id: object, limit: object = None) -> object:
         return {
             "title": "Playlist",
             "thumbnails": [{"url": "http://img/pl-small.jpg"}, {"url": "http://img/pl-large.jpg"}],
@@ -314,17 +390,19 @@ class FakeYoutubeClient:
 
     def get_watch_playlist(
         self,
-        videoId: object=None,
-        playlistId: object=None,
-        limit: object=50,
-        radio: object=False,
+        videoId: object = None,
+        playlistId: object = None,
+        limit: object = 50,
+        radio: object = False,
     ) -> object:
-        self.watch_playlist_calls.append({
-            "videoId": videoId,
-            "playlistId": playlistId,
-            "limit": limit,
-            "radio": radio,
-        })
+        self.watch_playlist_calls.append(
+            {
+                "videoId": videoId,
+                "playlistId": playlistId,
+                "limit": limit,
+                "radio": radio,
+            }
+        )
         return {"tracks": self.search("radio")}
 
     def get_album(self, browse_id: object) -> object:
@@ -347,10 +425,37 @@ class FakeYoutubeClient:
             "subscribed": False,
             "channelId": "UCartist",
             "songs": {"browseId": "VLsongs", "results": self.search("artist")},
-            "albums": {"browseId": "MPADALBUMS", "params": "albums-param", "results": self.get_library_albums()},
-            "singles": {"browseId": "MPADSINGLES", "params": "singles-param", "results": self.get_library_albums()},
-            "videos": {"results": [{"videoId": "video", "title": "Video", "artists": [{"name": "Artist"}], "views": "1K", "thumbnails": cast(list[object], [])}]},
-            "related": {"results": [{"browseId": "related", "title": "Related", "subscribers": "5K", "thumbnails": cast(list[object], [])}]},
+            "albums": {
+                "browseId": "MPADALBUMS",
+                "params": "albums-param",
+                "results": self.get_library_albums(),
+            },
+            "singles": {
+                "browseId": "MPADSINGLES",
+                "params": "singles-param",
+                "results": self.get_library_albums(),
+            },
+            "videos": {
+                "results": [
+                    {
+                        "videoId": "video",
+                        "title": "Video",
+                        "artists": [{"name": "Artist"}],
+                        "views": "1K",
+                        "thumbnails": cast("list[object]", []),
+                    }
+                ]
+            },
+            "related": {
+                "results": [
+                    {
+                        "browseId": "related",
+                        "title": "Related",
+                        "subscribers": "5K",
+                        "thumbnails": cast("list[object]", []),
+                    }
+                ]
+            },
         }
 
     def subscribe_artists(self, channel_ids: object) -> object:
@@ -367,7 +472,12 @@ class FakeYoutubeClient:
                 "title": "Song",
                 "author": "Artist",
                 "lengthSeconds": "185",
-                "thumbnail": {"thumbnails": [{"url": "http://img/song-small.jpg"}, {"url": "http://img/song-large.jpg"}]},
+                "thumbnail": {
+                    "thumbnails": [
+                        {"url": "http://img/song-small.jpg"},
+                        {"url": "http://img/song-large.jpg"},
+                    ]
+                },
             },
             "microformat": {"microformatDataRenderer": {"uploadDate": "2024-05-12"}},
         }
@@ -376,7 +486,7 @@ class FakeYoutubeClient:
         self.history_items.append(song)
         return SimpleNamespace(status_code=204)
 
-    def get_podcast(self, playlist_id: object, limit: object=50) -> object:
+    def get_podcast(self, playlist_id: object, limit: object = 50) -> object:
         return {
             "title": "Podcast",
             "description": "Podcast description",
@@ -423,7 +533,9 @@ class FakeYoutubeClient:
         song_renderer = {
             "title": {"runs": [{"text": "Mood Song"}]},
             "subtitle": {"runs": [{"text": "Mood Artist"}]},
-            "navigationEndpoint": {"watchEndpoint": {"videoId": "mood-song", "playlistId": "mood-radio"}},
+            "navigationEndpoint": {
+                "watchEndpoint": {"videoId": "mood-song", "playlistId": "mood-radio"}
+            },
         }
         return {
             "contents": {
@@ -434,11 +546,17 @@ class FakeYoutubeClient:
                                 "content": {
                                     "sectionListRenderer": {
                                         "contents": [
-                                            {"gridRenderer": {"items": [{"musicTwoRowItemRenderer": renderer}]}},
+                                            {
+                                                "gridRenderer": {
+                                                    "items": [{"musicTwoRowItemRenderer": renderer}]
+                                                }
+                                            },
                                             {
                                                 "musicCarouselShelfRenderer": {
                                                     "contents": [
-                                                        {"musicTwoRowItemRenderer": duplicate_renderer},
+                                                        {
+                                                            "musicTwoRowItemRenderer": duplicate_renderer
+                                                        },
                                                         {"musicTwoRowItemRenderer": song_renderer},
                                                     ]
                                                 }
@@ -507,7 +625,13 @@ class FakeMusicSession:
 
 class FakeCacheSettings:
     def __init__(self) -> None:
-        self.enabled = {"playlists": True, "albums": True, "images": True, "songs": True, "lyrics": True}
+        self.enabled = {
+            "playlists": True,
+            "albums": True,
+            "images": True,
+            "songs": True,
+            "lyrics": True,
+        }
 
     def update(self, values: Mapping[str, bool]) -> None:
         self.enabled.update(values)
@@ -529,7 +653,13 @@ class FakeLastFM:
     def lastfm_enabled(self) -> bool:
         return self.enabled
 
-    def lastfm_call(self, method: str, params: Mapping[str, str] | None = None, http: str = "POST", signed: bool = False) -> tuple[bool, dict[str, object]]:
+    def lastfm_call(
+        self,
+        method: str,
+        params: Mapping[str, str] | None = None,
+        http: str = "POST",
+        signed: bool = False,
+    ) -> tuple[bool, dict[str, object]]:
         self.calls.append((method, params or {}, http, signed))
         if method == "auth.getToken":
             return True, {"token": "tok"}
@@ -568,7 +698,9 @@ class FakeLyricsService:
 
 
 class FakeUpstream:
-    def __init__(self, status_code: int = 206, content: bytes = b"audio", content_type: str = "audio/mp4") -> None:
+    def __init__(
+        self, status_code: int = 206, content: bytes = b"audio", content_type: str = "audio/mp4"
+    ) -> None:
         self.status_code = status_code
         self.content = content
         self.headers = {"Content-Type": content_type, "Content-Length": str(len(content))}
@@ -591,7 +723,9 @@ class FakeStreamService:
     def prepare_download(self, video_id: str) -> tuple[dict[str, str], int]:
         return {"path": f"/tmp/{video_id}.m4a"}, 200
 
-    def open_audio_stream(self, video_id: str, range_header: str | None = None) -> tuple[FakeUpstream | None, tuple[dict[str, str], int] | None]:
+    def open_audio_stream(
+        self, video_id: str, range_header: str | None = None
+    ) -> tuple[FakeUpstream | None, tuple[dict[str, str], int] | None]:
         if video_id == "error":
             return None, ({"error": "failed"}, 502)
         return FakeUpstream(), None
@@ -652,7 +786,9 @@ class FakeComposerBridge:
     def open_audio_stream(self, video_id: str) -> FakeUpstream:
         return FakeUpstream(status_code=200, content=b"upstream")
 
-    def stream_with_optional_cache(self, video_id: str, upstream: FakeUpstream) -> Generator[bytes, None, None]:
+    def stream_with_optional_cache(
+        self, video_id: str, upstream: FakeUpstream
+    ) -> Generator[bytes, None, None]:
         yield upstream.content
 
     def thumbnail(self, video_id: str) -> tuple[bytes, str] | None:
@@ -734,7 +870,9 @@ class FakeDownloadService:
         self.cached = {}
         self.cached_meta = [{"videoId": "cached", "title": "Cached Song"}]
 
-    def add_cached(self, video_id: str, suffix: str = ".opus", content: bytes = b"cached audio") -> Path:
+    def add_cached(
+        self, video_id: str, suffix: str = ".opus", content: bytes = b"cached audio"
+    ) -> Path:
         path = self.root / f"{video_id}{suffix}"
         path.write_bytes(content)
         self.cached[video_id] = path
@@ -809,7 +947,11 @@ class FakeYTDLP:
     def __init__(self) -> None:
         self.update_payload = {"ok": True, "version": "2026.07.11"}
         self.update_status = 200
-        self.check_payload = {"installed": "2026.01.01", "latest": "2026.07.11", "updateAvailable": True}
+        self.check_payload = {
+            "installed": "2026.01.01",
+            "latest": "2026.07.11",
+            "updateAvailable": True,
+        }
 
     def check_update(self) -> object:
         return dict(self.check_payload)
@@ -821,7 +963,11 @@ class FakeYTDLP:
 class FakeOverlayServer:
     def __init__(self) -> None:
         self.state = {}
-        self.config: dict[str, object] = {"version": 2, "canvas": {"width": 400}, "layers": cast(list[object], [])}
+        self.config: dict[str, object] = {
+            "version": 2,
+            "canvas": {"width": 400},
+            "layers": cast("list[object]", []),
+        }
         self.started_ports = []
         self.stopped = 0
         self.running = False
@@ -868,7 +1014,11 @@ class FakeRemoteControl:
     def enable(self, data: Mapping[str, object]) -> dict[str, object]:
         self.enabled = bool(data.get("enabled"))
         raw_token = data.get("token")
-        self.token = raw_token if self.enabled and isinstance(raw_token, str) else "tok" if self.enabled else None
+        self.token = (
+            raw_token
+            if self.enabled and isinstance(raw_token, str)
+            else "tok" if self.enabled else None
+        )
         if self.enabled:
             trusted_devices = data.get("trusted")
             for trusted in trusted_devices if isinstance(trusted_devices, list) else []:
@@ -890,7 +1040,13 @@ class FakeRemoteControl:
             {"id": device_id, "name": device["name"], "status": device["status"], "online": True}
             for device_id, device in self.devices.items()
         ]
-        return {"enabled": self.enabled, "token": self.token, "port": 9847, "ips": ["127.0.0.1"], "devices": devices}
+        return {
+            "enabled": self.enabled,
+            "token": self.token,
+            "port": 9847,
+            "ips": ["127.0.0.1"],
+            "devices": devices,
+        }
 
     def device_action(self, data: Mapping[str, object]) -> tuple[dict[str, object], int]:
         device_id = data.get("id")
@@ -925,7 +1081,9 @@ class FakeRemoteControl:
         device_id = data.get("deviceId")
         if not isinstance(device_id, str) or not device_id:
             return {"error": "no_device"}, 400
-        self.devices.setdefault(device_id, {"name": data.get("name", "Device"), "status": "pending"})
+        self.devices.setdefault(
+            device_id, {"name": data.get("name", "Device"), "status": "pending"}
+        )
         return {"status": self.devices[device_id]["status"]}, 200
 
     def get_state(self, token: str | None, device_id: str | None) -> tuple[dict[str, object], int]:
@@ -964,11 +1122,10 @@ class FakeRemoteControl:
         return "<main>Remote</main>"
 
 
-class RouteTestCase(unittest.TestCase):
-    @override
-    def setUp(self) -> None:
-        self.temp = tempfile.TemporaryDirectory()
-        self.root = Path(self.temp.name)
+class RouteTestCase:
+    @pytest.fixture(autouse=True)
+    def setup_route_test(self, tmp_path: Path) -> None:
+        self.root = tmp_path
         self.app = Flask(__name__)
         self.app.config["TESTING"] = True
         self.profile_repository = FakeProfileRepository(self.root)
@@ -1021,7 +1178,7 @@ class RouteTestCase(unittest.TestCase):
         )
         with patch("builtins.print"):
             register_blueprints(self.app)
-        self.client: TestClient = cast(TestClient, self.app.test_client())
+        self.client: TestClient = cast("TestClient", self.app.test_client())
 
         self.cache_dirs = SimpleNamespace(
             PLAYLIST_CACHE_DIR=self.root / "playlist_cache",
@@ -1034,5 +1191,3 @@ class RouteTestCase(unittest.TestCase):
             path.mkdir()
             (path / "item.txt").write_text("cached", encoding="utf-8")
         (self.cache_dirs.SONG_CACHE_DIR / "song.json").write_text("{}", encoding="utf-8")
-
-        self.addCleanup(self.temp.cleanup)

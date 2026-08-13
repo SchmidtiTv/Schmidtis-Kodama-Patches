@@ -10,7 +10,6 @@ from typing import cast
 from unittest.mock import MagicMock, patch
 
 import yt_dlp
-
 from src.config import config_ytdlp
 from src.lib.integrations.ytdlp import YTDLP
 from src.lib.music.stream import StreamService
@@ -62,7 +61,7 @@ class CookieStorageTests:
 
             ytdlp = YTDLP(
                 profiles=profiles,
-                music_state=cast(YoutubeMusicSessionState, state),
+                music_state=cast("YoutubeMusicSessionState", state),
             )
             ytdlp.last_cookie_refresh = time.time()
             options: dict[str, object] = {}

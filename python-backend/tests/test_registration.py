@@ -119,4 +119,4 @@ class RouteRegistrationTests(RouteTestCase):
             "/feedback",
             "/clientlog",
         }
-        self.assertFalse(expected - rules)
+        assert not expected - rules

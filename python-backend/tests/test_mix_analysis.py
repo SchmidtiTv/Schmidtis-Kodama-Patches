@@ -1,9 +1,9 @@
 import tempfile
 import threading
 import time
-import unittest
 from pathlib import Path
 
+import pytest
 from src.lib.music.mix_analysis import MixAnalysisService
 from src.lib.music.playlist_mix import PlaylistMix
 from src.lib.runtime.metadata_cache import MetadataCache
@@ -33,8 +33,8 @@ class StreamServiceStub:
         return {"path": f"/{video_id}.m4a"}, 200
 
 
-class MixAnalysisServiceTests(unittest.TestCase):
-    def setUp(self) -> None:
+class MixAnalysisServiceTests:
+    def setup_method(self) -> None:
         self.tempdir = tempfile.TemporaryDirectory()
         cache = MetadataCache(Path(self.tempdir.name) / "cache.sqlite3")
         self.analyzer = BlockingAnalyzer()
@@ -45,25 +45,33 @@ class MixAnalysisServiceTests(unittest.TestCase):
             analyzer=self.analyzer,
         )
 
-    def tearDown(self) -> None:
+    def teardown_method(self) -> None:
         self.analyzer.release.set()
         self.tempdir.cleanup()
 
     def test_reuses_matching_job_and_supersedes_changed_job_without_parallel_analysis(self) -> None:
         first_tracks = [{"instanceId": "one", "videoId": "video-one"}]
         first = self.service.start(None, "playlist", first_tracks)
-        self.assertTrue(self.analyzer.started.wait(timeout=1))
+        assert self.analyzer.started.wait(timeout=1)
 
         duplicate = self.service.start(None, "playlist", first_tracks)
-        self.assertEqual(duplicate["jobId"], first["jobId"])
+        assert duplicate["jobId"] == first["jobId"]
 
-        second = self.service.start(None, "playlist", [{"instanceId": "two", "videoId": "video-two"}])
-        self.assertNotEqual(second["jobId"], first["jobId"])
-        self.assertEqual(self.service.get_job(None, "playlist", first["jobId"])["status"], "cancelled")
+        second = self.service.start(
+            None, "playlist", [{"instanceId": "two", "videoId": "video-two"}]
+        )
+        assert second["jobId"] != first["jobId"]
+        first_job_id = first["jobId"]
+        second_job_id = second["jobId"]
+        assert isinstance(first_job_id, str)
+        assert isinstance(second_job_id, str)
+        first_job = self.service.get_job(None, "playlist", first_job_id)
+        assert first_job is not None
+        assert first_job["status"] == "cancelled"
 
         self.analyzer.release.set()
-        self._wait_for_status(second["jobId"], "complete")
-        self.assertEqual(self.analyzer.max_active, 1)
+        self._wait_for_status(second_job_id, "complete")
+        assert self.analyzer.max_active == 1
 
     def _wait_for_status(self, job_id: str, expected_status: str) -> None:
         deadline = time.monotonic() + 2
@@ -72,4 +80,4 @@ class MixAnalysisServiceTests(unittest.TestCase):
             if job and job["status"] == expected_status:
                 return
             time.sleep(0.01)
-        self.fail(f"job {job_id} did not reach {expected_status}")
+        pytest.fail(f"job {job_id} did not reach {expected_status}")

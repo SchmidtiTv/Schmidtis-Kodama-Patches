@@ -1,7 +1,10 @@
 import threading
 import time
-import unittest
+from unittest.mock import MagicMock
 
+import pytest
+from src.lib.integrations.ffmpeg import FFmpeg
+from src.lib.integrations.ytdlp import YTDLP
 from src.lib.music.download import DownloadService
 from src.lib.music.export import ExportService
 from src.lib.runtime.maintenance import DelayedCleanup
@@ -23,31 +26,31 @@ class BlockingJob:
             self.active -= 1
 
 
-class BackgroundWorkLimitTests(unittest.TestCase):
+class BackgroundWorkLimitTests:
     def test_download_service_limits_running_and_queued_jobs(self) -> None:
-        service = DownloadService(ytdlp=object())
+        service = DownloadService(ytdlp=MagicMock(spec=YTDLP))
         job = BlockingJob()
         service._download_bg = job.run  # type: ignore[method-assign]
         try:
             for index in range(service.MAX_QUEUED_DOWNLOADS):
-                self.assertTrue(service.start(f"song-{index}", {}))
-            self.assertFalse(service.start("over-capacity", {}))
+                assert service.start(f"song-{index}", {})
+            assert not service.start("over-capacity", {})
             self._wait_until(lambda: job.active == service.MAX_CONCURRENT_DOWNLOADS)
-            self.assertEqual(job.max_active, service.MAX_CONCURRENT_DOWNLOADS)
+            assert job.max_active == service.MAX_CONCURRENT_DOWNLOADS
         finally:
             job.release.set()
             service._executor.shutdown(wait=True)
 
     def test_export_service_limits_running_and_queued_jobs(self) -> None:
-        service = ExportService(ytdlp=object(), ffmpeg=object())
+        service = ExportService(ytdlp=MagicMock(spec=YTDLP), ffmpeg=MagicMock(spec=FFmpeg))
         job = BlockingJob()
         service._export_bg = job.run  # type: ignore[method-assign]
         try:
             for index in range(service.MAX_QUEUED_EXPORTS):
-                self.assertTrue(service.start(f"song-{index}", "/tmp/out", "opus", {}))
-            self.assertFalse(service.start("over-capacity", "/tmp/out", "opus", {}))
+                assert service.start(f"song-{index}", "/tmp/out", "opus", {})
+            assert not service.start("over-capacity", "/tmp/out", "opus", {})
             self._wait_until(lambda: job.active == service.MAX_CONCURRENT_EXPORTS)
-            self.assertEqual(job.max_active, service.MAX_CONCURRENT_EXPORTS)
+            assert job.max_active == service.MAX_CONCURRENT_EXPORTS
         finally:
             job.release.set()
             service._executor.shutdown(wait=True)
@@ -57,7 +60,7 @@ class BackgroundWorkLimitTests(unittest.TestCase):
         DelayedCleanup.schedule_removal(values, "entry", delay=0.01)
         DelayedCleanup.schedule_removal(values, "entry", delay=0.08)
         time.sleep(0.03)
-        self.assertIn("entry", values)
+        assert "entry" in values
         self._wait_until(lambda: "entry" not in values)
 
     def _wait_until(self, predicate: object) -> None:
@@ -66,4 +69,4 @@ class BackgroundWorkLimitTests(unittest.TestCase):
             if callable(predicate) and predicate():
                 return
             time.sleep(0.01)
-        self.fail("condition was not met")
+        pytest.fail("condition was not met")

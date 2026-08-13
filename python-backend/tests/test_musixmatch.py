@@ -1,10 +1,9 @@
-import unittest
 from unittest.mock import patch
 
 from src.lib.integrations.musixmatch import MusixMatch
 
 
-class MusixMatchTests(unittest.TestCase):
+class MusixMatchTests:
     def test_lookup_uses_instance_token_state_and_returns_richsync(self) -> None:
         responses = [
             {"message": {"body": {"user_token": "token"}}},
@@ -25,9 +24,11 @@ class MusixMatchTests(unittest.TestCase):
         ) as get:
             result = MusixMatch().lookup("Song", "Artist")
 
-        self.assertEqual(
-            result,
-            {"source": "Musixmatch", "richsync": [{"ts": 0}], "synced": None, "plain": None},
-        )
-        self.assertEqual(get.call_count, 3)
-        self.assertIsNone(MusixMatch()._token)
+        assert result == {
+            "source": "Musixmatch",
+            "richsync": [{"ts": 0}],
+            "synced": None,
+            "plain": None,
+        }
+        assert get.call_count == 3
+        assert MusixMatch()._token is None

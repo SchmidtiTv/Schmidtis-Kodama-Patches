@@ -8,53 +8,53 @@ from route_test_support import JsonValue, RouteTestCase, TestResponse
 class HistoryRouteTests(RouteTestCase):
     def test_history_sync_requires_authentication_and_records_the_song(self) -> None:
         missing = self.client.post("/ytmusic/history", json={})
-        self.assertEqual(missing.status_code, 400)
+        assert missing.status_code == 400
 
         recorded = self.client.post("/ytmusic/history", json={"videoId": "vid"})
-        self.assertEqual(recorded.status_code, 200)
-        self.assertEqual(recorded.json, {"ok": True, "status": 204})
-        self.assertEqual(len(self.music_session.client.history_items), 1)
+        assert recorded.status_code == 200
+        assert recorded.json == {"ok": True, "status": 204}
+        assert len(self.music_session.client.history_items) == 1
 
         self.profile_repository.local_profiles.add("default")
         local = self.client.post("/ytmusic/history", json={"videoId": "vid"})
-        self.assertEqual(local.status_code, 403)
+        assert local.status_code == 403
 
 
 def sse_events(response: TestResponse) -> list[JsonValue]:
     events: list[JsonValue] = []
     for block in response.data.decode("utf-8").strip().split("\n\n"):
         if block.startswith("data: "):
-            events.append(cast(JsonValue, json.loads(block[6:])))
+            events.append(cast("JsonValue", json.loads(block[6:])))
     return events
 
 
 class LibraryListingRouteTests(RouteTestCase):
     def test_online_library_listing_routes(self) -> None:
         playlists = self.client.get("/library/playlists")
-        self.assertEqual(playlists.status_code, 200)
-        self.assertEqual(playlists.json["playlists"][0]["playlistId"], "pl")
+        assert playlists.status_code == 200
+        assert playlists.json["playlists"][0]["playlistId"] == "pl"
 
         albums = self.client.get("/library/albums")
-        self.assertEqual(albums.status_code, 200)
-        self.assertEqual(albums.json["albums"][0]["artists"], "Artist")
+        assert albums.status_code == 200
+        assert albums.json["albums"][0]["artists"] == "Artist"
 
         artists = self.client.get("/library/artists")
-        self.assertEqual(artists.status_code, 200)
-        self.assertEqual(artists.json["artists"][0]["artist"], "Artist")
-        self.assertIsNone(self.music_session.client.library_playlists_limit)
-        self.assertIsNone(self.music_session.client.library_albums_limit)
-        self.assertIsNone(self.music_session.client.library_artists_limit)
+        assert artists.status_code == 200
+        assert artists.json["artists"][0]["artist"] == "Artist"
+        assert self.music_session.client.library_playlists_limit is None
+        assert self.music_session.client.library_albums_limit is None
+        assert self.music_session.client.library_artists_limit is None
 
     def test_local_library_listing_routes(self) -> None:
         self.profile_repository.local_profiles.add("default")
 
         playlists = self.client.get("/library/playlists")
-        self.assertEqual(playlists.status_code, 200)
-        self.assertEqual(playlists.json["playlists"][0]["playlistId"], "local-pl")
-        self.assertEqual(playlists.json["playlists"][0]["count"], "1")
+        assert playlists.status_code == 200
+        assert playlists.json["playlists"][0]["playlistId"] == "local-pl"
+        assert playlists.json["playlists"][0]["count"] == "1"
 
-        self.assertEqual(self.client.get("/library/albums").json, {"albums": []})
-        self.assertEqual(self.client.get("/library/artists").json, {"artists": []})
+        assert self.client.get("/library/albums").json == {"albums": []}
+        assert self.client.get("/library/artists").json == {"artists": []}
 
     def test_library_listing_omits_the_duplicate_liked_songs_playlist(self) -> None:
         self.music_session.client.get_library_playlists = lambda limit=None: [
@@ -64,39 +64,36 @@ class LibraryListingRouteTests(RouteTestCase):
 
         playlists = self.client.get("/library/playlists")
 
-        self.assertEqual([playlist["playlistId"] for playlist in playlists.json["playlists"]], ["pl"])
+        assert [playlist["playlistId"] for playlist in playlists.json["playlists"]] == ["pl"]
 
 
 class PlaylistRouteTests(RouteTestCase):
     def test_playlist_mix_is_profile_scoped_and_local_to_kodama(self) -> None:
-        self.assertEqual(
-            self.client.get("/playlist/pl/mix").json,
-            {
-                "playlistId": "pl",
-                "version": 1,
-                "enabled": False,
-                "analysisVersion": None,
-                "smartReorder": False,
-                "trackOrder": [],
-                "trackAnalysis": {},
-                "transitions": [],
-            },
-        )
+        assert self.client.get("/playlist/pl/mix").json == {
+            "playlistId": "pl",
+            "version": 1,
+            "enabled": False,
+            "analysisVersion": None,
+            "smartReorder": False,
+            "trackOrder": [],
+            "trackAnalysis": {},
+            "transitions": [],
+        }
 
         enabled = self.client.put("/playlist/pl/mix", json={"enabled": True})
-        self.assertEqual(enabled.status_code, 200)
-        self.assertEqual(enabled.json["enabled"], True)
+        assert enabled.status_code == 200
+        assert enabled.json["enabled"] is True
 
         self.music_session.state.current_profile = "second"
-        self.assertEqual(self.client.get("/playlist/pl/mix").json["enabled"], False)
+        assert self.client.get("/playlist/pl/mix").json["enabled"] is False
 
         self.music_session.state.current_profile = "default"
-        self.assertEqual(self.client.delete("/playlist/pl/mix").json, {"ok": True})
-        self.assertEqual(self.client.get("/playlist/pl/mix").json["enabled"], False)
+        assert self.client.delete("/playlist/pl/mix").json == {"ok": True}
+        assert self.client.get("/playlist/pl/mix").json["enabled"] is False
 
     def test_playlist_mix_validates_its_local_config_boundary(self) -> None:
-        self.assertEqual(self.client.put("/playlist/pl/mix", json={}).status_code, 400)
-        self.assertEqual(self.client.put("/playlist/pl/mix", json={"enabled": "yes"}).status_code, 400)
+        assert self.client.put("/playlist/pl/mix", json={}).status_code == 400
+        assert self.client.put("/playlist/pl/mix", json={"enabled": "yes"}).status_code == 400
 
     def test_playlist_mix_persists_playlist_track_instances_and_transitions(self) -> None:
         updated = self.client.put(
@@ -122,60 +119,65 @@ class PlaylistRouteTests(RouteTestCase):
             },
         )
 
-        self.assertEqual(updated.status_code, 200)
-        self.assertTrue(updated.json["smartReorder"])
-        self.assertEqual(updated.json["trackOrder"][1]["instanceId"], "set-b")
-        self.assertEqual(updated.json["transitions"][0]["preset"], "blend")
-        self.assertEqual(updated.json["transitions"][0]["beatOffsetMs"], -12.0)
+        assert updated.status_code == 200
+        assert updated.json["smartReorder"]
+        assert updated.json["trackOrder"][1]["instanceId"] == "set-b"
+        assert updated.json["transitions"][0]["preset"] == "blend"
+        assert updated.json["transitions"][0]["beatOffsetMs"] == -12.0
 
         invalid = self.client.put(
             "/playlist/pl/mix",
             json={"transitions": [{"fromTrackInstanceId": "a", "toTrackInstanceId": "b"}]},
         )
-        self.assertEqual(invalid.status_code, 400)
+        assert invalid.status_code == 400
 
     def test_online_playlist_mutation_routes(self) -> None:
-        self.assertEqual(self.client.post("/playlist/create", json={}).status_code, 400)
+        assert self.client.post("/playlist/create", json={}).status_code == 400
         created = self.client.post(
             "/playlist/create",
-            json={"title": "New", "description": "Desc", "privacyStatus": "PUBLIC", "videoIds": ["vid"]},
+            json={
+                "title": "New",
+                "description": "Desc",
+                "privacyStatus": "PUBLIC",
+                "videoIds": ["vid"],
+            },
         )
-        self.assertEqual(created.json, {"ok": True, "playlistId": "created-pl"})
-        self.assertEqual(self.music_session.client.created_playlists, [("New", "Desc", "PUBLIC", ["vid"])])
+        assert created.json == {"ok": True, "playlistId": "created-pl"}
+        assert self.music_session.client.created_playlists == [("New", "Desc", "PUBLIC", ["vid"])]
 
-        self.assertEqual(self.client.post("/playlist/pl/add", json={}).status_code, 400)
-        self.assertEqual(self.client.post("/playlist/pl/add", json={"videoIds": ["vid"]}).json, {"ok": True})
-        self.assertEqual(self.music_session.client.added_playlist_items, [("pl", ["vid"])])
-        self.assertEqual(self.playlist_cache.purged[-1], ("pl", "default"))
+        assert self.client.post("/playlist/pl/add", json={}).status_code == 400
+        assert self.client.post("/playlist/pl/add", json={"videoIds": ["vid"]}).json == {"ok": True}
+        assert self.music_session.client.added_playlist_items == [("pl", ["vid"])]
+        assert self.playlist_cache.purged[-1] == ("pl", "default")
 
-        self.assertEqual(self.client.post("/playlist/pl/remove", json={}).status_code, 400)
+        assert self.client.post("/playlist/pl/remove", json={}).status_code == 400
         videos = [{"videoId": "vid", "setVideoId": "set"}]
-        self.assertEqual(self.client.post("/playlist/pl/remove", json={"videos": videos}).json, {"ok": True})
-        self.assertEqual(self.music_session.client.removed_playlist_items, [("pl", videos)])
+        assert self.client.post("/playlist/pl/remove", json={"videos": videos}).json == {"ok": True}
+        assert self.music_session.client.removed_playlist_items == [("pl", videos)]
 
-        self.assertEqual(self.client.post("/playlist/pl/edit", json={"title": "Edited"}).json, {"ok": True})
-        self.assertEqual(self.music_session.client.edited_playlists[-1][0], "pl")
+        assert self.client.post("/playlist/pl/edit", json={"title": "Edited"}).json == {"ok": True}
+        assert self.music_session.client.edited_playlists[-1][0] == "pl"
 
-        self.assertEqual(self.client.delete("/playlist/pl").json, {"ok": True})
-        self.assertEqual(self.music_session.client.deleted_playlists, ["pl"])
+        assert self.client.delete("/playlist/pl").json == {"ok": True}
+        assert self.music_session.client.deleted_playlists == ["pl"]
 
     def test_online_playlist_fetch_and_stream_cache(self) -> None:
         playlist = self.client.get("/playlist/pl")
-        self.assertEqual(playlist.status_code, 200)
-        self.assertEqual(playlist.json["title"], "Playlist")
-        self.assertEqual(playlist.json["tracks"][0]["videoId"], "vid")
+        assert playlist.status_code == 200
+        assert playlist.json["title"] == "Playlist"
+        assert playlist.json["tracks"][0]["videoId"] == "vid"
 
         streamed = self.client.get("/playlist/pl/stream")
         events = sse_events(streamed)
-        self.assertEqual(events[0]["type"], "loading")
-        self.assertEqual(events[1]["type"], "header")
-        self.assertEqual(events[-1], {"type": "done"})
-        self.assertEqual(self.playlist_cache.saved[-1][0:2], ("pl", "default"))
+        assert events[0]["type"] == "loading"
+        assert events[1]["type"] == "header"
+        assert events[-1] == {"type": "done"}
+        assert self.playlist_cache.saved[-1][0:2] == ("pl", "default")
 
         cached = self.client.get("/playlist/pl/stream")
         cached_events = sse_events(cached)
-        self.assertTrue(cached_events[0]["cached"])
-        self.assertEqual(cached_events[-1], {"type": "done"})
+        assert cached_events[0]["cached"]
+        assert cached_events[-1] == {"type": "done"}
 
     def test_video_heavy_playlist_streams_resolved_tracks_incrementally(self) -> None:
         tracks = [
@@ -194,121 +196,139 @@ class PlaylistRouteTests(RouteTestCase):
             "thumbnails": [],
             "tracks": tracks,
         }
-        self.music_session.system_client.get_watch_playlist = lambda **kwargs: {
-            "tracks": [
-                {
-                    **track,
-                    "videoId": f"audio-{index}",
-                    "title": f"Video {index}",
-                    "videoType": "MUSIC_VIDEO_TYPE_ATV",
-                }
-                for index, track in enumerate(tracks)
-            ]
-        }
 
-        events = sse_events(self.client.get("/playlist/video-pl/stream?refresh=1"))
+        def watch_playlist(**_kwargs: object) -> dict[str, object]:
+            return {
+                "tracks": [
+                    {
+                        **track,
+                        "videoId": f"audio-{index}",
+                        "title": f"Video {index}",
+                        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+                    }
+                    for index, track in enumerate(tracks)
+                ]
+            }
+
+        with patch.object(
+            self.music_session.system_client,
+            "get_watch_playlist",
+            side_effect=watch_playlist,
+        ):
+            events = sse_events(self.client.get("/playlist/video-pl/stream?refresh=1"))
         track_events = [event for event in events if event["type"] == "tracks"]
 
-        self.assertEqual([len(event["tracks"]) for event in track_events], [4, 1])
-        self.assertEqual(
-            [track["videoId"] for event in track_events for track in event["tracks"]],
-            [f"audio-{index}" for index in range(5)],
-        )
-        self.assertLess(events.index(track_events[0]), len(events) - 1)
-        self.assertEqual(events[-1], {"type": "done"})
+        assert [len(event["tracks"]) for event in track_events] == [4, 1]
+        assert [track["videoId"] for event in track_events for track in event["tracks"]] == [
+            f"audio-{index}" for index in range(5)
+        ]
+        assert events.index(track_events[0]) < len(events) - 1
+        assert events[-1] == {"type": "done"}
 
     def test_in_memory_playlist_cache_is_profile_scoped(self) -> None:
         default_events = sse_events(self.client.get("/playlist/LM/stream"))
-        self.assertEqual(default_events[1]["title"], "Liked Songs")
-        self.assertIn(("default", "LM"), self.playlist_cache.playlist_cache)
+        assert default_events[1]["title"] == "Liked Songs"
+        assert ("default", "LM") in self.playlist_cache.playlist_cache
 
         self.music_session.state.current_profile = "second"
         second_events = sse_events(self.client.get("/playlist/LM/stream"))
-        self.assertEqual(second_events[0]["type"], "loading")
-        self.assertFalse(second_events[0].get("cached", False))
-        self.assertIn(("second", "LM"), self.playlist_cache.playlist_cache)
+        assert second_events[0]["type"] == "loading"
+        assert not second_events[0].get("cached", False)
+        assert ("second", "LM") in self.playlist_cache.playlist_cache
 
     def test_liked_songs_playlist_fetch_and_stream(self) -> None:
         playlist = self.client.get("/playlist/LM")
-        self.assertEqual(playlist.status_code, 200)
-        self.assertEqual(playlist.json["title"], "Liked Songs")
-        self.assertEqual(playlist.json["tracks"][0]["videoId"], "vid")
+        assert playlist.status_code == 200
+        assert playlist.json["title"] == "Liked Songs"
+        assert playlist.json["tracks"][0]["videoId"] == "vid"
 
         events = sse_events(self.client.get("/playlist/LM/stream?refresh=1"))
-        self.assertEqual(events[0]["type"], "loading")
-        self.assertEqual(events[1]["type"], "header")
-        self.assertEqual(events[-1], {"type": "done"})
+        assert events[0]["type"] == "loading"
+        assert events[1]["type"] == "header"
+        assert events[-1] == {"type": "done"}
 
     def test_local_playlist_routes(self) -> None:
         self.profile_repository.local_profiles.add("default")
 
         created = self.client.post("/playlist/create", json={"title": "Local New"})
-        self.assertEqual(created.status_code, 200)
-        self.assertTrue(created.json["ok"])
+        assert created.status_code == 200
+        assert created.json["ok"]
 
-        self.assertEqual(self.client.post("/playlist/local-pl/add", json={"videoIds": ["vid"]}).json, {"ok": True})
-        self.assertEqual(self.client.post("/playlist/local-pl/remove", json={"videos": [{"videoId": "vid"}]}).json, {"ok": True})
-        self.assertEqual(self.client.post("/playlist/local-pl/edit", json={"title": "Edited"}).json, {"ok": True})
+        assert self.client.post("/playlist/local-pl/add", json={"videoIds": ["vid"]}).json == {
+            "ok": True
+        }
+        assert self.client.post(
+            "/playlist/local-pl/remove", json={"videos": [{"videoId": "vid"}]}
+        ).json == {"ok": True}
+        assert self.client.post("/playlist/local-pl/edit", json={"title": "Edited"}).json == {
+            "ok": True
+        }
 
         playlist = self.client.get("/playlist/local-pl")
-        self.assertEqual(playlist.status_code, 200)
-        self.assertEqual(playlist.json["title"], "Local Playlist")
-        self.assertEqual(playlist.json["tracks"][0]["videoId"], "local-song")
+        assert playlist.status_code == 200
+        assert playlist.json["title"] == "Local Playlist"
+        assert playlist.json["tracks"][0]["videoId"] == "local-song"
 
         events = sse_events(self.client.get("/playlist/local-pl/stream"))
-        self.assertEqual(events[0]["type"], "header")
-        self.assertTrue(events[0]["cached"])
-        self.assertEqual(events[-1], {"type": "done"})
+        assert events[0]["type"] == "header"
+        assert events[0]["cached"]
+        assert events[-1] == {"type": "done"}
 
-        self.assertEqual(self.client.delete("/playlist/local-pl").json, {"ok": True})
+        assert self.client.delete("/playlist/local-pl").json == {"ok": True}
 
 
 class LibraryDetailRouteTests(RouteTestCase):
     def test_song_seeded_radio_uses_video_id_and_radio_mode(self) -> None:
         radio = self.client.get("/radio/_?videoId=vNIgpTYiGe0")
 
-        self.assertEqual(radio.status_code, 200)
-        self.assertEqual(radio.json["tracks"][0]["videoId"], "vid")
-        self.assertEqual(
-            self.music_session.client.watch_playlist_calls[-1],
-            {"videoId": "vNIgpTYiGe0", "playlistId": None, "limit": 50, "radio": True},
-        )
+        assert radio.status_code == 200
+        assert radio.json["tracks"][0]["videoId"] == "vid"
+        assert self.music_session.client.watch_playlist_calls[-1] == {
+            "videoId": "vNIgpTYiGe0",
+            "playlistId": None,
+            "limit": 50,
+            "radio": True,
+        }
 
     def test_radio_album_artist_and_song_meta_routes(self) -> None:
         radio = self.client.get("/radio/pl")
-        self.assertEqual(radio.status_code, 200)
-        self.assertEqual(radio.json["tracks"][0]["videoId"], "vid")
+        assert radio.status_code == 200
+        assert radio.json["tracks"][0]["videoId"] == "vid"
 
         album = self.client.get("/album/alb")
-        self.assertEqual(album.status_code, 200)
-        self.assertEqual(album.json["title"], "Album")
-        self.assertEqual(album.json["tracks"][0]["album"], "Album")
-        self.assertEqual(self.album_cache.saved[-1][0], "alb")
+        assert album.status_code == 200
+        assert album.json["title"] == "Album"
+        assert album.json["tracks"][0]["album"] == "Album"
+        assert self.album_cache.saved[-1][0] == "alb"
 
         cached = self.client.get("/album/alb")
-        self.assertEqual(cached.json["title"], "Album")
+        assert cached.json["title"] == "Album"
 
         artist = self.client.get("/artist/UCartist")
-        self.assertEqual(artist.status_code, 200)
-        self.assertEqual(artist.json["name"], "Artist")
-        self.assertEqual(artist.json["songsBrowseId"], "songs")
+        assert artist.status_code == 200
+        assert artist.json["name"] == "Artist"
+        assert artist.json["songsBrowseId"] == "songs"
 
         self.band_member_finder.find = lambda artist_name: [{"name": "Member"}]
         members = self.client.get("/artist/UCartist/members?name=Artist")
-        self.assertEqual(members.json, {"members": [{"name": "Member"}]})
+        assert members.json == {"members": [{"name": "Member"}]}
 
-        self.assertEqual(self.client.post("/artist/UCartist/subscribe", json={"channelId": "UCchannel"}).json, {"ok": True})
-        self.assertEqual(self.music_session.client.subscribed_artists, [["UCchannel"]])
-        self.assertEqual(self.client.post("/artist/UCartist/unsubscribe", json={"channelId": "UCchannel"}).json, {"ok": True})
-        self.assertEqual(self.music_session.client.unsubscribed_artists, [["UCchannel"]])
+        assert self.client.post(
+            "/artist/UCartist/subscribe", json={"channelId": "UCchannel"}
+        ).json == {"ok": True}
+        assert self.music_session.client.subscribed_artists == [["UCchannel"]]
+        assert self.client.post(
+            "/artist/UCartist/unsubscribe", json={"channelId": "UCchannel"}
+        ).json == {"ok": True}
+        assert self.music_session.client.unsubscribed_artists == [["UCchannel"]]
 
         meta = self.client.get("/song/meta/vid")
-        self.assertEqual(meta.status_code, 200)
-        self.assertEqual(meta.json["duration"], "3:05")
+        assert meta.status_code == 200
+        assert meta.json["duration"] == "3:05"
 
         info = self.client.get("/song/info/vid")
-        self.assertEqual(info.status_code, 200)
-        self.assertEqual(info.json, {"artistBrowseId": "UCartist", "albumBrowseId": "MPREb"})
+        assert info.status_code == 200
+        assert info.json == {"artistBrowseId": "UCartist", "albumBrowseId": "MPREb"}
 
     def test_song_stats_route_formats_raw_counts(self) -> None:
         class StatsResponse:
@@ -320,11 +340,11 @@ class LibraryDetailRouteTests(RouteTestCase):
         with patch("src.routes.library.song.requests.get", return_value=StatsResponse()) as request:
             stats = self.client.get("/song/stats/vid")
 
-        self.assertEqual(stats.status_code, 200)
-        self.assertEqual(stats.json["views"], "1.2M")
-        self.assertEqual(stats.json["likes"], "42.5K")
-        self.assertEqual(stats.json["dislikes"], "321")
-        self.assertEqual(stats.json["viewsRaw"], 1_250_000)
+        assert stats.status_code == 200
+        assert stats.json["views"] == "1.2M"
+        assert stats.json["likes"] == "42.5K"
+        assert stats.json["dislikes"] == "321"
+        assert stats.json["viewsRaw"] == 1_250_000
         request.assert_called_once()
 
     def test_song_stats_route_reports_unavailable_stats(self) -> None:
@@ -334,8 +354,8 @@ class LibraryDetailRouteTests(RouteTestCase):
         with patch("src.routes.library.song.requests.get", return_value=FailedStatsResponse()):
             response = self.client.get("/song/stats/vid")
 
-        self.assertEqual(response.status_code, 502)
-        self.assertEqual(response.json, {"error": "stats unavailable"})
+        assert response.status_code == 502
+        assert response.json == {"error": "stats unavailable"}
 
     def test_song_credits_routes_use_cache_after_first_fetch(self) -> None:
         self.song_credits_cache.clear()
@@ -345,7 +365,11 @@ class LibraryDetailRouteTests(RouteTestCase):
                     "results": {
                         "results": {
                             "contents": [
-                                {"videoSecondaryInfoRenderer": {"attributedDescription": {"content": "Credits text"}}}
+                                {
+                                    "videoSecondaryInfoRenderer": {
+                                        "attributedDescription": {"content": "Credits text"}
+                                    }
+                                }
                             ]
                         }
                     }
@@ -361,6 +385,6 @@ class LibraryDetailRouteTests(RouteTestCase):
             first = self.client.get("/song/credits/vid")
             second = self.client.get("/song/credits/vid")
 
-        self.assertEqual(first.json, {"description": "Credits text"})
-        self.assertEqual(second.json, {"description": "Credits text"})
-        self.assertEqual(post.call_count, 1)
+        assert first.json == {"description": "Credits text"}
+        assert second.json == {"description": "Credits text"}
+        assert post.call_count == 1

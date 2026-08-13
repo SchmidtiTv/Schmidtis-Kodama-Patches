@@ -1,11 +1,10 @@
 from contextlib import ExitStack
-import unittest
 from unittest.mock import MagicMock, call, patch
 
 from src import create_app
 
 
-class AppStartupTests(unittest.TestCase):
+class AppStartupTests:
     def test_app_startup_restores_a_saved_profile(self) -> None:
         startup_steps = []
         with ExitStack() as patches:
@@ -44,24 +43,24 @@ class AppStartupTests(unittest.TestCase):
             session.autoload_first_profile.side_effect = lambda: startup_steps.append("autoload")
             app = create_app()
 
-        self.assertEqual(startup_steps[:3], ["log_tee", "logger", "autoload"])
+        assert startup_steps[:3] == ["log_tee", "logger", "autoload"]
         setup_log_tee.assert_called_once_with()
         setup_logger.assert_called_once_with()
         session.autoload_first_profile.assert_called_once_with()
         session.start_cookie_refresh_loop.assert_called_once_with()
-        self.assertEqual(
-            session.method_calls[:2],
-            [call.autoload_first_profile(), call.start_cookie_refresh_loop()],
-        )
+        assert session.method_calls[:2] == [
+            call.autoload_first_profile(),
+            call.start_cookie_refresh_loop(),
+        ]
         session_class.assert_called_once_with(
             profiles=profile_class.return_value,
             playlist_cache=playlist_class.return_value,
         )
-        self.assertIs(app.extensions["youtube_music_session"], session)
-        self.assertIs(app.extensions["playlist_cache"], playlist_class.return_value)
-        self.assertEqual(app.extensions["feedback_webhook_url"], "https://hooks.example.test")
+        assert app.extensions["youtube_music_session"] is session
+        assert app.extensions["playlist_cache"] is playlist_class.return_value
+        assert app.extensions["feedback_webhook_url"] == "https://hooks.example.test"
         load_feedback_webhook.assert_called_once_with()
-        self.assertEqual(
-            ytdlp_class.return_value.method_calls,
-            [call.ensure_node_in_path(), call.activate_ytdlp_update()],
-        )
+        assert ytdlp_class.return_value.method_calls == [
+            call.ensure_node_in_path(),
+            call.activate_ytdlp_update(),
+        ]

@@ -29,7 +29,7 @@ class ConfigDirsTests:
             ):
                 config_dirs = ConfigDirs()
 
-            assert config_dirs.CACHE_DIR == project_root / ".cache"
+            assert project_root / ".cache" == config_dirs.CACHE_DIR
             assert (config_dirs.ALBUM_CACHE_DIR / "album.json").read_text(
                 encoding="utf-8"
             ) == "cached"
@@ -45,8 +45,8 @@ class ConfigDirsTests:
 
             config_dirs = ConfigDirs(base_dir)
 
-            assert config_dirs.CACHE_DIR == base_dir
-            assert config_dirs.CACHE_DATABASE == base_dir / "cache.sqlite3"
+            assert base_dir == config_dirs.CACHE_DIR
+            assert base_dir / "cache.sqlite3" == config_dirs.CACHE_DATABASE
 
     def test_migration_does_not_overwrite_an_existing_destination(self) -> None:
         """Retain both copies when an earlier cache already occupies the new path."""
@@ -75,5 +75,5 @@ class ConfigDirsTests:
 
             config = ConfigYTDLP(base_dir, cache_dir)
 
-            assert config.LEGACY_BROWSER_COOKIE_FILE == base_dir / "browser_cookies.txt"
-            assert config.BROWSER_COOKIE_STORE_FILE == cache_dir / "browser-cookies.enc"
+            assert base_dir / "browser_cookies.txt" == config.LEGACY_BROWSER_COOKIE_FILE
+            assert cache_dir / "browser-cookies.enc" == config.BROWSER_COOKIE_STORE_FILE

@@ -1,16 +1,15 @@
 import json
 import tempfile
-import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, call, patch
 
-from ytmusicapi.exceptions import YTMusicServerError
-
+import pytest
 from src.lib.music.playlist import Playlist
 from src.lib.music.youtube_music import YoutubeMusicSession
+from ytmusicapi.exceptions import YTMusicServerError
 
 
-class YoutubeMusicSessionTests(unittest.TestCase):
+class YoutubeMusicSessionTests:
     def test_verification_retries_transient_first_call_rejection(self) -> None:
         # A just-switched (e.g. brand-account) session can reject its first InnerTube
         # call with HTTP 400 until its cookies settle; the login must survive that.
@@ -23,11 +22,11 @@ class YoutubeMusicSessionTests(unittest.TestCase):
             patch("src.lib.music.youtube_music.time.sleep") as sleep,
             patch("src.lib.music.youtube_music.threading.Thread"),
         ):
-            self.assertIs(session.activate_verified_profile("brand"), client)
+            assert session.activate_verified_profile("brand") is client
 
-        self.assertEqual(client.get_liked_songs.call_count, 2)
+        assert client.get_liked_songs.call_count == 2
         sleep.assert_called_once_with(session.VERIFY_BACKOFF_SECONDS)
-        self.assertEqual(session.state.current_profile, "brand")
+        assert session.state.current_profile == "brand"
 
     def test_verification_reraises_after_exhausting_retries(self) -> None:
         session = YoutubeMusicSession(profiles=MagicMock())
@@ -38,12 +37,12 @@ class YoutubeMusicSessionTests(unittest.TestCase):
             patch.object(session, "create_client", return_value=client),
             patch("src.lib.music.youtube_music.time.sleep"),
             patch("src.lib.music.youtube_music.threading.Thread"),
+            pytest.raises(YTMusicServerError),
         ):
-            with self.assertRaises(YTMusicServerError):
-                session.activate_verified_profile("brand")
+            session.activate_verified_profile("brand")
 
-        self.assertEqual(client.get_liked_songs.call_count, session.VERIFY_ATTEMPTS)
-        self.assertIsNone(session.state.ytm)
+        assert client.get_liked_songs.call_count == session.VERIFY_ATTEMPTS
+        assert session.state.ytm is None
 
     def test_create_client_passes_profile_path_as_string(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -65,15 +64,15 @@ class YoutubeMusicSessionTests(unittest.TestCase):
         first = session.get_system_client()
         second = session.get_system_client()
 
-        self.assertIs(first, second)
+        assert first is second
         client_factory.assert_called_once_with()
 
     def test_cookie_refresh_loop_starts_only_once_per_session(self) -> None:
         session = YoutubeMusicSession(profiles=MagicMock())
 
         with patch("src.lib.music.youtube_music.threading.Thread") as thread_class:
-            self.assertTrue(session.start_cookie_refresh_loop())
-            self.assertFalse(session.start_cookie_refresh_loop())
+            assert session.start_cookie_refresh_loop()
+            assert not session.start_cookie_refresh_loop()
 
         thread_class.assert_called_once_with(
             target=session.run_cookie_refresh_loop,
@@ -91,14 +90,14 @@ class YoutubeMusicSessionTests(unittest.TestCase):
             patch.object(session, "create_client", return_value=client),
             patch("src.lib.music.youtube_music.threading.Thread"),
         ):
-            self.assertIs(session.activate_verified_profile("default"), client)
+            assert session.activate_verified_profile("default") is client
 
         session.clear_active_profile()
 
-        self.assertEqual(
-            playlist_cache.clear_memory_for_profile.call_args_list,
-            [call("default"), call("default")],
-        )
+        assert playlist_cache.clear_memory_for_profile.call_args_list == [
+            call("default"),
+            call("default"),
+        ]
 
     def test_profile_memory_clear_preserves_other_profiles_entries(self) -> None:
         playlist_cache = Playlist()
@@ -107,8 +106,8 @@ class YoutubeMusicSessionTests(unittest.TestCase):
 
         playlist_cache.clear_memory_for_profile("default")
 
-        self.assertIsNone(playlist_cache.get_memory("LM", "default"))
-        self.assertEqual(playlist_cache.get_memory("LM", "second"), {"tracks": ["other"]})
+        assert playlist_cache.get_memory("LM", "default") is None
+        assert playlist_cache.get_memory("LM", "second") == {"tracks": ["other"]}
 
     def test_autoload_prefers_the_last_active_profile(self) -> None:
         profiles = MagicMock()
