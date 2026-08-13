@@ -9,11 +9,32 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import Optional
-
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_PORT = 9847
+
+_DEVELOPMENT_CACHE_DIRECTORIES = (
+    "imgcache",
+    "playlist_cache",
+    "album_cache",
+    "band_member_cache",
+    "song_cache",
+    "lyrics_cache",
+    "video_sync_cache",
+    "ytdlp",
+    "bin",
+    ".pytest_cache",
+    ".ruff_cache",
+)
+_DEVELOPMENT_CACHE_FILES = (
+    "cache.sqlite3",
+    "cache.sqlite3-shm",
+    "cache.sqlite3-wal",
+    "mix.sqlite3",
+    "mix.sqlite3-shm",
+    "mix.sqlite3-wal",
+    ".coverage",
+)
 
 
 def _resolve_base_dir() -> Path:
@@ -24,7 +45,9 @@ def _resolve_base_dir() -> Path:
     if sys.platform == "win32":
         data_root = Path(os.environ.get("LOCALAPPDATA", Path(sys.executable).resolve().parent))
     else:
-        data_root = Path(os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")).expanduser()
+        data_root = Path(
+            os.environ.get("XDG_DATA_HOME", Path.home() / ".local" / "share")
+        ).expanduser()
 
     base_dir = data_root / "dev.kodama.music"
     old_dir = data_root / "dev.kiyoshi.music"
@@ -35,6 +58,40 @@ def _resolve_base_dir() -> Path:
             # Keep using the old directory if its migration cannot complete.
             return old_dir
     return base_dir
+
+
+def _copy_then_remove(source: Path, destination: Path) -> None:
+    """Relocate one cache entry without deleting the only complete copy."""
+    if not source.exists() or destination.exists():
+        return
+
+    try:
+        if source.is_dir():
+            shutil.copytree(source, destination)
+        else:
+            shutil.copy2(source, destination)
+    except OSError:
+        if destination.is_dir():
+            shutil.rmtree(destination, ignore_errors=True)
+        else:
+            destination.unlink(missing_ok=True)
+        return
+
+    try:
+        if source.is_dir():
+            shutil.rmtree(source)
+        else:
+            source.unlink()
+    except OSError:
+        # The new copy is complete; retaining the legacy copy avoids data loss.
+        pass
+
+
+def _migrate_development_cache(base_dir: Path, cache_dir: Path) -> None:
+    """Move legacy root-level development caches into the cache directory."""
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    for name in (*_DEVELOPMENT_CACHE_DIRECTORIES, *_DEVELOPMENT_CACHE_FILES):
+        _copy_then_remove(base_dir / name, cache_dir / name)
 
 
 def _lastfm_config_candidates() -> list[Path]:
@@ -72,27 +129,38 @@ class Config:
     ALBUM_CACHE_TTL = 7 * 24 * 3600
     BAND_MEMBER_CACHE_TTL = 24 * 3600
     AUDIO_COUNTERPART_CACHE_TTL = 30 * 24 * 3600
-    CACHE_DEFAULTS = {"playlists": True, "albums": True, "images": True, "songs": True, "lyrics": True}
+    CACHE_DEFAULTS = {
+        "playlists": True,
+        "albums": True,
+        "images": True,
+        "songs": True,
+        "lyrics": True,
+    }
 
 
 class ConfigDirs:
     """Resolved data directories. They are created once during startup."""
 
-    def __init__(self, base_dir: Optional[Path] = None) -> None:
+    def __init__(self, base_dir: Path | None = None) -> None:
         self.BASE_DIR = base_dir or _resolve_base_dir()
+        is_development = base_dir is None and not getattr(sys, "frozen", False)
+        self.CACHE_DIR = self.BASE_DIR / ".cache" if is_development else self.BASE_DIR
+        if is_development:
+            _migrate_development_cache(self.BASE_DIR, self.CACHE_DIR)
+
         self.PROFILES_DIR = self.BASE_DIR / "profiles"
-        self.IMG_CACHE_DIR = self.BASE_DIR / "imgcache"
-        self.PLAYLIST_CACHE_DIR = self.BASE_DIR / "playlist_cache"
-        self.ALBUM_CACHE_DIR = self.BASE_DIR / "album_cache"
-        self.BAND_MEMBER_CACHE_DIR = self.BASE_DIR / "band_member_cache"
-        self.SONG_CACHE_DIR = self.BASE_DIR / "song_cache"
-        self.LYRICS_CACHE_DIR = self.BASE_DIR / "lyrics_cache"
+        self.IMG_CACHE_DIR = self.CACHE_DIR / "imgcache"
+        self.PLAYLIST_CACHE_DIR = self.CACHE_DIR / "playlist_cache"
+        self.ALBUM_CACHE_DIR = self.CACHE_DIR / "album_cache"
+        self.BAND_MEMBER_CACHE_DIR = self.CACHE_DIR / "band_member_cache"
+        self.SONG_CACHE_DIR = self.CACHE_DIR / "song_cache"
+        self.LYRICS_CACHE_DIR = self.CACHE_DIR / "lyrics_cache"
         self.CUSTOM_LYRICS_DIR = self.BASE_DIR / "custom_lyrics"
-        self.VIDEO_SYNC_CACHE_DIR = self.BASE_DIR / "video_sync_cache"
-        self.CACHE_DATABASE = self.BASE_DIR / "cache.sqlite3"
-        self.MIX_DATABASE = self.BASE_DIR / "mix.sqlite3"
-        self.YTDLP_UPDATE_DIR = self.BASE_DIR / "ytdlp"
-        self.BIN_DIR = self.BASE_DIR / "bin"
+        self.VIDEO_SYNC_CACHE_DIR = self.CACHE_DIR / "video_sync_cache"
+        self.CACHE_DATABASE = self.CACHE_DIR / "cache.sqlite3"
+        self.MIX_DATABASE = self.CACHE_DIR / "mix.sqlite3"
+        self.YTDLP_UPDATE_DIR = self.CACHE_DIR / "ytdlp"
+        self.BIN_DIR = self.CACHE_DIR / "bin"
 
         for directory in (
             self.PROFILES_DIR,
@@ -140,9 +208,18 @@ class ConfigLyrics:
 
     TRANSLATION_CACHE_MAX = 500
     GOOGLE_LANGUAGE_CODES = {
-        "DE": "de", "EN": "en", "FR": "fr", "ES": "es", "IT": "it",
-        "PT": "pt", "NL": "nl", "PL": "pl", "RU": "ru",
-        "JA": "ja", "KO": "ko", "ZH": "zh-CN",
+        "DE": "de",
+        "EN": "en",
+        "FR": "fr",
+        "ES": "es",
+        "IT": "it",
+        "PT": "pt",
+        "NL": "nl",
+        "PL": "pl",
+        "RU": "ru",
+        "JA": "ja",
+        "KO": "ko",
+        "ZH": "zh-CN",
     }
 
 
@@ -150,17 +227,26 @@ class ConfigYTDLP:
     """Client options and browser-cookie refresh settings for yt-dlp."""
 
     WEB_MUSIC_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["web_music"]}}}
-    ANDROID_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["android_music"], "player_skip": ["js"]}}}
+    ANDROID_OPTIONS = {
+        "extractor_args": {"youtube": {"player_client": ["android_music"], "player_skip": ["js"]}}
+    }
     IOS_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["ios"], "player_skip": ["js"]}}}
-    IOS_MUSIC_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["ios_music"], "player_skip": ["js"]}}}
-    TV_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["tv_embedded"], "player_skip": ["js"]}}}
+    IOS_MUSIC_OPTIONS = {
+        "extractor_args": {"youtube": {"player_client": ["ios_music"], "player_skip": ["js"]}}
+    }
+    TV_OPTIONS = {
+        "extractor_args": {"youtube": {"player_client": ["tv_embedded"], "player_skip": ["js"]}}
+    }
     MWEB_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["mweb"]}}}
     AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio[acodec=aac]"
     BROWSER_COOKIE_TTL = 6 * 3600
     BROWSER_COOKIE_MIN_GAP = 600
 
     def __init__(self, base_dir: Path) -> None:
-        self.BROWSER_COOKIE_FILE = base_dir / "browser_cookies.txt"
+        try:
+            (base_dir / "browser_cookies.txt").unlink(missing_ok=True)
+        except OSError:
+            pass
         self.STREAM_ATTEMPTS = [
             (self.AUDIO_FORMAT, self.WEB_MUSIC_OPTIONS, False),
             (self.AUDIO_FORMAT, None, False),
@@ -180,25 +266,53 @@ class ConfigOverlay:
     DOCUMENT_VERSION = 2
     V1_DEFAULT = {
         "preset": "basic",
-        "bgColor": "#1a1a1a", "bgOpacity": 90,
-        "accentColor": "#EEA8FF", "textColor": "#ffffff",
+        "bgColor": "#1a1a1a",
+        "bgOpacity": 90,
+        "accentColor": "#EEA8FF",
+        "textColor": "#ffffff",
         "borderRadius": 14,
-        "showProgress": True, "showAlbumArt": True,
-        "showArtist": True, "showAlbum": False,
-        "border": False, "borderColor": "#EEA8FF", "borderWidth": 1.5,
+        "showProgress": True,
+        "showAlbumArt": True,
+        "showArtist": True,
+        "showAlbum": False,
+        "border": False,
+        "borderColor": "#EEA8FF",
+        "borderWidth": 1.5,
         "fontFamily": "system-ui, sans-serif",
-        "titleFontSize": 14, "artistFontSize": 12,
-        "dynamicWidth": False, "widgetWidth": 400, "widgetHeight": 0, "artSize": 56, "artRadius": 8,
-        "artRadiusTL": 8, "artRadiusTR": 8, "artRadiusBR": 8, "artRadiusBL": 8,
-        "artCornerTypeTL": "r", "artCornerTypeTR": "r", "artCornerTypeBR": "r", "artCornerTypeBL": "r",
-        "paddingV": 12, "paddingH": 16, "gap": 12,
+        "titleFontSize": 14,
+        "artistFontSize": 12,
+        "dynamicWidth": False,
+        "widgetWidth": 400,
+        "widgetHeight": 0,
+        "artSize": 56,
+        "artRadius": 8,
+        "artRadiusTL": 8,
+        "artRadiusTR": 8,
+        "artRadiusBR": 8,
+        "artRadiusBL": 8,
+        "artCornerTypeTL": "r",
+        "artCornerTypeTR": "r",
+        "artCornerTypeBR": "r",
+        "artCornerTypeBL": "r",
+        "paddingV": 12,
+        "paddingH": 16,
+        "gap": 12,
         "progressHeight": 3,
-        "showShadow": False, "shadowStrength": 0.35,
-        "bgBlur": 10, "bgBlurEnabled": False,
+        "showShadow": False,
+        "shadowStrength": 0.35,
+        "bgBlur": 10,
+        "bgBlurEnabled": False,
         "autoHide": False,
-        "scrollTitle": False, "scrollSpeed": 80,
-        "radiusTL": 14, "radiusTR": 14, "radiusBR": 14, "radiusBL": 14,
-        "cornerTypeTL": "r", "cornerTypeTR": "r", "cornerTypeBR": "r", "cornerTypeBL": "r",
+        "scrollTitle": False,
+        "scrollSpeed": 80,
+        "radiusTL": 14,
+        "radiusTR": 14,
+        "radiusBR": 14,
+        "radiusBL": 14,
+        "cornerTypeTL": "r",
+        "cornerTypeTR": "r",
+        "cornerTypeBR": "r",
+        "cornerTypeBL": "r",
         "borderBlur": 0,
     }
 
@@ -213,6 +327,7 @@ class ConfigMusixMatch:
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "cookie": "x-mxm-token-guid=",
     }
+
 
 config = Config()
 config_dirs = ConfigDirs()
