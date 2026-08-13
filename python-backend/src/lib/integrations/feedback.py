@@ -15,8 +15,9 @@ def load_feedback_webhook() -> str:
         return webhook
 
     candidates = []
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        candidates.append(Path(sys._MEIPASS) / "feedback_config.json")
+    bundle_root = vars(sys).get("_MEIPASS")
+    if getattr(sys, "frozen", False) and isinstance(bundle_root, str):
+        candidates.append(Path(bundle_root) / "feedback_config.json")
     candidates.append(PROJECT_ROOT / "feedback_config.json")
 
     for path in candidates:

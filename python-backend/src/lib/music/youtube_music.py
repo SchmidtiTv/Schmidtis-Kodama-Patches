@@ -7,7 +7,7 @@ import os
 import threading
 import time
 from collections.abc import Callable, Iterable, Mapping
-from typing import Optional, Protocol, cast
+from typing import ClassVar, Protocol, cast
 
 import requests
 from ytmusicapi import YTMusic
@@ -29,21 +29,21 @@ class YoutubeMusicSessionState:
 
     def __init__(self) -> None:
         # Old server.py: _ytm
-        self.ytm: Optional[YTMusic] = None
+        self.ytm: YTMusic | None = None
         # Old server.py: _current_profile
-        self.current_profile: Optional[str] = None
+        self.current_profile: str | None = None
         # Old server.py: _psidts_last_refresh
         self.psidts_last_refresh = 0.0
         # Old server.py: _adding_account
         self.adding_account = False
-        self.last_authenticated: Optional[bool] = None
+        self.last_authenticated: bool | None = None
 
 
 class YoutubeMusicSession:
     """Owns the user session and an isolated client for background resolution."""
 
     # Old server.py: _SHORT_LIVED_COOKIES
-    SHORT_LIVED_COOKIES = {
+    SHORT_LIVED_COOKIES: ClassVar[set[str]] = {
         "__Secure-1PSIDTS",
         "__Secure-3PSIDTS",
         "SIDCC",
@@ -65,9 +65,9 @@ class YoutubeMusicSession:
 
     def __init__(
         self,
-        profiles: Optional[Profile] = None,
-        state: Optional[YoutubeMusicSessionState] = None,
-        playlist_cache: Optional[Playlist] = None,
+        profiles: Profile | None = None,
+        state: YoutubeMusicSessionState | None = None,
+        playlist_cache: Playlist | None = None,
         client_factory: Callable[..., YTMusic] = YTMusic,
         session_factory: Callable[[], requests.Session] = requests.Session,
     ) -> None:
@@ -79,7 +79,7 @@ class YoutubeMusicSession:
         self._logger = logging.getLogger(__name__)
         self._cookie_refresh_loop_lock = threading.Lock()
         self._cookie_refresh_loop_started = False
-        self._system_client: Optional[YTMusic] = None
+        self._system_client: YTMusic | None = None
         self._system_client_lock = threading.Lock()
 
     def start_cookie_refresh_loop(self) -> bool:
@@ -98,7 +98,9 @@ class YoutubeMusicSession:
     @staticmethod
     def is_oauth_profile(raw: object) -> bool:
         """Identify unsupported OAuth profiles left over from older releases."""
-        return isinstance(raw, dict) and ("refresh_token" in raw or raw.get("token_type") == "Bearer")
+        return isinstance(raw, dict) and (
+            "refresh_token" in raw or raw.get("token_type") == "Bearer"
+        )
 
     @staticmethod
     # Old server.py: clean_headers_for_storage
@@ -109,7 +111,11 @@ class YoutubeMusicSession:
         if "authorization" not in cleaned_headers:
             cookie_string = cleaned_headers.get("cookie", "")
             sapisid = next(
-                (part.strip()[8:] for part in cookie_string.split(";") if part.strip().startswith("SAPISID=")),
+                (
+                    part.strip()[8:]
+                    for part in cookie_string.split(";")
+                    if part.strip().startswith("SAPISID=")
+                ),
                 "",
             )
             if sapisid:
@@ -125,9 +131,11 @@ class YoutubeMusicSession:
         """Build a YTMusic client for a stored browser-auth profile."""
         path = self.profiles.profile_file_path(name)
         with open(path, encoding="utf-8") as profile_file:
-            raw = cast(dict[str, str], json.load(profile_file))
+            raw = cast("dict[str, str]", json.load(profile_file))
         if self.is_oauth_profile(raw):
-            raise Exception("OAuth-Profile werden nicht mehr unterstützt (YT-Music-Inkompatibilität).")
+            raise Exception(
+                "OAuth-Profile werden nicht mehr unterstützt (YT-Music-Inkompatibilität)."
+            )
         if "authorization" not in raw:
             with open(path, "w", encoding="utf-8") as profile_file:
                 json.dump(self.prepare_auth_headers(raw), profile_file, indent=2)
@@ -156,7 +164,9 @@ class YoutubeMusicSession:
 
         self.state.current_profile = name
         self.profiles.save_active_profile(name)
-        threading.Thread(target=self.refresh_session_cookies, kwargs={"force": True}, daemon=True).start()
+        threading.Thread(
+            target=self.refresh_session_cookies, kwargs={"force": True}, daemon=True
+        ).start()
         return True
 
     def activate_verified_profile(self, name: str) -> YTMusic:
@@ -167,7 +177,9 @@ class YoutubeMusicSession:
         self.state.current_profile = name
         self.profiles.save_active_profile(name)
         self._clear_profile_playlist_memory(name)
-        threading.Thread(target=self.refresh_session_cookies, kwargs={"force": True}, daemon=True).start()
+        threading.Thread(
+            target=self.refresh_session_cookies, kwargs={"force": True}, daemon=True
+        ).start()
         return client
 
     def _verify_browser_auth(self, client: YTMusic) -> None:
@@ -178,7 +190,7 @@ class YoutubeMusicSession:
         probe would otherwise tear down an otherwise-valid login. Retry the probe a
         few times, and re-raise the last server error only if none succeed.
         """
-        last_error: Optional[YTMusicServerError] = None
+        last_error: YTMusicServerError | None = None
         for attempt in range(self.VERIFY_ATTEMPTS):
             try:
                 client.get_liked_songs(limit=1)
@@ -197,11 +209,11 @@ class YoutubeMusicSession:
         self.state.ytm = None
         self.profiles.clear_active_profile()
 
-    def _clear_profile_playlist_memory(self, profile_name: Optional[str]) -> None:
+    def _clear_profile_playlist_memory(self, profile_name: str | None) -> None:
         if self._playlist_cache is not None:
             self._playlist_cache.clear_memory_for_profile(profile_name)
 
-    def apply_webview_cookies(self, cookie_string: str) -> tuple[bool, Optional[str], bool]:
+    def apply_webview_cookies(self, cookie_string: str) -> tuple[bool, str | None, bool]:
         """Apply browser-refreshed cookies to the active session and profile file."""
         if (
             self.state.ytm is None
@@ -219,13 +231,15 @@ class YoutubeMusicSession:
         # max-age 1h) — never let them bleed into the persisted auth header.
         if "KODAMA_" in cookie_string:
             cookie_string = "; ".join(
-                part.strip() for part in cookie_string.split(";") if not part.strip().startswith("KODAMA_")
+                part.strip()
+                for part in cookie_string.split(";")
+                if not part.strip().startswith("KODAMA_")
             )
         base_headers["cookie"] = cookie_string
         try:
             path = self.profiles.profile_file_path(self.state.current_profile)
             with open(path, encoding="utf-8") as profile_file:
-                raw = cast(dict[str, str], json.load(profile_file))
+                raw = cast("dict[str, str]", json.load(profile_file))
             raw["cookie"] = cookie_string
             with open(path, "w", encoding="utf-8") as profile_file:
                 json.dump(raw, profile_file, indent=2)
@@ -270,7 +284,9 @@ class YoutubeMusicSession:
             metadata["displayName"] = account.get("accountName", profile_name)
             metadata["handle"] = account.get("channelHandle", "")
             metadata["avatar"] = account.get("accountPhotoUrl", "")
-            with open(self.profiles.metadata_file_path(profile_name), "w", encoding="utf-8") as meta_file:
+            with open(
+                self.profiles.metadata_file_path(profile_name), "w", encoding="utf-8"
+            ) as meta_file:
                 json.dump(metadata, meta_file)
         except Exception as error:
             print(f"[i] Account-Info nicht abrufbar: {error}")
@@ -282,13 +298,17 @@ class YoutubeMusicSession:
         remembered_name = self.profiles.load_active_profile()
         profiles = self.profiles.list_profiles(remembered_name)
         remembered = [profile for profile in profiles if profile["name"] == remembered_name]
-        candidates = remembered + [profile for profile in profiles if profile["name"] != remembered_name]
+        candidates = remembered + [
+            profile for profile in profiles if profile["name"] != remembered_name
+        ]
         for profile in candidates:
             if profile.get("loggedOut"):
                 continue
             profile_name = str(profile["name"])
             if self.activate_profile(profile_name):
-                threading.Thread(target=self.refresh_account_info, args=(profile_name,), daemon=True).start()
+                threading.Thread(
+                    target=self.refresh_account_info, args=(profile_name,), daemon=True
+                ).start()
                 break
 
     # Old server.py: _refresh_ytm_psidts
@@ -320,7 +340,11 @@ class YoutubeMusicSession:
             session = self._session_factory()
             authenticated = None
             statuses = []
-            for url in ("https://music.youtube.com/", "https://www.youtube.com/", "https://accounts.google.com/"):
+            for url in (
+                "https://music.youtube.com/",
+                "https://www.youtube.com/",
+                "https://accounts.google.com/",
+            ):
                 try:
                     response = session.get(
                         url,
@@ -332,7 +356,9 @@ class YoutubeMusicSession:
                         timeout=8,
                         allow_redirects=True,
                     )
-                    statuses.append(f"{url.split('//', 1)[1].split('/', 1)[0]}={response.status_code}")
+                    statuses.append(
+                        f"{url.split('//', 1)[1].split('/', 1)[0]}={response.status_code}"
+                    )
                     if authenticated is None and "youtube.com" in url:
                         page = response.text or ""
                         if '"LOGGED_IN":true' in page:
@@ -344,7 +370,7 @@ class YoutubeMusicSession:
 
             fresh_cookies: dict[str, str] = {
                 cookie.name: cookie.value
-                for cookie in cast(Iterable[SessionCookie], session.cookies)
+                for cookie in cast("Iterable[SessionCookie]", session.cookies)
                 if cookie.name in self.SHORT_LIVED_COOKIES
             }
             if authenticated is False:

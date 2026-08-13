@@ -18,7 +18,9 @@ class ComposerSettings:
     def load_autocache(self) -> bool:
         try:
             with open(self._settings_file, encoding="utf-8") as settings_file:
-                return bool(json.load(settings_file).get("autocache", config_composer.DEFAULT_AUTOCACHE))
+                return bool(
+                    json.load(settings_file).get("autocache", config_composer.DEFAULT_AUTOCACHE)
+                )
         except (OSError, ValueError, TypeError):
             return config_composer.DEFAULT_AUTOCACHE
 

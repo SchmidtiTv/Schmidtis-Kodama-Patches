@@ -1,5 +1,6 @@
 """Production launcher for the local Flask backend."""
 
+import contextlib
 import socket
 import sys
 import threading
@@ -12,7 +13,6 @@ from flask import Flask
 
 from src.config import BACKEND_PORT, config_dirs
 
-
 HOST = "0.0.0.0"
 
 
@@ -23,10 +23,8 @@ class StartupLog:
         self.path = path
 
     def reset(self) -> None:
-        try:
+        with contextlib.suppress(OSError):
             self.path.write_text("", encoding="utf-8")
-        except OSError:
-            pass
 
     def write(self, message: str) -> None:
         try:

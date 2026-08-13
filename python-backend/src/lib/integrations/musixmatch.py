@@ -34,7 +34,9 @@ class MusixMatch:
             print(f"[lyrics] Musixmatch token error: {error}", flush=True)
             return None
 
-    def lookup(self, title: str, artist: str, duration: str | None = None) -> dict[str, object] | None:
+    def lookup(
+        self, title: str, artist: str, duration: str | None = None
+    ) -> dict[str, object] | None:
         """Sucht einen Track auf Musixmatch und gibt RichSync (Word) oder Subtitle (LRC) zurück."""
         token = self._get_token()
         if not token:
@@ -43,10 +45,18 @@ class MusixMatch:
 
         # Track suchen
         try:
-            sr = requests.get(f"{config_musixmatch.MX_BASE}/track.search",
-                         params={**base, "q_track": title, "q_artist": artist,
-                                 "s_track_rating": "desc", "page_size": 5},
-                         headers=config_musixmatch.MX_HEADERS, timeout=8)
+            sr = requests.get(
+                f"{config_musixmatch.MX_BASE}/track.search",
+                params={
+                    **base,
+                    "q_track": title,
+                    "q_artist": artist,
+                    "s_track_rating": "desc",
+                    "page_size": 5,
+                },
+                headers=config_musixmatch.MX_HEADERS,
+                timeout=8,
+            )
             track_list = sr.json()["message"]["body"]["track_list"]
         except Exception as e:
             print(f"[lyrics] Musixmatch search error: {e}", flush=True)
@@ -70,19 +80,31 @@ class MusixMatch:
             if rb and isinstance(rb, dict) and rb.get("richsync", {}).get("richsync_body"):
                 richsync = json.loads(rb["richsync"]["richsync_body"])
                 if richsync:
-                    return {"source": "Musixmatch", "richsync": richsync, "synced": None, "plain": None}
+                    return {
+                        "source": "Musixmatch",
+                        "richsync": richsync,
+                        "synced": None,
+                        "plain": None,
+                    }
         except Exception as e:
             print(f"[lyrics] Musixmatch richsync error: {e}", flush=True)
 
         # Fallback: Line-Sync (LRC)
         try:
-            lr = requests.get(f"{config_musixmatch.MX_BASE}/track.subtitle.get",
-                         params={**bp, "subtitle_format": "lrc"},
-                         headers=config_musixmatch.MX_HEADERS, timeout=8)
+            lr = requests.get(
+                f"{config_musixmatch.MX_BASE}/track.subtitle.get",
+                params={**bp, "subtitle_format": "lrc"},
+                headers=config_musixmatch.MX_HEADERS,
+                timeout=8,
+            )
             lb = lr.json()["message"]["body"]
             if lb and isinstance(lb, dict) and lb.get("subtitle", {}).get("subtitle_body"):
-                return {"source": "Musixmatch", "richsync": None,
-                        "synced": lb["subtitle"]["subtitle_body"], "plain": None}
+                return {
+                    "source": "Musixmatch",
+                    "richsync": None,
+                    "synced": lb["subtitle"]["subtitle_body"],
+                    "plain": None,
+                }
         except Exception as e:
             print(f"[lyrics] Musixmatch subtitle error: {e}", flush=True)
 

@@ -5,6 +5,7 @@ profile-scoped so account-relative playlist ids never collide.
 """
 
 import collections
+import contextlib
 import json
 import os
 import sqlite3
@@ -22,7 +23,9 @@ class Playlist:
         # (Liked Songs) are shared across Google accounts but hold different
         # content, so the in-memory layer must be profile-scoped just like the
         # on-disk layer. LRU eviction is over the whole map.
-        self.playlist_cache: collections.OrderedDict[tuple[str, str], dict[str, object]] = collections.OrderedDict()
+        self.playlist_cache: collections.OrderedDict[tuple[str, str], dict[str, object]] = (
+            collections.OrderedDict()
+        )
         self._metadata_cache = metadata_cache or MetadataCache(config_dirs.CACHE_DATABASE)
 
     @staticmethod
@@ -40,14 +43,16 @@ class Playlist:
         return f"{profile or 'default'}:{playlist_id}"
 
     # Old server.py: _load_playlist_disk
-    def load_playlist_disk(self, playlist_id: str, profile: str | None, ttl: int = Config.PLAYLIST_CACHE_TTL) -> dict[str, object] | None:
+    def load_playlist_disk(
+        self, playlist_id: str, profile: str | None, ttl: int = Config.PLAYLIST_CACHE_TTL
+    ) -> dict[str, object] | None:
         key = self._disk_key(playlist_id, profile)
         try:
             data = self._metadata_cache.get("playlists", key, ttl)
         except (OSError, sqlite3.Error):
             data = None
         if data is not None:
-            tracks = cast(list[dict[str, object]], data.get("tracks", []))
+            tracks = cast("list[dict[str, object]]", data.get("tracks", []))
             return None if tracks and "isExplicit" not in tracks[0] else data
 
         # Import pre-SQLite caches lazily, preserving existing installations.
@@ -57,35 +62,31 @@ class Playlist:
         if time.time() - os.path.getmtime(path) > ttl:
             return None
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = cast(dict[str, object], json.load(f))
+            with open(path, encoding="utf-8") as f:
+                data = cast("dict[str, object]", json.load(f))
             # Invalidate old caches that don't have isExplicit yet
-            tracks = cast(list[dict[str, object]], data.get("tracks", []))
+            tracks = cast("list[dict[str, object]]", data.get("tracks", []))
             if tracks and "isExplicit" not in tracks[0]:
                 return None
             self._metadata_cache.put("playlists", key, data)
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(path)
-            except OSError:
-                pass
             return data
         except (OSError, ValueError, TypeError):
             return None
 
     # Old server.py: _save_playlist_disk
-    def save_playlist_disk(self, playlist_id: str, profile: str | None, data: dict[str, object]) -> None:
-        try:
+    def save_playlist_disk(
+        self, playlist_id: str, profile: str | None, data: dict[str, object]
+    ) -> None:
+        with contextlib.suppress(OSError, sqlite3.Error, TypeError, ValueError):
             self._metadata_cache.put("playlists", self._disk_key(playlist_id, profile), data)
-        except (OSError, sqlite3.Error, TypeError, ValueError):
-            pass
 
     # Old server.py: _purge_playlist_cache
     def purge_playlist_cache(self, playlist_id: str, profile: str | None) -> None:
         self.discard_memory(playlist_id, profile)
-        try:
+        with contextlib.suppress(OSError, sqlite3.Error):
             self._metadata_cache.delete("playlists", self._disk_key(playlist_id, profile))
-        except (OSError, sqlite3.Error):
-            pass
         path = self.playlist_disk_path(playlist_id, profile)
         if os.path.exists(path):
             os.remove(path)

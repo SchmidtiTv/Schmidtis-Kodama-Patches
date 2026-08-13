@@ -1,16 +1,17 @@
 """Composer Bridge audio, thumbnail, cache, and bundled-app helpers."""
 
+import contextlib
 import glob
 import os
 import sys
 import tempfile
-from pathlib import Path
 from collections.abc import Iterator, Mapping
-from typing import Dict, Optional, Protocol, Tuple, cast
+from pathlib import Path
+from typing import ClassVar, Protocol, cast
 
 import requests
 
-from src.config import BACKEND_PORT, PROJECT_ROOT, config_composer, config_dirs
+from src.config import BACKEND_PORT, PROJECT_ROOT, config_dirs
 from src.lib.composer.settings import ComposerSettings
 from src.lib.music.youtube_music import YoutubeMusicSession
 from src.lib.runtime.cache import CacheSettings
@@ -37,7 +38,7 @@ class ComposerBridge:
 
     STREAM_ENDPOINT = f"http://127.0.0.1:{BACKEND_PORT}/stream"
     EXPOSED_HEADERS = "Content-Type, x-track-title, x-track-artist, x-track-album"
-    _AUDIO_MIME_TYPES = {
+    _AUDIO_MIME_TYPES: ClassVar[dict[str, str]] = {
         ".opus": "audio/opus",
         ".m4a": "audio/mp4",
         ".mp4": "audio/mp4",
@@ -49,7 +50,10 @@ class ComposerBridge:
     }
 
     def __init__(
-        self, settings: ComposerSettings, cache_settings: CacheSettings, music_session: YoutubeMusicSession
+        self,
+        settings: ComposerSettings,
+        cache_settings: CacheSettings,
+        music_session: YoutubeMusicSession,
     ) -> None:
         self._settings = settings
         self._cache_settings = cache_settings
@@ -62,7 +66,7 @@ class ComposerBridge:
     def set_autocache_enabled(self, enabled: bool) -> bool:
         return self._settings.set_autocache(enabled)
 
-    def track_metadata(self, video_id: str) -> Dict[str, Optional[str]]:
+    def track_metadata(self, video_id: str) -> dict[str, str | None]:
         """Fetch optional metadata used by Composer's submission form."""
         try:
             info = self._music_session.get_active_client().get_song(video_id) or {}
@@ -71,7 +75,7 @@ class ComposerBridge:
         except Exception:
             return {"title": None, "artist": None}
 
-    def cached_audio_path(self, video_id: str) -> Optional[Path]:
+    def cached_audio_path(self, video_id: str) -> Path | None:
         """Return a downloaded or player-prepared local audio copy when available."""
         safe_id = self._safe_video_id(video_id)
         for extension in (".opus", ".m4a", ".webm", ".mp3"):
@@ -107,14 +111,20 @@ class ComposerBridge:
             error = data.get("error", "no_url") if isinstance(data, dict) else "no_url"
             raise ComposerBridgeError(error)
         try:
-            return cast(UpstreamResponse, requests.get(url, stream=True, timeout=120))
+            return cast("UpstreamResponse", requests.get(url, stream=True, timeout=120))
         except Exception as error:
             raise ComposerBridgeError(str(error)) from error
 
-    def stream_with_optional_cache(self, video_id: str, upstream: UpstreamResponse) -> Iterator[bytes]:
+    def stream_with_optional_cache(
+        self, video_id: str, upstream: UpstreamResponse
+    ) -> Iterator[bytes]:
         """Yield upstream bytes and atomically cache them when enabled."""
         content_type = upstream.headers.get("Content-Type", "audio/mp4")
-        extension = ".webm" if "webm" in content_type else ".mp3" if "mpeg" in content_type or "mp3" in content_type else ".m4a"
+        extension = (
+            ".webm"
+            if "webm" in content_type
+            else ".mp3" if "mpeg" in content_type or "mp3" in content_type else ".m4a"
+        )
         target = config_dirs.SONG_CACHE_DIR / f"{self._safe_video_id(video_id)}{extension}"
         temporary_target = Path(f"{target}.part")
         should_cache = self.autocache_enabled and self._cache_settings.enabled.get("songs", True)
@@ -138,21 +148,17 @@ class ComposerBridge:
             if cache_file is not None:
                 cache_file.close()
                 cache_file = None
-                try:
+                with contextlib.suppress(OSError):
                     os.replace(temporary_target, target)
-                except OSError:
-                    pass
         finally:
             upstream.close()
             if cache_file is not None:
                 cache_file.close()
-                try:
+                with contextlib.suppress(OSError):
                     temporary_target.unlink()
-                except OSError:
-                    pass
 
     @staticmethod
-    def thumbnail(video_id: str) -> Optional[Tuple[bytes, str]]:
+    def thumbnail(video_id: str) -> tuple[bytes, str] | None:
         """Download the best available YouTube thumbnail for Composer."""
         for name in ("maxresdefault", "hqdefault", "mqdefault"):
             try:

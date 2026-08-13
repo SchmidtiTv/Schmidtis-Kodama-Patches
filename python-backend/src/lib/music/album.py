@@ -1,5 +1,6 @@
 """SQLite-backed album cache. Albums are global and keyed by browse id."""
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -26,7 +27,7 @@ class Album:
         except (OSError, sqlite3.Error):
             data = None
         if data is not None:
-            tracks = cast(list[dict[str, object]], data.get("tracks", []))
+            tracks = cast("list[dict[str, object]]", data.get("tracks", []))
             return None if tracks and "isExplicit" not in tracks[0] else data
 
         path = self.album_disk_path(browse_id)
@@ -35,24 +36,20 @@ class Album:
         if time.time() - os.path.getmtime(path) > Config.ALBUM_CACHE_TTL:
             return None
         try:
-            with open(path, "r", encoding="utf-8") as f:
-                data = cast(dict[str, object], json.load(f))
+            with open(path, encoding="utf-8") as f:
+                data = cast("dict[str, object]", json.load(f))
             # Invalidate old caches that don't have isExplicit yet
-            tracks = cast(list[dict[str, object]], data.get("tracks", []))
+            tracks = cast("list[dict[str, object]]", data.get("tracks", []))
             if tracks and "isExplicit" not in tracks[0]:
                 return None
             self._metadata_cache.put("albums", browse_id, data)
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(path)
-            except OSError:
-                pass
             return data
         except (OSError, ValueError, TypeError):
             return None
 
     # Old server.py: _save_album_disk
     def save_album_disk(self, browse_id: str, data: dict[str, object]) -> None:
-        try:
+        with contextlib.suppress(OSError, sqlite3.Error, TypeError, ValueError):
             self._metadata_cache.put("albums", browse_id, data)
-        except (OSError, sqlite3.Error, TypeError, ValueError):
-            pass

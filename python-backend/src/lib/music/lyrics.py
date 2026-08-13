@@ -2,13 +2,14 @@
 
 import base64
 import collections
+import contextlib
 import hashlib
 import html
 import json
 import re
 import sqlite3
 from pathlib import Path
-from typing import Dict, List, Optional, Protocol, TypeVar, cast
+from typing import Protocol, TypeVar, cast
 
 import requests
 
@@ -16,7 +17,6 @@ from src.config import config_dirs, config_lyrics
 from src.lib.integrations.musixmatch import MusixMatch
 from src.lib.runtime.cache import CacheSettings
 from src.lib.runtime.metadata_cache import MetadataCache
-
 
 CacheValue = TypeVar("CacheValue")
 
@@ -43,10 +43,12 @@ class LyricsService:
         self._cache_settings = cache_settings
         self._musixmatch = musixmatch
         self._metadata_cache = metadata_cache or MetadataCache(config_dirs.CACHE_DATABASE)
-        self._translation_cache: collections.OrderedDict[str, List[str]] = collections.OrderedDict()
+        self._translation_cache: collections.OrderedDict[str, list[str]] = collections.OrderedDict()
         self._romaji_cache: collections.OrderedDict[str, str] = collections.OrderedDict()
         self._kakasi: KakasiConverter | None = None
-        self._japanese_characters = re.compile(r"[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uff66-\uff9f]")
+        self._japanese_characters = re.compile(
+            r"[\u3040-\u309f\u30a0-\u30ff\u4e00-\u9fff\uff66-\uff9f]"
+        )
 
     @staticmethod
     def _cache_key(title: str, artist: str, source: str) -> str:
@@ -67,7 +69,7 @@ class LyricsService:
         duration: str,
         source: str,
         video_id: str,
-    ) -> Dict[str, object]:
+    ) -> dict[str, object]:
         """Look up lyrics in the existing provider priority order."""
         cache_path = self._cache_path(title, artist, source)
         cache_key = self._cache_key(title, artist, source)
@@ -81,7 +83,7 @@ class LyricsService:
         if self._lyrics_cache_enabled() and cache_path.exists():
             try:
                 with cache_path.open(encoding="utf-8") as cache_file:
-                    cached = cast(Dict[str, object], json.load(cache_file))
+                    cached = cast("dict[str, object]", json.load(cache_file))
                 self._metadata_cache.put("lyrics", cache_key, cached)
                 cache_path.unlink(missing_ok=True)
                 return cached
@@ -111,14 +113,12 @@ class LyricsService:
             return {"source": None, "synced": None, "plain": None}
 
         if self._lyrics_cache_enabled():
-            try:
+            with contextlib.suppress(OSError, sqlite3.Error, ValueError, TypeError):
                 self._metadata_cache.put("lyrics", cache_key, result)
-            except (OSError, sqlite3.Error, ValueError, TypeError):
-                pass
         return result
 
     @staticmethod
-    def _lookup_lrclib(title: str, artist: str, source: str) -> Optional[Dict[str, object]]:
+    def _lookup_lrclib(title: str, artist: str, source: str) -> dict[str, object] | None:
         if source not in ("auto", "lrclib"):
             return None
         try:
@@ -140,7 +140,7 @@ class LyricsService:
     @staticmethod
     def _lookup_better_lyrics(
         title: str, artist: str, album: str, duration: str, source: str
-    ) -> Optional[Dict[str, object]]:
+    ) -> dict[str, object] | None:
         if source not in ("auto", "better"):
             return None
         try:
@@ -149,8 +149,12 @@ class LyricsService:
                 params["al"] = album
             if duration:
                 params["d"] = duration
-            response = requests.get("https://lyrics-api.boidu.dev/getLyrics", params=params, timeout=8)
-            data: Dict[str, object] = cast(Dict[str, object], response.json()) if response.ok else {}
+            response = requests.get(
+                "https://lyrics-api.boidu.dev/getLyrics", params=params, timeout=8
+            )
+            data: dict[str, object] = (
+                cast("dict[str, object]", response.json()) if response.ok else {}
+            )
             if data.get("ttml"):
                 return {"source": "Better Lyrics", "ttml": data["ttml"]}
         except Exception as error:
@@ -160,7 +164,7 @@ class LyricsService:
     @staticmethod
     def _lookup_portato(
         title: str, artist: str, album: str, duration: str, source: str
-    ) -> Optional[Dict[str, object]]:
+    ) -> dict[str, object] | None:
         if source not in ("auto", "portato"):
             return None
         try:
@@ -186,29 +190,33 @@ class LyricsService:
 
     @staticmethod
     def _pick_paxsenix_song(
-        songs: List[Dict[str, object]], title: str, artist: str, wanted_duration_ms: int
-    ) -> Optional[Dict[str, object]]:
+        songs: list[dict[str, object]], title: str, artist: str, wanted_duration_ms: int
+    ) -> dict[str, object] | None:
         def normalize(value: object) -> str:
             return re.sub(r"[^0-9a-z一-鿿぀-ヿ]+", "", str(value or "").lower())
 
         wanted_title = normalize(title)
         wanted_artist = normalize(artist)
-        best_song: Optional[Dict[str, object]] = None
+        best_song: dict[str, object] | None = None
         best_score = -1
 
         for song in songs:
             name = normalize(song.get("name"))
             raw_artists = song.get("artists")
             artist_names = (
-                " ".join(str(item.get("name", "")) for item in raw_artists if isinstance(item, dict))
+                " ".join(
+                    str(item.get("name", "")) for item in raw_artists if isinstance(item, dict)
+                )
                 if isinstance(raw_artists, list)
                 else ""
             )
             artists = normalize(artist_names)
             if wanted_title and name and not (wanted_title in name or name in wanted_title):
                 continue
-            if wanted_artist and artists and not (
-                wanted_artist in artists or artists in wanted_artist
+            if (
+                wanted_artist
+                and artists
+                and not (wanted_artist in artists or artists in wanted_artist)
             ):
                 continue
 
@@ -233,7 +241,7 @@ class LyricsService:
     @classmethod
     def _lookup_paxsenix_netease(
         cls, title: str, artist: str, duration: str, source: str
-    ) -> Optional[Dict[str, object]]:
+    ) -> dict[str, object] | None:
         if source not in ("auto", "paxsenix-netease"):
             return None
         try:
@@ -255,7 +263,7 @@ class LyricsService:
                 return None
             lyrics_response = requests.get(
                 "https://lyrics.paxsenix.org/netease/lyrics",
-                params={"id": song_id, "word": "true"},
+                params=cast("dict[str, str | int]", {"id": song_id, "word": "true"}),
                 timeout=5,
             )
             data = lyrics_response.json() if lyrics_response.ok else None
@@ -266,7 +274,9 @@ class LyricsService:
         return None
 
     @staticmethod
-    def _lookup_kugou(title: str, artist: str, duration: str, source: str) -> Optional[Dict[str, object]]:
+    def _lookup_kugou(
+        title: str, artist: str, duration: str, source: str
+    ) -> dict[str, object] | None:
         if source not in ("auto", "kugou"):
             return None
         try:
@@ -295,11 +305,15 @@ class LyricsService:
                 },
                 timeout=8,
             )
-            candidates: List[Dict[str, object]] = []
+            candidates: list[dict[str, object]] = []
             if candidate_response.ok:
-                raw_candidates = cast(Dict[str, object], candidate_response.json()).get("candidates")
+                raw_candidates = cast("dict[str, object]", candidate_response.json()).get(
+                    "candidates"
+                )
                 if isinstance(raw_candidates, list):
-                    candidates = [candidate for candidate in raw_candidates if isinstance(candidate, dict)]
+                    candidates = [
+                        candidate for candidate in raw_candidates if isinstance(candidate, dict)
+                    ]
             if not candidates:
                 return None
             candidate = candidates[0]
@@ -330,26 +344,36 @@ class LyricsService:
 
     def _lookup_unison(
         self, title: str, artist: str, album: str, duration: str, source: str, video_id: str
-    ) -> Optional[Dict[str, object]]:
+    ) -> dict[str, object] | None:
         if source not in ("auto", "unison"):
             return None
         try:
-            item: Optional[Dict[str, object]] = None
+            item: dict[str, object] | None = None
             if video_id:
-                response = requests.get(f"{self.UNISON_BASE_URL}/lyrics", params={"v": video_id}, timeout=8)
-                data: Dict[str, object] = cast(Dict[str, object], response.json()) if response.ok else {}
+                response = requests.get(
+                    f"{self.UNISON_BASE_URL}/lyrics", params={"v": video_id}, timeout=8
+                )
+                data: dict[str, object] = (
+                    cast("dict[str, object]", response.json()) if response.ok else {}
+                )
                 if data.get("success") and isinstance(data.get("data"), dict):
-                    item = data["data"]
+                    item = cast("dict[str, object]", data["data"])
             if not item:
                 params = {"song": title, "artist": artist}
                 if album:
                     params["album"] = album
                 if duration:
                     params["duration"] = duration
-                response = requests.get(f"{self.UNISON_BASE_URL}/lyrics/search", params=params, timeout=8)
-                data: Dict[str, object] = cast(Dict[str, object], response.json()) if response.ok else {}
-                if data.get("success") and isinstance(data.get("data"), list) and data["data"]:
-                    item = data["data"][0]
+                response = requests.get(
+                    f"{self.UNISON_BASE_URL}/lyrics/search", params=params, timeout=8
+                )
+                data: dict[str, object] = (
+                    cast("dict[str, object]", response.json()) if response.ok else {}
+                )
+                raw_matches = data.get("data")
+                if data.get("success") and isinstance(raw_matches, list) and raw_matches:
+                    first_match = raw_matches[0]
+                    item = first_match if isinstance(first_match, dict) else None
             if not item or not item.get("lyrics"):
                 return None
             submitter = item.get("submitter")
@@ -358,20 +382,32 @@ class LyricsService:
             if item.get("format") == "ttml":
                 return {"source": "Unison", "ttml": item["lyrics"], "submitterName": submitter_name}
             if item.get("format") == "lrc":
-                return {"source": "Unison", "synced": item["lyrics"], "plain": None, "submitterName": submitter_name}
+                return {
+                    "source": "Unison",
+                    "synced": item["lyrics"],
+                    "plain": None,
+                    "submitterName": submitter_name,
+                }
             if item.get("format") == "plain":
-                return {"source": "Unison", "synced": None, "plain": item["lyrics"], "submitterName": submitter_name}
+                return {
+                    "source": "Unison",
+                    "synced": None,
+                    "plain": item["lyrics"],
+                    "submitterName": submitter_name,
+                }
         except Exception as error:
             print(f"[lyrics] Unison error: {error}", flush=True)
         return None
 
     @staticmethod
-    def _lookup_simpmusic(source: str, video_id: str) -> Optional[Dict[str, object]]:
+    def _lookup_simpmusic(source: str, video_id: str) -> dict[str, object] | None:
         if source not in ("auto", "simp") or not video_id:
             return None
         try:
             response = requests.get(f"https://api-lyrics.simpmusic.org/v1/{video_id}", timeout=8)
-            data: Dict[str, object] = cast(Dict[str, object], response.json()) if response.ok else {}
+            data: dict[str, object] = (
+                cast("dict[str, object]", response.json()) if response.ok else {}
+            )
             items = data.get("data")
             item = items[0] if isinstance(items, list) and items else None
             if item and item.get("syncedLyrics"):
@@ -382,7 +418,7 @@ class LyricsService:
             print(f"[lyrics] SimpMusic error: {error}", flush=True)
         return None
 
-    def display_name(self, key_id: Optional[str]) -> Optional[str]:
+    def display_name(self, key_id: str | None) -> str | None:
         """Resolve an Unison submitter's current public display name."""
         if not key_id:
             return None
@@ -396,34 +432,45 @@ class LyricsService:
 
     def unison_versions(
         self, video_id: str, title: str, artist: str, album: str, duration: str
-    ) -> List[Dict[str, object]]:
+    ) -> list[dict[str, object]]:
         """Fetch the available community lyric submissions for one track."""
-        candidates: List[Dict[str, object]] = []
+        candidates: list[dict[str, object]] = []
         seen: set[object] = set()
 
         def add(item: object) -> None:
             if not isinstance(item, dict):
                 return
             candidate_id = item.get("id")
-            key = candidate_id if candidate_id is not None else hash(item.get("lyrics") or repr(item))
+            key = (
+                candidate_id if candidate_id is not None else hash(item.get("lyrics") or repr(item))
+            )
             if key not in seen:
                 seen.add(key)
                 candidates.append(item)
 
-        def search(params: Dict[str, str]) -> List[Dict[str, object]]:
+        def search(params: dict[str, str]) -> list[dict[str, object]]:
             try:
-                response = requests.get(f"{self.UNISON_BASE_URL}/lyrics/search", params=params, timeout=8)
-                data: Dict[str, object] = cast(Dict[str, object], response.json()) if response.ok else {}
-                if data.get("success") and isinstance(data.get("data"), list):
-                    return data["data"]
+                response = requests.get(
+                    f"{self.UNISON_BASE_URL}/lyrics/search", params=params, timeout=8
+                )
+                data: dict[str, object] = (
+                    cast("dict[str, object]", response.json()) if response.ok else {}
+                )
+                raw_matches = data.get("data")
+                if data.get("success") and isinstance(raw_matches, list):
+                    return [item for item in raw_matches if isinstance(item, dict)]
             except Exception:
                 pass
             return []
 
         try:
             if video_id:
-                response = requests.get(f"{self.UNISON_BASE_URL}/lyrics", params={"v": video_id}, timeout=8)
-                data: Dict[str, object] = cast(Dict[str, object], response.json()) if response.ok else {}
+                response = requests.get(
+                    f"{self.UNISON_BASE_URL}/lyrics", params={"v": video_id}, timeout=8
+                )
+                data: dict[str, object] = (
+                    cast("dict[str, object]", response.json()) if response.ok else {}
+                )
                 if data.get("success"):
                     direct_matches = data.get("data")
                     if isinstance(direct_matches, dict):
@@ -458,17 +505,19 @@ class LyricsService:
         except Exception as error:
             print(f"[lyrics] Unison versions error: {error}", flush=True)
 
-        versions: List[Dict[str, object]] = []
-        name_cache: Dict[object, Optional[str]] = {}
+        versions: list[dict[str, object]] = []
+        name_cache: dict[object, str | None] = {}
         for item in candidates[:8]:
             lyrics = item.get("lyrics")
             lyric_format = item.get("format")
             sync_type = item.get("syncType")
             candidate_id = item.get("id")
-            submitter = cast(Dict[str, object], item.get("submitter") or {})
+            submitter = cast("dict[str, object]", item.get("submitter") or {})
             if not lyrics and candidate_id is not None:
                 try:
-                    response = requests.get(f"{self.UNISON_BASE_URL}/lyrics/{candidate_id}", timeout=6)
+                    response = requests.get(
+                        f"{self.UNISON_BASE_URL}/lyrics/{candidate_id}", timeout=6
+                    )
                     full_data = (response.json() or {}).get("data") or {} if response.ok else {}
                     lyrics = full_data.get("lyrics")
                     lyric_format = full_data.get("format") or lyric_format
@@ -494,14 +543,14 @@ class LyricsService:
             )
         return versions
 
-    def romanize(self, lines: List[str]) -> List[str]:
+    def romanize(self, lines: list[str]) -> list[str]:
         """Convert Japanese lyric lines to Hepburn romaji."""
         if self._kakasi is None:
             import pykakasi
 
-            self._kakasi = cast(KakasiConverter, pykakasi.kakasi())
+            self._kakasi = cast("KakasiConverter", pykakasi.kakasi())
 
-        result: List[str] = []
+        result: list[str] = []
         for line in lines:
             if not line.strip() or not self._japanese_characters.search(line):
                 result.append("")
@@ -520,7 +569,7 @@ class LyricsService:
             result.append(romaji)
         return result
 
-    def translate(self, lines: List[str], target_lang: str) -> List[str]:
+    def translate(self, lines: list[str], target_lang: str) -> list[str]:
         """Translate non-empty lyric lines through the existing Google endpoint."""
         non_empty_indices = [index for index, line in enumerate(lines) if line.strip()]
         non_empty_lines = [lines[index] for index in non_empty_indices]
@@ -535,35 +584,43 @@ class LyricsService:
             self._lru_put(self._translation_cache, cache_key, translated_lines)
 
         result = list(lines)
-        for index, translated in zip(non_empty_indices, translated_lines):
+        for index, translated in zip(non_empty_indices, translated_lines, strict=False):
             result[index] = translated
         return result
 
     @staticmethod
-    def _google_translate_batch(lines: List[str], target_lang: str) -> List[str]:
+    def _google_translate_batch(lines: list[str], target_lang: str) -> list[str]:
         language = config_lyrics.GOOGLE_LANGUAGE_CODES.get(target_lang, target_lang.lower())
         response = requests.get(
             "https://translate.googleapis.com/translate_a/single",
-            params={"client": "gtx", "sl": "auto", "tl": language, "dt": "t", "q": "\n".join(lines)},
+            params={
+                "client": "gtx",
+                "sl": "auto",
+                "tl": language,
+                "dt": "t",
+                "q": "\n".join(lines),
+            },
             timeout=30,
             headers={"User-Agent": "Mozilla/5.0"},
         )
         response.raise_for_status()
         translated = "".join(chunk[0] for chunk in response.json()[0] if chunk and chunk[0])
-        translated_lines = translated.split("\n")
+        translated_lines: list[str] = [str(line) for line in translated.split("\n")]
         while len(translated_lines) < len(lines):
             translated_lines.append("")
         return translated_lines[: len(lines)]
 
     @staticmethod
-    def _lru_put(cache: collections.OrderedDict[str, CacheValue], key: str, value: CacheValue) -> None:
+    def _lru_put(
+        cache: collections.OrderedDict[str, CacheValue], key: str, value: CacheValue
+    ) -> None:
         cache[key] = value
         cache.move_to_end(key)
         if len(cache) > config_lyrics.TRANSLATION_CACHE_MAX:
             cache.popitem(last=False)
 
     @staticmethod
-    def get_custom(video_id: str) -> Optional[Dict[str, str]]:
+    def get_custom(video_id: str) -> dict[str, str] | None:
         for extension in ("lrc", "ttml"):
             path = config_dirs.CUSTOM_LYRICS_DIR / f"{video_id}.{extension}"
             if path.is_file():
@@ -576,7 +633,9 @@ class LyricsService:
             path = config_dirs.CUSTOM_LYRICS_DIR / f"{video_id}.{extension}"
             if path.is_file():
                 path.unlink()
-        (config_dirs.CUSTOM_LYRICS_DIR / f"{video_id}.{lyric_format}").write_text(content, encoding="utf-8")
+        (config_dirs.CUSTOM_LYRICS_DIR / f"{video_id}.{lyric_format}").write_text(
+            content, encoding="utf-8"
+        )
 
     @staticmethod
     def delete_custom(video_id: str) -> bool:

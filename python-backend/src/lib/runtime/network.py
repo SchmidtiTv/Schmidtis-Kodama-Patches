@@ -4,7 +4,6 @@ import socket
 
 from src.config import Config
 
-
 # Captured once at import time, before any patching, so it always refers to the
 # real resolver even if setup_ipv4_first() runs more than once.
 _original_getaddrinfo = socket.getaddrinfo

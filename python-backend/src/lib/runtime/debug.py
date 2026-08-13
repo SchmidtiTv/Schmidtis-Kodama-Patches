@@ -31,7 +31,10 @@ def _dbg_after(response: Response) -> Response:
         if request.path != "/clientlog":
             started_at = getattr(g, "dbg_t0", time.time())
             elapsed_ms = (time.time() - started_at) * 1000
-            print(f"[req] <-- {request.method} {request.path} {response.status_code} in {elapsed_ms:.0f}ms", flush=True)
+            print(
+                f"[req] <-- {request.method} {request.path} {response.status_code} in {elapsed_ms:.0f}ms",
+                flush=True,
+            )
     except Exception:
         pass
     return response

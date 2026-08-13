@@ -136,7 +136,9 @@ class PlaylistMix:
         for item in value:
             if not isinstance(item, Mapping):
                 raise PlaylistMixConfigurationError("transition entries must be objects")
-            from_id = self._require_identifier("fromTrackInstanceId", item.get("fromTrackInstanceId"))
+            from_id = self._require_identifier(
+                "fromTrackInstanceId", item.get("fromTrackInstanceId")
+            )
             to_id = self._require_identifier("toTrackInstanceId", item.get("toTrackInstanceId"))
             if from_id == to_id:
                 raise PlaylistMixConfigurationError("a transition must connect different tracks")
@@ -153,7 +155,9 @@ class PlaylistMix:
                     "volumeCurve": self._require_choice(
                         "volumeCurve", item.get("volumeCurve"), self._VOLUME_CURVES
                     ),
-                    "eqCurve": self._require_choice("eqCurve", item.get("eqCurve"), self._EQ_CURVES),
+                    "eqCurve": self._require_choice(
+                        "eqCurve", item.get("eqCurve"), self._EQ_CURVES
+                    ),
                     "effect": self._require_choice("effect", item.get("effect"), self._EFFECTS),
                     "beatOffsetMs": self._require_beat_offset(item.get("beatOffsetMs")),
                 }
@@ -163,7 +167,9 @@ class PlaylistMix:
     @staticmethod
     def _require_identifier(name: str, value: object) -> str:
         if not isinstance(value, str) or not value.strip() or len(value) > 256:
-            raise PlaylistMixConfigurationError(f"{name} must be a non-empty string up to 256 characters")
+            raise PlaylistMixConfigurationError(
+                f"{name} must be a non-empty string up to 256 characters"
+            )
         return value
 
     @staticmethod
@@ -176,11 +182,15 @@ class PlaylistMix:
     def _require_bars(value: object) -> int:
         if value not in {2, 4, 8}:
             raise PlaylistMixConfigurationError("bars must be 2, 4, or 8")
-        return cast(int, value)
+        return cast("int", value)
 
     @staticmethod
     def _require_beat_offset(value: object) -> float:
-        if isinstance(value, bool) or not isinstance(value, int | float) or not -100 <= value <= 100:
+        if (
+            isinstance(value, bool)
+            or not isinstance(value, int | float)
+            or not -100 <= value <= 100
+        ):
             raise PlaylistMixConfigurationError("beatOffsetMs must be between -100 and 100")
         return float(value)
 

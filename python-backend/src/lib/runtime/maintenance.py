@@ -6,8 +6,7 @@ import threading
 import time
 from collections.abc import MutableMapping
 from os import PathLike
-from typing import TypeVar
-
+from typing import ClassVar, TypeVar, cast
 
 Key = TypeVar("Key")
 Value = TypeVar("Value")
@@ -17,21 +16,27 @@ class DelayedCleanup:
     """Schedules temporary entries with one shared daemon worker."""
 
     _condition = threading.Condition()
-    _entries: list[tuple[float, int, MutableMapping[object, object], object]] = []
-    _latest_tokens: dict[tuple[int, object], int] = {}
+    _entries: ClassVar[list[tuple[float, int, MutableMapping[object, object], object]]] = []
+    _latest_tokens: ClassVar[dict[tuple[int, object], int]] = {}
     _next_token = 0
     _worker_started = False
 
     # Old server.py: _schedule_cleanup
     @classmethod
-    def schedule_removal(cls, data: MutableMapping[Key, Value], key: Key, delay: float = 300) -> None:
+    def schedule_removal(
+        cls, data: MutableMapping[Key, Value], key: Key, delay: float = 300
+    ) -> None:
         """Remove *key* from *data* after *delay* seconds."""
         with cls._condition:
             cls._next_token += 1
             token = cls._next_token
             entry_key = (id(data), key)
             cls._latest_tokens[entry_key] = token
-            heapq.heappush(cls._entries, (time.monotonic() + delay, token, data, key))
+            entry = cast(
+                "tuple[float, int, MutableMapping[object, object], object]",
+                (time.monotonic() + delay, token, data, key),
+            )
+            heapq.heappush(cls._entries, entry)
             if not cls._worker_started:
                 threading.Thread(target=cls._run, daemon=True, name="delayed-cleanup").start()
                 cls._worker_started = True

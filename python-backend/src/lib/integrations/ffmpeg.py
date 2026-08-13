@@ -6,12 +6,11 @@ import platform
 import sys
 import time
 from collections.abc import Generator
-from typing import Optional, TypedDict
+from typing import TypedDict
 
 import requests
 
 from src.config import PROJECT_ROOT, config_dirs
-
 
 FFMPEG_MAC_REPOSITORY = "eugeneware/ffmpeg-static"
 MIN_FFMPEG_DOWNLOAD_BYTES = 1_000_000
@@ -19,7 +18,7 @@ MIN_FFMPEG_DOWNLOAD_BYTES = 1_000_000
 
 class LatestVersion(TypedDict):
     ts: float
-    ver: Optional[str]
+    ver: str | None
 
 
 class FFmpeg:
@@ -30,9 +29,10 @@ class FFmpeg:
         self._latest: LatestVersion = {"ts": 0.0, "ver": None}
 
     # Old server.py: _find_ffmpeg
-    def find(self) -> str | None | bool:
+    def find(self) -> str | bool | None:
         """Return the directory holding ffmpeg, ``None`` if it is on PATH, or
-        ``False`` if it cannot be found."""
+        ``False`` if it cannot be found.
+        """
         bin_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
         candidates = []
         if sys.platform != "win32":
@@ -53,9 +53,11 @@ class FFmpeg:
         # locations (existing Homebrew installations remain a supported fallback).
         if sys.platform == "darwin":
             if getattr(sys, "frozen", False):
-                candidates.append(os.path.join(os.path.dirname(sys.executable), "..", "Resources", bin_name))
-            candidates.append("/opt/homebrew/bin/ffmpeg")   # Apple Silicon brew
-            candidates.append("/usr/local/bin/ffmpeg")       # Intel brew
+                candidates.append(
+                    os.path.join(os.path.dirname(sys.executable), "..", "Resources", bin_name)
+                )
+            candidates.append("/opt/homebrew/bin/ffmpeg")  # Apple Silicon brew
+            candidates.append("/usr/local/bin/ffmpeg")  # Intel brew
 
         for bundled in candidates:
             if os.path.exists(bundled):
@@ -63,12 +65,13 @@ class FFmpeg:
 
         # Check PATH
         import shutil
+
         if shutil.which("ffmpeg"):
             return None  # yt-dlp will find it in PATH
         return False  # not found
 
     # Old server.py: _ffmpeg_exe_path
-    def exe_path(self) -> Optional[str]:
+    def exe_path(self) -> str | None:
         """Absolute path (or bare 'ffmpeg' for PATH) to the binary, or None if unavailable."""
         directory = self.find()
         if directory is False:
@@ -80,22 +83,26 @@ class FFmpeg:
         return self.find() is not False
 
     # Old server.py: _ffmpeg_version
-    def version(self) -> Optional[str]:
+    def version(self) -> str | None:
         """Installed ffmpeg version as a dotted string (e.g. '8.1'), or None."""
         import re
         import subprocess
+
         exe = self.exe_path()
         if not exe:
             return None
         try:
-            out = subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=10).stdout or ""
+            out = (
+                subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=10).stdout
+                or ""
+            )
             m = re.search(r"version\s+(\d+(?:\.\d+)+)", out)
             return m.group(1) if m else None
         except Exception:
             return None
 
     # Old server.py: _ffmpeg_latest_version
-    def latest_version(self) -> Optional[str]:
+    def latest_version(self) -> str | None:
         """Latest version from the platform's download source, cached for one hour."""
         now = time.time()
         if self._latest["ver"] and now - self._latest["ts"] < 3600:
@@ -127,13 +134,16 @@ class FFmpeg:
     # Old server.py: _ver_tuple
     def version_tuple(v: str) -> tuple[int, ...]:
         import re
+
         return tuple(int(x) for x in re.findall(r"\d+", v or ""))
 
     # Old server.py: ffmpeg_check_update
     def check_update(self) -> dict[str, object]:
         installed = self.version()
         latest = self.latest_version()
-        update = bool(installed and latest and self.version_tuple(latest) > self.version_tuple(installed))
+        update = bool(
+            installed and latest and self.version_tuple(latest) > self.version_tuple(installed)
+        )
         return {"installed": installed, "latest": latest, "updateAvailable": update}
 
     @staticmethod
@@ -151,13 +161,15 @@ class FFmpeg:
     @staticmethod
     def _progress_payload(downloaded: int, total: int, started_at: float) -> str:
         elapsed = max(time.time() - started_at, 0.001)
-        return json.dumps({
-            "status": "progress",
-            "percent": int(downloaded / total * 100) if total else 0,
-            "mb_done": round(downloaded / 1048576, 1),
-            "mb_total": round(total / 1048576, 1) if total else 0,
-            "speed_kbps": int(downloaded / elapsed / 1024),
-        })
+        return json.dumps(
+            {
+                "status": "progress",
+                "percent": int(downloaded / total * 100) if total else 0,
+                "mb_done": round(downloaded / 1048576, 1),
+                "mb_total": round(total / 1048576, 1) if total else 0,
+                "speed_kbps": int(downloaded / elapsed / 1024),
+            }
+        )
 
     def _download_macos(self, force: bool) -> Generator[str, None, None]:
         destination = config_dirs.BIN_DIR / "ffmpeg"
@@ -192,10 +204,12 @@ class FFmpeg:
 
             if downloaded < MIN_FFMPEG_DOWNLOAD_BYTES:
                 temporary.unlink(missing_ok=True)
-                yield "data: " + json.dumps({
-                    "status": "error",
-                    "message": "Download unvollständig — bitte erneut versuchen.",
-                }) + "\n\n"
+                yield "data: " + json.dumps(
+                    {
+                        "status": "error",
+                        "message": "Download unvollständig — bitte erneut versuchen.",
+                    }
+                ) + "\n\n"
                 return
 
             temporary.chmod(0o755)
@@ -216,14 +230,14 @@ class FFmpeg:
             return
         # Only runs when frozen (installed); in dev just report done.
         if not getattr(sys, "frozen", False):
-            yield "data: {\"status\": \"done\"}\n\n"
+            yield 'data: {"status": "done"}\n\n'
             return
 
         dest_dir = os.path.dirname(sys.executable)
         dest_exe = os.path.join(dest_dir, "ffmpeg.exe")
 
         if os.path.exists(dest_exe) and not force:
-            yield "data: {\"status\": \"done\"}\n\n"
+            yield 'data: {"status": "done"}\n\n'
             return
 
         url = "https://www.gyan.dev/ffmpeg/builds/ffmpeg-release-essentials.zip"
@@ -251,12 +265,15 @@ class FFmpeg:
                 zip_data = b"".join(chunks)
                 with zipfile.ZipFile(io.BytesIO(zip_data)) as zf:
                     ffmpeg_entry = next(
-                        (n for n in zf.namelist()
-                         if n.endswith("/ffmpeg.exe") or n == "ffmpeg.exe"),
-                        None
+                        (
+                            n
+                            for n in zf.namelist()
+                            if n.endswith("/ffmpeg.exe") or n == "ffmpeg.exe"
+                        ),
+                        None,
                     )
                     if not ffmpeg_entry:
-                        yield "data: {\"status\": \"error\", \"message\": \"ffmpeg.exe not found in ZIP\"}\n\n"
+                        yield 'data: {"status": "error", "message": "ffmpeg.exe not found in ZIP"}\n\n'
                         return
                     # Write to a temp file then atomically replace, so an update overwrites
                     # the existing binary cleanly (and a failed write can't corrupt it).
@@ -265,7 +282,7 @@ class FFmpeg:
                         dst.write(src.read())
                     os.replace(tmp_exe, dest_exe)
 
-                yield "data: {\"status\": \"done\"}\n\n"
+                yield 'data: {"status": "done"}\n\n'
 
         except Exception as e:
             payload = json.dumps({"status": "error", "message": str(e)})

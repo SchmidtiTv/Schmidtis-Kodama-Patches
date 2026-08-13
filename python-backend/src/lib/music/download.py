@@ -1,12 +1,13 @@
 """Background song downloads and the on-disk song cache."""
 
+import contextlib
 import json
 import logging
 import os
 import threading
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, cast
+from typing import ClassVar, cast
 
 from src.config import config_dirs, config_ytdlp
 from src.lib.integrations.ytdlp import YTDLP, is_hard_error
@@ -20,9 +21,14 @@ class DownloadService:
     MAX_QUEUED_DOWNLOADS = 20
 
     # Old server.py: mime map in serve_cached_song
-    MIME_BY_EXT = {".opus": "audio/opus", ".m4a": "audio/mp4", ".webm": "audio/webm", ".mp3": "audio/mpeg"}
+    MIME_BY_EXT: ClassVar[dict[str, str]] = {
+        ".opus": "audio/opus",
+        ".m4a": "audio/mp4",
+        ".webm": "audio/webm",
+        ".mp3": "audio/mpeg",
+    }
 
-    def __init__(self, ytdlp: YTDLP, logger: Optional[logging.Logger] = None) -> None:
+    def __init__(self, ytdlp: YTDLP, logger: logging.Logger | None = None) -> None:
         self._ytdlp = ytdlp
         self._logger = logger or logging.getLogger(__name__)
         # Old server.py: _download_status — video_id -> "downloading" | "done" | "error"
@@ -38,7 +44,7 @@ class DownloadService:
 
     # Old server.py: _song_audio_path
     @staticmethod
-    def song_audio_path(video_id: str) -> Optional[str]:
+    def song_audio_path(video_id: str) -> str | None:
         """Return the path to the cached audio file (.opus or .m4a), or None."""
         safe = video_id.replace("/", "_").replace("\\", "_")
         for ext in (".opus", ".m4a", ".webm", ".mp3"):
@@ -62,6 +68,7 @@ class DownloadService:
         """Background download via yt-dlp."""
         try:
             import yt_dlp
+
             safe = video_id.replace("/", "_").replace("\\", "_")
             output_tpl = os.path.join(config_dirs.SONG_CACHE_DIR, safe + ".%(ext)s")
 
@@ -70,7 +77,9 @@ class DownloadService:
                     total_value = d.get("total_bytes") or d.get("total_bytes_estimate") or 0
                     downloaded_value = d.get("downloaded_bytes", 0)
                     total = total_value if isinstance(total_value, int | float) else 0
-                    downloaded = downloaded_value if isinstance(downloaded_value, int | float) else 0
+                    downloaded = (
+                        downloaded_value if isinstance(downloaded_value, int | float) else 0
+                    )
                     if total > 0 and video_id in self.queue:
                         self.queue[video_id]["progress"] = round(downloaded / total, 3)
 
@@ -96,7 +105,9 @@ class DownloadService:
                     last_dl_err = dl_e
                     if is_hard_error(str(dl_e)):
                         break
-                    self._logger.warning(f"[download] {video_id} fmt={fmt} auth={not no_auth}: {dl_e}")
+                    self._logger.warning(
+                        f"[download] {video_id} fmt={fmt} auth={not no_auth}: {dl_e}"
+                    )
             if last_dl_err:
                 raise last_dl_err
             # Save metadata
@@ -162,8 +173,10 @@ class DownloadService:
             for name in os.listdir(config_dirs.SONG_CACHE_DIR):
                 if name.endswith(".json"):
                     try:
-                        with open(os.path.join(config_dirs.SONG_CACHE_DIR, name), "r", encoding="utf-8") as fh:
-                            songs.append(cast(dict[str, object], json.load(fh)))
+                        with open(
+                            os.path.join(config_dirs.SONG_CACHE_DIR, name), encoding="utf-8"
+                        ) as fh:
+                            songs.append(cast("dict[str, object]", json.load(fh)))
                     except Exception:
                         pass
         except Exception:
@@ -174,14 +187,10 @@ class DownloadService:
     def delete_cached(self, video_id: str) -> None:
         audio = self.song_audio_path(video_id)
         if audio:
-            try:
+            with contextlib.suppress(Exception):
                 os.remove(audio)
-            except Exception:
-                pass
         meta = self.song_meta_path(video_id)
         if os.path.exists(meta):
-            try:
+            with contextlib.suppress(Exception):
                 os.remove(meta)
-            except Exception:
-                pass
         self.status.pop(video_id, None)

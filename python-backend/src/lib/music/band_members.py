@@ -2,23 +2,22 @@
 
 from __future__ import annotations
 
+import hashlib
+import json
+import os
+import tempfile
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from copy import deepcopy
 from dataclasses import dataclass, field
-import hashlib
-import json
-import os
 from pathlib import Path
 from threading import Lock
-import tempfile
-import time
-from typing import Any
+from typing import Any, Protocol
 
 import requests
 
 from src.config import Config, config_dirs
-
 
 MUSICBRAINZ_URL = "https://musicbrainz.org/ws/2"
 WIKIDATA_URL = "https://www.wikidata.org/wiki/Special:EntityData"
@@ -33,6 +32,12 @@ MAX_DETAIL_WORKERS = 6
 
 class BandMemberLookupError(Exception):
     """Raised when a required third-party lookup cannot be completed."""
+
+
+class JsonResponse(Protocol):
+    def raise_for_status(self) -> None: ...
+
+    def json(self) -> object: ...
 
 
 @dataclass
@@ -62,7 +67,7 @@ class BandMemberFinder:
 
     def __init__(
         self,
-        get: Callable[..., requests.Response] = requests.get,
+        get: Callable[..., JsonResponse] = requests.get,
         monotonic: Callable[[], float] = time.monotonic,
         wall_time: Callable[[], float] = time.time,
         sleep: Callable[[float], None] = time.sleep,
@@ -94,7 +99,9 @@ class BandMemberFinder:
         group_id = group.get("id")
         if not isinstance(group_id, str):
             return self._cache_members(cache_key, [])
-        group_data = self._get_json(f"{MUSICBRAINZ_URL}/artist/{group_id}", {"inc": "artist-rels", "fmt": "json"})
+        group_data = self._get_json(
+            f"{MUSICBRAINZ_URL}/artist/{group_id}", {"inc": "artist-rels", "fmt": "json"}
+        )
         members = self._combine_relations(group_data.get("relations", []))
         self._load_member_details(members)
         return self._cache_members(cache_key, [member.as_dict() for member in members])
@@ -103,9 +110,11 @@ class BandMemberFinder:
         if not members:
             return
         worker_count = min(len(members), MAX_DETAIL_WORKERS)
-        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="band-member") as executor:
+        with ThreadPoolExecutor(
+            max_workers=worker_count, thread_name_prefix="band-member"
+        ) as executor:
             details = executor.map(self._find_member_details, (member.id for member in members))
-            for member, (image, wikipedia_url) in zip(members, details):
+            for member, (image, wikipedia_url) in zip(members, details, strict=False):
                 member.image = image
                 member.wikipedia_url = wikipedia_url
 
@@ -124,7 +133,9 @@ class BandMemberFinder:
             self._member_cache[cache_key] = (self._monotonic(), deepcopy(members))
             return members
 
-    def _cache_members(self, cache_key: str, members: list[dict[str, object]]) -> list[dict[str, object]]:
+    def _cache_members(
+        self, cache_key: str, members: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
         with self._cache_lock:
             self._member_cache[cache_key] = (self._monotonic(), deepcopy(members))
             self._save_disk_cache(cache_key, members)
@@ -205,7 +216,7 @@ class BandMemberFinder:
     @staticmethod
     def _date_range(relation: dict[str, object]) -> str:
         start = relation.get("begin") if isinstance(relation.get("begin"), str) else "Unknown start"
-        return f"{start} – present"
+        return f"{start} \N{EN DASH} present"
 
     def _find_member_details(self, member_id: str) -> tuple[str | None, str | None]:
         try:
@@ -291,15 +302,21 @@ class BandMemberFinder:
         if isinstance(english, dict) and isinstance(english.get("url"), str):
             return english["url"]
         for key, sitelink in sitelinks.items():
-            if key.endswith("wiki") and isinstance(sitelink, dict) and isinstance(sitelink.get("url"), str):
+            if (
+                key.endswith("wiki")
+                and isinstance(sitelink, dict)
+                and isinstance(sitelink.get("url"), str)
+            ):
                 return sitelink["url"]
         return None
 
-    def _get_json(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
+    def _get_json(self, url: str, params: dict[str, object] | None = None) -> dict[str, Any]:
         try:
             if url.startswith(MUSICBRAINZ_URL):
                 self._wait_for_musicbrainz()
-            response = self._get(url, params=params, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
+            response = self._get(
+                url, params=params, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT
+            )
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError, AttributeError) as error:

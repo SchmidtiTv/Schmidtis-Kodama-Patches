@@ -1,7 +1,6 @@
 """Bounded cache for song descriptions and credits scraped from YouTube."""
 
 from collections import OrderedDict
-from typing import Optional
 
 
 class SongCreditsCache:
@@ -11,7 +10,7 @@ class SongCreditsCache:
         self._entries: OrderedDict[str, dict[str, object]] = OrderedDict()
         self._max_entries = max_entries
 
-    def get(self, video_id: str) -> Optional[dict[str, object]]:
+    def get(self, video_id: str) -> dict[str, object] | None:
         entry = self._entries.get(video_id)
         if entry is not None:
             self._entries.move_to_end(video_id)

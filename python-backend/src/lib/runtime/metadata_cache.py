@@ -30,8 +30,7 @@ class MetadataCache:
 
     def _initialize(self) -> None:
         with self._connect() as connection:
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS cache_entries (
                     category TEXT NOT NULL,
                     cache_key TEXT NOT NULL,
@@ -40,22 +39,19 @@ class MetadataCache:
                     payload_bytes INTEGER NOT NULL,
                     PRIMARY KEY (category, cache_key)
                 )
-                """
-            )
+                """)
             connection.execute(
                 "CREATE INDEX IF NOT EXISTS cache_entries_updated_at "
                 "ON cache_entries(category, updated_at)"
             )
-            connection.execute(
-                """
+            connection.execute("""
                 CREATE TABLE IF NOT EXISTS audio_counterparts (
                     video_id TEXT PRIMARY KEY,
                     audio_payload TEXT NOT NULL,
                     resolved_at REAL NOT NULL,
                     payload_bytes INTEGER NOT NULL
                 )
-                """
-            )
+                """)
 
     def get(self, category: str, key: str, ttl: int | None = None) -> dict[str, object] | None:
         with self._connect() as connection:
@@ -73,7 +69,7 @@ class MetadataCache:
         except (json.JSONDecodeError, TypeError):
             self.delete(category, key)
             return None
-        return cast(dict[str, object], value) if isinstance(value, dict) else None
+        return cast("dict[str, object]", value) if isinstance(value, dict) else None
 
     def put(self, category: str, key: str, value: dict[str, object]) -> None:
         payload = json.dumps(value, ensure_ascii=False, separators=(",", ":"))
@@ -90,7 +86,7 @@ class MetadataCache:
                 (category, key, payload, time.time(), len(payload.encode("utf-8"))),
             )
 
-    def move_categories_to(self, destination: "MetadataCache", categories: tuple[str, ...]) -> None:
+    def move_categories_to(self, destination: MetadataCache, categories: tuple[str, ...]) -> None:
         """Move selected categories to another database without replacing newer values."""
         if self.path.resolve() == destination.path.resolve() or not categories:
             return
@@ -163,7 +159,7 @@ class MetadataCache:
         except (json.JSONDecodeError, TypeError):
             self.delete_audio_counterpart(video_id)
             return None
-        return cast(dict[str, object], value) if isinstance(value, dict) else None
+        return cast("dict[str, object]", value) if isinstance(value, dict) else None
 
     def put_audio_counterpart(self, video_id: str, audio_track: dict[str, object]) -> None:
         """Atomically insert or refresh a video-to-audio resolution."""

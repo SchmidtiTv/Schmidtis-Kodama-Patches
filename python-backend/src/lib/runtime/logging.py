@@ -2,11 +2,10 @@
 
 import collections
 import logging
-from typing import override
 import sys
 import threading
 import time
-from typing import TextIO
+from typing import TextIO, override
 
 DEBUG_LOG = collections.deque(maxlen=500)
 DEBUG_LOG_LOCK = threading.Lock()

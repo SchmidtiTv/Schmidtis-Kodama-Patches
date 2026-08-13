@@ -9,6 +9,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
+from typing import ClassVar
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 BACKEND_PORT = 9847
@@ -96,8 +97,9 @@ def _migrate_development_cache(base_dir: Path, cache_dir: Path) -> None:
 
 def _lastfm_config_candidates() -> list[Path]:
     candidates = []
-    if getattr(sys, "frozen", False) and hasattr(sys, "_MEIPASS"):
-        candidates.append(Path(sys._MEIPASS) / "lastfm_config.json")
+    bundle_root = vars(sys).get("_MEIPASS")
+    if getattr(sys, "frozen", False) and isinstance(bundle_root, str):
+        candidates.append(Path(bundle_root) / "lastfm_config.json")
     candidates.append(PROJECT_ROOT / "lastfm_config.json")
     return candidates
 
@@ -129,7 +131,7 @@ class Config:
     ALBUM_CACHE_TTL = 7 * 24 * 3600
     BAND_MEMBER_CACHE_TTL = 24 * 3600
     AUDIO_COUNTERPART_CACHE_TTL = 30 * 24 * 3600
-    CACHE_DEFAULTS = {
+    CACHE_DEFAULTS: ClassVar[dict[str, bool]] = {
         "playlists": True,
         "albums": True,
         "images": True,
@@ -207,7 +209,7 @@ class ConfigLyrics:
     """Fixed limits and language mappings for lyric tools."""
 
     TRANSLATION_CACHE_MAX = 500
-    GOOGLE_LANGUAGE_CODES = {
+    GOOGLE_LANGUAGE_CODES: ClassVar[dict[str, str]] = {
         "DE": "de",
         "EN": "en",
         "FR": "fr",
@@ -226,18 +228,24 @@ class ConfigLyrics:
 class ConfigYTDLP:
     """Client options and browser-cookie refresh settings for yt-dlp."""
 
-    WEB_MUSIC_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["web_music"]}}}
-    ANDROID_OPTIONS = {
+    WEB_MUSIC_OPTIONS: ClassVar[dict[str, object]] = {
+        "extractor_args": {"youtube": {"player_client": ["web_music"]}}
+    }
+    ANDROID_OPTIONS: ClassVar[dict[str, object]] = {
         "extractor_args": {"youtube": {"player_client": ["android_music"], "player_skip": ["js"]}}
     }
-    IOS_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["ios"], "player_skip": ["js"]}}}
-    IOS_MUSIC_OPTIONS = {
+    IOS_OPTIONS: ClassVar[dict[str, object]] = {
+        "extractor_args": {"youtube": {"player_client": ["ios"], "player_skip": ["js"]}}
+    }
+    IOS_MUSIC_OPTIONS: ClassVar[dict[str, object]] = {
         "extractor_args": {"youtube": {"player_client": ["ios_music"], "player_skip": ["js"]}}
     }
-    TV_OPTIONS = {
+    TV_OPTIONS: ClassVar[dict[str, object]] = {
         "extractor_args": {"youtube": {"player_client": ["tv_embedded"], "player_skip": ["js"]}}
     }
-    MWEB_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["mweb"]}}}
+    MWEB_OPTIONS: ClassVar[dict[str, object]] = {
+        "extractor_args": {"youtube": {"player_client": ["mweb"]}}
+    }
     AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio[acodec=aac]"
     BROWSER_COOKIE_TTL = 6 * 3600
     BROWSER_COOKIE_MIN_GAP = 600
@@ -262,7 +270,7 @@ class ConfigOverlay:
     """Default document settings for the OBS overlay."""
 
     DOCUMENT_VERSION = 2
-    V1_DEFAULT = {
+    V1_DEFAULT: ClassVar[dict[str, object]] = {
         "preset": "basic",
         "bgColor": "#1a1a1a",
         "bgOpacity": 90,
@@ -320,7 +328,7 @@ class ConfigMusixMatch:
 
     MX_APP_ID = "web-desktop-app-v1.0"
     MX_BASE = "https://apic-desktop.musixmatch.com/ws/1.1"
-    MX_HEADERS = {
+    MX_HEADERS: ClassVar[dict[str, str]] = {
         "authority": "apic-desktop.musixmatch.com",
         "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "cookie": "x-mxm-token-guid=",

@@ -1,11 +1,12 @@
 """Resolve video-heavy YouTube Music playlists to their audio counterparts."""
 
+import contextlib
 import re
 import sqlite3
-from collections.abc import Iterator
+from collections.abc import Iterator, Mapping, Sequence
 from concurrent.futures import ThreadPoolExecutor
 from difflib import SequenceMatcher
-from typing import Protocol
+from typing import Protocol, cast
 
 from src.config import Config
 from src.lib.music.video_variants import is_video_variant
@@ -20,6 +21,7 @@ class WatchPlaylistClient(Protocol):
     def search(
         self, query: str, filter: str = "songs", limit: int = 20
     ) -> list[dict[str, object]]: ...
+
 
 _VIDEO_TITLE_MARKER = re.compile(
     r"\s*[\[(](?:(?:official\s+)?(?:hd\s+)?(?:music|lyric)\s+video|"
@@ -50,18 +52,20 @@ def _normalized_text(value: object) -> str:
     return re.sub(r"[^\w]+", " ", str(value).casefold()).strip()
 
 
-def _artist_names(track: dict[str, object]) -> set[str]:
-    artists = track.get("artists") or []
+def _artist_names(track: Mapping[str, object]) -> set[str]:
+    artists = track.get("artists")
     if not isinstance(artists, list):
         return set()
     return {
-        _normalized_text(re.sub(r"\s+-\s+topic$", "", str(artist.get("name", "")), flags=re.IGNORECASE))
+        _normalized_text(
+            re.sub(r"\s+-\s+topic$", "", str(artist.get("name", "")), flags=re.IGNORECASE)
+        )
         for artist in artists
         if isinstance(artist, dict) and artist.get("name")
     }
 
 
-def _normalized_title(track: dict[str, object]) -> str:
+def _normalized_title(track: Mapping[str, object]) -> str:
     title = str(track.get("title", ""))
     title = _VIDEO_TITLE_MARKER.sub("", title)
     title = _FEATURE_CREDIT.sub("", title)
@@ -79,18 +83,18 @@ def _normalized_title(track: dict[str, object]) -> str:
     return re.sub(r"[^\w]+", " ", title.casefold()).strip()
 
 
-def _artists(track: dict[str, object]) -> set[str]:
+def _artists(track: Mapping[str, object]) -> set[str]:
     return _artist_names(track)
 
 
-def _primary_artist(track: dict[str, object]) -> str:
-    artists = track.get("artists") or []
+def _primary_artist(track: Mapping[str, object]) -> str:
+    artists = track.get("artists")
     if not isinstance(artists, list) or not artists or not isinstance(artists[0], dict):
         return ""
     return str(artists[0].get("name", "")).strip()
 
 
-def _same_song(video: dict[str, object], audio: dict[str, object]) -> bool:
+def _same_song(video: Mapping[str, object], audio: Mapping[str, object]) -> bool:
     if _normalized_title(video) != _normalized_title(audio):
         return False
     video_artists = _artists(video)
@@ -102,14 +106,14 @@ def _version_markers(title: str) -> set[str]:
     return {marker for marker in _PROTECTED_VERSION_MARKERS if marker in title}
 
 
-def _feature_credits(track: dict[str, object]) -> set[str]:
+def _feature_credits(track: Mapping[str, object]) -> set[str]:
     return {
         _normalized_text(credit)
         for credit in _FEATURE_CREDIT_CONTENT.findall(str(track.get("title", "")))
     }
 
 
-def _title_similarity(video: dict[str, object], candidate: dict[str, object]) -> float:
+def _title_similarity(video: Mapping[str, object], candidate: Mapping[str, object]) -> float:
     video_title = _normalized_title(video)
     candidate_title = _normalized_title(candidate)
     if not video_title or not candidate_title:
@@ -138,7 +142,7 @@ def _title_similarity(video: dict[str, object], candidate: dict[str, object]) ->
     return max(sequence, containment, (coverage * 0.55) + (jaccard * 0.45))
 
 
-def _duration_seconds(track: dict[str, object]) -> int | None:
+def _duration_seconds(track: Mapping[str, object]) -> int | None:
     duration = track.get("duration_seconds")
     if isinstance(duration, int):
         return duration
@@ -153,7 +157,9 @@ def _duration_seconds(track: dict[str, object]) -> int | None:
     return seconds
 
 
-def _audio_match_score(video: dict[str, object], candidate: dict[str, object]) -> float | None:
+def _audio_match_score(
+    video: Mapping[str, object], candidate: Mapping[str, object]
+) -> float | None:
     """Score a song hit while rejecting covers and mismatched versions."""
     if candidate.get("resultType") not in (None, "song"):
         return None
@@ -177,27 +183,26 @@ def _audio_match_score(video: dict[str, object], candidate: dict[str, object]) -
         duration_score = max(0.0, 1.0 - (abs(video_duration - candidate_duration) / 180))
 
     if video_artists and candidate_artists:
-        artist_score = len(video_artists & candidate_artists) / len(video_artists | candidate_artists)
+        artist_score = len(video_artists & candidate_artists) / len(
+            video_artists | candidate_artists
+        )
     else:
         artist_score = 0.5
     feature_penalty = 0.04 if _feature_credits(video) != _feature_credits(candidate) else 0.0
-    return (
-        (title_score * 0.75)
-        + (artist_score * 0.20)
-        + (duration_score * 0.05)
-        - feature_penalty
-    )
+    return (title_score * 0.75) + (artist_score * 0.20) + (duration_score * 0.05) - feature_penalty
 
 
-def _search_query(track: dict[str, object]) -> str:
-    artists = track.get("artists") or []
+def _search_query(track: Mapping[str, object]) -> str:
+    raw_artists = track.get("artists")
+    artists = raw_artists if isinstance(raw_artists, list) else []
     names = [str(artist.get("name", "")) for artist in artists if isinstance(artist, dict)]
     return " ".join(part for part in (str(track.get("title", "")), *names) if part).strip()
 
 
 def _find_audio_search_match(
-    client: WatchPlaylistClient, video: dict[str, object]
+    client: object, video: Mapping[str, object]
 ) -> dict[str, object] | None:
+    search_client = cast(WatchPlaylistClient, client)
     query = _search_query(video)
     primary_artist = _primary_artist(video)
     if not query or not primary_artist:
@@ -213,7 +218,7 @@ def _find_audio_search_match(
             continue
         seen_queries.add(normalized_query)
         try:
-            candidates = client.search(search_query, filter="songs", limit=10)
+            candidates = search_client.search(search_query, filter="songs", limit=10)
         except Exception as error:
             print(
                 f"[playlist] audio search failed video_id={video.get('videoId', '')}: {error}",
@@ -229,26 +234,28 @@ def _find_audio_search_match(
             and score >= _MIN_MATCH_SCORE
         ]
         if matches:
-            return max(matches, key=lambda match: match[0])[1]
+            return max(matches, key=lambda match: cast(float, match[0]))[1]
     return None
 
 
-def _watch_playlist_candidates(
-    client: WatchPlaylistClient, playlist_id: str, track_count: int
-) -> list[object]:
+def _watch_playlist_candidates(client: object, playlist_id: str, track_count: int) -> list[object]:
+    watch_client = cast(WatchPlaylistClient, client)
     try:
-        response = client.get_watch_playlist(playlistId=playlist_id, limit=max(25, track_count))
+        response = watch_client.get_watch_playlist(
+            playlistId=playlist_id, limit=max(25, track_count)
+        )
         candidates = response.get("tracks", [])
     except Exception as error:
-        print(f"[playlist] audio counterpart lookup failed playlist_id={playlist_id}: {error}", flush=True)
+        print(
+            f"[playlist] audio counterpart lookup failed playlist_id={playlist_id}: {error}",
+            flush=True,
+        )
         return []
 
     return candidates if isinstance(candidates, list) else []
 
 
-def _cached_counterpart(
-    cache: MetadataCache | None, video_id: str
-) -> dict[str, object] | None:
+def _cached_counterpart(cache: MetadataCache | None, video_id: str) -> dict[str, object] | None:
     if cache is None or not video_id:
         return None
     try:
@@ -262,32 +269,28 @@ def _store_counterpart(
 ) -> None:
     if cache is None or not video_id:
         return
-    try:
+    with contextlib.suppress(OSError, sqlite3.Error, TypeError, ValueError):
         cache.put_audio_counterpart(video_id, audio)
-    except (OSError, sqlite3.Error, TypeError, ValueError):
-        pass
 
 
 def _delete_counterpart(cache: MetadataCache | None, video_id: str) -> None:
     if cache is None or not video_id:
         return
-    try:
+    with contextlib.suppress(OSError, sqlite3.Error):
         cache.delete_audio_counterpart(video_id)
-    except (OSError, sqlite3.Error):
-        pass
 
 
 def _resolve_audio_batch(
-    client: WatchPlaylistClient,
+    client: object,
     candidates: list[object],
-    tracks: list[dict[str, object]],
+    tracks: Sequence[Mapping[str, object]],
     offset: int,
     counterpart_cache: MetadataCache | None = None,
 ) -> tuple[list[dict[str, object]], int]:
     """Resolve one ordered playlist batch without delaying other batches."""
-    resolved = list(tracks)
+    resolved = [dict(track) for track in tracks]
     replacement_count = 0
-    unresolved: list[tuple[int, dict[str, object]]] = []
+    unresolved: list[tuple[int, Mapping[str, object]]] = []
     for batch_index, video in enumerate(tracks):
         if not is_video_variant(video):
             continue
@@ -310,7 +313,11 @@ def _resolve_audio_batch(
         if cached_audio is not None:
             _delete_counterpart(counterpart_cache, video_id)
         audio = candidates[offset + batch_index] if offset + batch_index < len(candidates) else None
-        if isinstance(audio, dict) and audio.get("videoType") == "MUSIC_VIDEO_TYPE_ATV" and _same_song(video, audio):
+        if (
+            isinstance(audio, dict)
+            and audio.get("videoType") == "MUSIC_VIDEO_TYPE_ATV"
+            and _same_song(video, audio)
+        ):
             resolved[batch_index] = audio
             replacement_count += 1
             _store_counterpart(counterpart_cache, video_id, audio)
@@ -330,10 +337,12 @@ def _resolve_audio_batch(
     # enabled. Resolve only this batch so the SSE route can emit earlier batches
     # while subsequent lookups run later.
     with ThreadPoolExecutor(max_workers=4) as executor:
-        search_matches = executor.map(
-            lambda item: _find_audio_search_match(client, item[1]), unresolved
-        )
-        for (batch_index, video), audio in zip(unresolved, search_matches):
+
+        def find_match(item: tuple[int, Mapping[str, object]]) -> dict[str, object] | None:
+            return _find_audio_search_match(client, item[1])
+
+        search_matches = executor.map(find_match, unresolved)
+        for (batch_index, video), audio in zip(unresolved, search_matches, strict=False):
             if audio is None:
                 print(
                     "[playlist] audio counterpart unresolved "
@@ -357,9 +366,9 @@ def _resolve_audio_batch(
 
 
 def iter_preferred_audio_versions(
-    client: WatchPlaylistClient,
+    client: object,
     playlist_id: str | None,
-    tracks: list[dict[str, object]],
+    tracks: Sequence[Mapping[str, object]],
     batch_size: int,
     counterpart_cache: MetadataCache | None = None,
 ) -> Iterator[list[dict[str, object]]]:
@@ -369,7 +378,7 @@ def iter_preferred_audio_versions(
 
     if not any(is_video_variant(track) for track in tracks):
         for index in range(0, len(tracks), batch_size):
-            yield tracks[index:index + batch_size]
+            yield [dict(track) for track in tracks[index : index + batch_size]]
         return
 
     candidates = _watch_playlist_candidates(client, playlist_id, len(tracks)) if playlist_id else []
@@ -379,7 +388,7 @@ def iter_preferred_audio_versions(
         batch, replacements = _resolve_audio_batch(
             client,
             candidates,
-            tracks[index:index + batch_size],
+            tracks[index : index + batch_size],
             index,
             counterpart_cache,
         )
@@ -395,14 +404,14 @@ def iter_preferred_audio_versions(
 
 
 def prefer_audio_versions(
-    client: WatchPlaylistClient,
+    client: object,
     playlist_id: str | None,
-    tracks: list[dict[str, object]],
+    tracks: Sequence[Mapping[str, object]],
     counterpart_cache: MetadataCache | None = None,
 ) -> list[dict[str, object]]:
     """Replace OMV/UGC playlist entries with their audio versions when available."""
     if not tracks or not any(is_video_variant(track) for track in tracks):
-        return tracks
+        return [dict(track) for track in tracks]
 
     candidate_count = sum(1 for track in tracks if is_video_variant(track))
     candidates = _watch_playlist_candidates(client, playlist_id, len(tracks)) if playlist_id else []

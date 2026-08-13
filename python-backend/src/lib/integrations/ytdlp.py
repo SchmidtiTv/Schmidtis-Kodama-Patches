@@ -1,5 +1,6 @@
 """yt-dlp update activation and Node.js discovery helpers."""
 
+import contextlib
 import glob
 import io
 import json
@@ -8,7 +9,7 @@ import os
 import shutil
 import sys
 import time
-from typing import Optional, cast
+from typing import cast
 
 import requests
 
@@ -35,9 +36,9 @@ class YTDLP:
 
     def __init__(
         self,
-        profiles: Optional[Profile] = None,
-        music_state: Optional[YoutubeMusicSessionState] = None,
-        logger: Optional[logging.Logger] = None,
+        profiles: Profile | None = None,
+        music_state: YoutubeMusicSessionState | None = None,
+        logger: logging.Logger | None = None,
     ) -> None:
         self._profiles = profiles
         self._music_state = music_state
@@ -96,7 +97,7 @@ class YTDLP:
             pass
 
     # Old server.py: _get_ydl_cookiefile
-    def create_authenticated_cookie_data(self) -> Optional[str]:
+    def create_authenticated_cookie_data(self) -> str | None:
         """Return active profile/session cookies as in-memory Netscape text."""
         if self._profiles is None or self._music_state is None:
             raise RuntimeError("YTDLP requires profile storage and active music-session state.")
@@ -107,7 +108,7 @@ class YTDLP:
             with open(
                 self._profiles.profile_file_path(profile_name), encoding="utf-8"
             ) as profile_file:
-                headers = cast(dict[str, str], json.load(profile_file))
+                headers = cast("dict[str, str]", json.load(profile_file))
             cookie_values: dict[str, str] = {}
             for part in headers.get("cookie", "").split(";"):
                 name, separator, value = part.strip().partition("=")
@@ -161,7 +162,7 @@ class YTDLP:
 
     @staticmethod
     # Old server.py: _active_ytdlp_version
-    def active_version() -> Optional[str]:
+    def active_version() -> str | None:
         try:
             import yt_dlp
             from yt_dlp import version
@@ -188,12 +189,10 @@ class YTDLP:
     def check_update(self) -> dict[str, object]:
         installed = self.active_version()
         latest = None
-        try:
+        with contextlib.suppress(Exception):
             latest = requests.get("https://pypi.org/pypi/yt-dlp/json", timeout=10).json()["info"][
                 "version"
             ]
-        except Exception:
-            pass
         update = bool(installed and latest and self.compare_versions(latest, installed) > 0)
         return {"installed": installed, "latest": latest, "updateAvailable": update}
 
@@ -201,7 +200,8 @@ class YTDLP:
     def update(self) -> tuple[dict[str, object], int]:
         """Download the latest yt-dlp wheel from PyPI, activate it on sys.path and reload, so the
         new version takes effect without an app restart (yt_dlp is imported lazily). Returns
-        ``(payload, status_code)``."""
+        ``(payload, status_code)``.
+        """
         try:
             data = requests.get("https://pypi.org/pypi/yt-dlp/json", timeout=15).json()
             wheel_url = wheel_name = None
@@ -225,10 +225,8 @@ class YTDLP:
             # Keep only the freshest wheel.
             for old in glob.glob(os.path.join(config_dirs.YTDLP_UPDATE_DIR, "yt_dlp-*.whl")):
                 if old != dest:
-                    try:
+                    with contextlib.suppress(OSError):
                         os.remove(old)
-                    except OSError:
-                        pass
             # Activate: prepend + drop cached module so the next lazy `import yt_dlp` picks it up.
             if dest not in sys.path:
                 sys.path.insert(0, dest)

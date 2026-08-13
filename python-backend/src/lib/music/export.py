@@ -1,11 +1,12 @@
 """Export a song to a user-chosen path (opus/mp3) with embedded metadata."""
 
+import contextlib
 import logging
 import os
 import threading
 from collections.abc import Mapping
 from concurrent.futures import ThreadPoolExecutor
-from typing import Optional, cast
+from typing import cast
 
 from src.config import config_ytdlp
 from src.lib.integrations.ffmpeg import FFmpeg
@@ -19,7 +20,7 @@ class ExportService:
     MAX_CONCURRENT_EXPORTS = 2
     MAX_QUEUED_EXPORTS = 6
 
-    def __init__(self, ytdlp: YTDLP, ffmpeg: FFmpeg, logger: Optional[logging.Logger] = None) -> None:
+    def __init__(self, ytdlp: YTDLP, ffmpeg: FFmpeg, logger: logging.Logger | None = None) -> None:
         self._ytdlp = ytdlp
         self._ffmpeg = ffmpeg
         self._logger = logger or logging.getLogger(__name__)
@@ -38,6 +39,7 @@ class ExportService:
         try:
             import requests as _req
             from mutagen import File as MutagenFile
+
             title = meta.get("title", "")
             artists = meta.get("artists", "")
             album = meta.get("album", "")
@@ -49,7 +51,9 @@ class ExportService:
             year = year if isinstance(year, str | int) else ""
             thumbnail = thumbnail if isinstance(thumbnail, str) else ""
 
-            print(f"Metadata: embedding for {file_path} | title={title} | artists={artists} | album={album} | year={year} | thumbnail={thumbnail[:80] if thumbnail else 'EMPTY'}")
+            print(
+                f"Metadata: embedding for {file_path} | title={title} | artists={artists} | album={album} | year={year} | thumbnail={thumbnail[:80] if thumbnail else 'EMPTY'}"
+            )
 
             # Download cover art and convert to JPEG for maximum compatibility
             cover_data = None
@@ -61,18 +65,28 @@ class ExportService:
                     if "lh3.googleusercontent.com" in thumb_url:
                         # Replace size suffix to get 500x500 cover
                         import re
-                        thumb_url = re.sub(r'=w\d+-h\d+.*$', '=w500-h500-l90-rj', thumb_url)
-                        if '=' not in thumb_url:
-                            thumb_url += '=w500-h500-l90-rj'
+
+                        thumb_url = re.sub(r"=w\d+-h\d+.*$", "=w500-h500-l90-rj", thumb_url)
+                        if "=" not in thumb_url:
+                            thumb_url += "=w500-h500-l90-rj"
                     r = _req.get(thumb_url, timeout=10)
-                    print(f"Metadata: thumbnail download status={r.status_code} content-type={r.headers.get('content-type','')} size={len(r.content)}")
+                    print(
+                        f"Metadata: thumbnail download status={r.status_code} content-type={r.headers.get('content-type','')} size={len(r.content)}"
+                    )
                     if r.ok and len(r.content) > 100:
                         ct = r.headers.get("content-type", "")
                         # Convert to JPEG for best compatibility (WebP is not widely supported in tags)
-                        if "webp" in ct or "png" in ct or thumbnail.endswith(".webp") or thumbnail.endswith(".png"):
+                        if (
+                            "webp" in ct
+                            or "png" in ct
+                            or thumbnail.endswith(".webp")
+                            or thumbnail.endswith(".png")
+                        ):
                             try:
                                 from io import BytesIO
+
                                 from PIL import Image
+
                                 img = Image.open(BytesIO(r.content))
                                 img = img.convert("RGB")
                                 buf = BytesIO()
@@ -94,11 +108,11 @@ class ExportService:
                             cover_data = r.content
                             print(f"Metadata: using JPEG cover, {len(cover_data)} bytes")
                     else:
-                        print(f"Metadata: thumbnail download failed or empty")
+                        print("Metadata: thumbnail download failed or empty")
                 except Exception as e:
                     print(f"Metadata: thumbnail download error: {e}")
             else:
-                print(f"Metadata: no thumbnail URL provided")
+                print("Metadata: no thumbnail URL provided")
 
             # Auto-detect actual container format
             audio = MutagenFile(file_path)
@@ -119,20 +133,25 @@ class ExportService:
                 if year:
                     audio["date"] = [str(year)]
                 if cover_data:
-                    from mutagen.flac import Picture
                     import base64
+
+                    from mutagen.flac import Picture
+
                     pic = Picture()
                     pic.type = 3
                     pic.mime = cover_mime
                     pic.desc = "Cover"
                     pic.data = cover_data
-                    audio["metadata_block_picture"] = [base64.b64encode(pic.write()).decode("ascii")]
+                    audio["metadata_block_picture"] = [
+                        base64.b64encode(pic.write()).decode("ascii")
+                    ]
                     print(f"Metadata: embedded OGG cover ({len(cover_data)} bytes, {cover_mime})")
                 audio.save()
-                print(f"Metadata: OGG tags saved successfully")
+                print("Metadata: OGG tags saved successfully")
 
             elif type_name == "MP3":
-                from mutagen.id3 import TIT2, TPE1, TALB, TDRC, TYER, APIC
+                from mutagen.id3 import APIC, TALB, TDRC, TIT2, TPE1, TYER
+
                 if audio.tags is None:
                     audio.add_tags()
                 tags = audio.tags
@@ -146,13 +165,17 @@ class ExportService:
                     tags.add(TALB(encoding=3, text=[album]))
                 if year:
                     tags.add(TDRC(encoding=3, text=[str(year)]))
-                    tags.add(TYER(encoding=3, text=[str(year)]))  # ID3v2.3 year tag for Windows compatibility
+                    tags.add(
+                        TYER(encoding=3, text=[str(year)])
+                    )  # ID3v2.3 year tag for Windows compatibility
                 if cover_data:
-                    tags.add(APIC(encoding=3, mime=cover_mime, type=3, desc="Cover", data=cover_data))
+                    tags.add(
+                        APIC(encoding=3, mime=cover_mime, type=3, desc="Cover", data=cover_data)
+                    )
                     print(f"Metadata: embedded MP3 cover ({len(cover_data)} bytes, {cover_mime})")
                 # Save as ID3v2.3 for Windows Explorer compatibility
                 audio.save(v2_version=3)
-                print(f"Metadata: MP3 tags saved as ID3v2.3 successfully")
+                print("Metadata: MP3 tags saved as ID3v2.3 successfully")
 
             elif type_name in ("MP4",):
                 if title:
@@ -165,6 +188,7 @@ class ExportService:
                     audio["\xa9day"] = [str(year)]
                 if cover_data:
                     from mutagen.mp4 import MP4Cover
+
                     audio["covr"] = [MP4Cover(cover_data, imageformat=MP4Cover.FORMAT_JPEG)]
                 audio.save()
 
@@ -176,13 +200,18 @@ class ExportService:
 
     # Old server.py: _export_audio_bg
     def _export_bg(
-        self, video_id: str, output_path: str, fmt: str = "opus", meta: Optional[Mapping[str, object]] = None
+        self,
+        video_id: str,
+        output_path: str,
+        fmt: str = "opus",
+        meta: Mapping[str, object] | None = None,
     ) -> None:
         """Download / convert song and save to user-chosen path."""
         try:
-            import yt_dlp
             import shutil
             import tempfile
+
+            import yt_dlp
 
             # For OPUS: download, convert WebM→OGG/Opus via ffmpeg, then tag with mutagen
             if fmt == "opus":
@@ -204,11 +233,13 @@ class ExportService:
                             self._ytdlp.apply_active_session_auth(ydl_opts)
                         # Convert to proper OGG/Opus via ffmpeg so mutagen can tag it
                         if ffmpeg_dir is not False:
-                            ydl_opts["postprocessors"] = [{
-                                "key": "FFmpegExtractAudio",
-                                "preferredcodec": "opus",
-                                "preferredquality": "0",
-                            }]
+                            ydl_opts["postprocessors"] = [
+                                {
+                                    "key": "FFmpegExtractAudio",
+                                    "preferredcodec": "opus",
+                                    "preferredquality": "0",
+                                }
+                            ]
                             if ffmpeg_dir:
                                 ydl_opts["ffmpeg_location"] = ffmpeg_dir
                         with yt_dlp.YoutubeDL(cast("yt_dlp._Params", ydl_opts)) as ydl:
@@ -219,12 +250,16 @@ class ExportService:
                         last_exp_err = exp_e
                         if is_hard_error(str(exp_e)):
                             break
-                        self._logger.warning(f"[export-opus] {video_id} fmt={attempt_fmt} auth={not no_auth}: {exp_e}")
+                        self._logger.warning(
+                            f"[export-opus] {video_id} fmt={attempt_fmt} auth={not no_auth}: {exp_e}"
+                        )
                 if last_exp_err:
                     raise last_exp_err
                 # Find the resulting file
                 for f in os.listdir(tmp_dir):
-                    if f.startswith("export.") and not f.endswith((".json", ".jpg", ".png", ".webp")):
+                    if f.startswith("export.") and not f.endswith(
+                        (".json", ".jpg", ".png", ".webp")
+                    ):
                         src = os.path.join(tmp_dir, f)
                         shutil.move(src, output_path)
                         break
@@ -233,10 +268,8 @@ class ExportService:
                     self.embed_metadata(output_path, meta, "opus")
                 self.status[video_id] = "done"
                 DelayedCleanup.schedule_removal(self.status, video_id)
-                try:
+                with contextlib.suppress(Exception):
                     shutil.rmtree(tmp_dir)
-                except Exception:
-                    pass
                 return
 
             # For MP3: need ffmpeg
@@ -244,7 +277,7 @@ class ExportService:
             if ffmpeg_dir is False:
                 self.status[video_id] = "error"
                 DelayedCleanup.schedule_removal(self.status, video_id)
-                print(f"MP3 export error: ffmpeg not found")
+                print("MP3 export error: ffmpeg not found")
                 return
 
             tmp_dir = tempfile.mkdtemp()
@@ -257,11 +290,13 @@ class ExportService:
                         "quiet": True,
                         "no_warnings": True,
                         "outtmpl": tmp_tpl,
-                        "postprocessors": [{
-                            "key": "FFmpegExtractAudio",
-                            "preferredcodec": "mp3",
-                            "preferredquality": "192",
-                        }],
+                        "postprocessors": [
+                            {
+                                "key": "FFmpegExtractAudio",
+                                "preferredcodec": "mp3",
+                                "preferredquality": "192",
+                            }
+                        ],
                     }
                     if extra:
                         ydl_opts.update(extra)
@@ -277,7 +312,9 @@ class ExportService:
                     last_mp3_err = mp3_e
                     if is_hard_error(str(mp3_e)):
                         break
-                    self._logger.warning(f"[export-mp3] {video_id} fmt={attempt_fmt} auth={not no_auth}: {mp3_e}")
+                    self._logger.warning(
+                        f"[export-mp3] {video_id} fmt={attempt_fmt} auth={not no_auth}: {mp3_e}"
+                    )
             if last_mp3_err:
                 raise last_mp3_err
 
@@ -288,10 +325,8 @@ class ExportService:
                 self.embed_metadata(output_path, meta, "mp3")
             self.status[video_id] = "done"
             DelayedCleanup.schedule_removal(self.status, video_id)
-            try:
+            with contextlib.suppress(Exception):
                 shutil.rmtree(tmp_dir)
-            except Exception:
-                pass
         except Exception as e:
             self.status[video_id] = "error"
             DelayedCleanup.schedule_removal(self.status, video_id)
@@ -309,7 +344,9 @@ class ExportService:
             self._executor.submit(self._run_export, video_id, output_path, fmt, meta)
             return True
 
-    def _run_export(self, video_id: str, output_path: str, fmt: str, meta: Mapping[str, object]) -> None:
+    def _run_export(
+        self, video_id: str, output_path: str, fmt: str, meta: Mapping[str, object]
+    ) -> None:
         try:
             self._export_bg(video_id, output_path, fmt, meta)
         finally:

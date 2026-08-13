@@ -7,4 +7,11 @@ from .lyrics import LyricsService
 from .playlist import Playlist
 from .stream import StreamService
 
-__all__ = ["Album", "DownloadService", "ExportService", "LyricsService", "Playlist", "StreamService"]
+__all__ = [
+    "Album",
+    "DownloadService",
+    "ExportService",
+    "LyricsService",
+    "Playlist",
+    "StreamService",
+]

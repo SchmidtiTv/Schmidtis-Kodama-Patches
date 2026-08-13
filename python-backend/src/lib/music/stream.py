@@ -5,6 +5,7 @@ state and the resolved-URL cache so every stream request shares one extraction
 path. Extracted cookies are persisted only as authenticated ciphertext.
 """
 
+import contextlib
 import glob
 import io
 import logging
@@ -12,8 +13,8 @@ import os
 import tempfile
 import threading
 import time
-from collections.abc import Mapping
-from typing import Generator, Protocol, cast
+from collections.abc import Generator, Mapping
+from typing import ClassVar, Protocol, cast
 
 import requests
 
@@ -49,6 +50,7 @@ class _BrowserCookieStore(Protocol):
 
     def write(self, value: str) -> bool:
         """Persist cookie data securely."""
+        ...
 
 
 class StreamService:
@@ -57,7 +59,7 @@ class StreamService:
     # Local stream resolver reused by the progressive proxy (see resolve_audio_url).
     STREAM_ENDPOINT = f"http://127.0.0.1:{BACKEND_PORT}/stream"
     # symphonia has no Opus decoder, so WebM is intentionally excluded.
-    PLAYABLE_EXTS = {".m4a", ".mp4", ".mp3", ".ogg", ".flac", ".wav"}
+    PLAYABLE_EXTS: ClassVar[set[str]] = {".m4a", ".mp4", ".mp3", ".ogg", ".flac", ".wav"}
 
     def __init__(
         self,
@@ -115,7 +117,7 @@ class StreamService:
         base = "music.youtube.com" if use_ytm else "www.youtube.com"
         with yt_dlp.YoutubeDL(cast("yt_dlp._Params", ydl_opts)) as ydl:
             return cast(
-                dict[str, object],
+                "dict[str, object]",
                 ydl.extract_info(f"https://{base}/watch?v={video_id}", download=False),
             )
 
@@ -291,7 +293,7 @@ class StreamService:
                     cookie_buffer = io.StringIO()
                     # yt-dlp accepts text streams here, although its stub names only paths.
                     filtered.save(
-                        cast(str, cookie_buffer),
+                        cast("str", cookie_buffer),
                         ignore_discard=True,
                         ignore_expires=True,
                     )
@@ -475,7 +477,8 @@ class StreamService:
     def prepare_download(self, video_id: str) -> tuple[dict[str, str | bool], int]:
         """Download audio via yt-dlp to a temp file and return the local path.
         Rust reads from disk — no HTTP proxy overhead, no truncation. Returns
-        ``(payload, status_code)``."""
+        ``(payload, status_code)``.
+        """
         import yt_dlp
 
         cache_dir = os.path.join(tempfile.gettempdir(), "kiyoshi-audio")
@@ -488,12 +491,10 @@ class StreamService:
             if ext in self.PLAYABLE_EXTS and os.path.getsize(ex) > 0:
                 print(f"[stream-prepare] Cache hit: {ex}", flush=True)
                 return {"path": ex}, 200
-            elif ext not in self.PLAYABLE_EXTS and os.path.exists(ex):
+            if ext not in self.PLAYABLE_EXTS and os.path.exists(ex):
                 print(f"[stream-prepare] Removing unplayable cache file: {ex}", flush=True)
-                try:
+                with contextlib.suppress(OSError):
                     os.remove(ex)
-                except OSError:
-                    pass
 
         outtmpl = os.path.join(cache_dir, "%(id)s.%(ext)s")
         last_err = None
@@ -637,6 +638,7 @@ class StreamService:
     def warm(self, video_id: str) -> bool:
         """Resolve + cache the stream URL ahead of time (no byte transfer) so the
         next play of this song skips the yt-dlp extraction wait. Used to prewarm
-        upcoming queue tracks."""
+        upcoming queue tracks.
+        """
         url = self.resolve_audio_url(video_id)
         return bool(url) and url != "premium_only"

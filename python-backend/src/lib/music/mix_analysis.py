@@ -6,25 +6,28 @@ waits for it, and all results are cached by the YouTube audio source id.
 
 from __future__ import annotations
 
+import sqlite3
 import subprocess
 import threading
-import time
 import uuid
 from collections.abc import Mapping
 from concurrent.futures import Future, ThreadPoolExecutor
-from pathlib import Path
-import sqlite3
 from typing import Protocol
+
+import numpy as np
 
 from src.lib.integrations.ffmpeg import FFmpeg
 from src.lib.runtime.metadata_cache import MetadataCache
 
 from .playlist_mix import PlaylistMix
-from .stream import StreamService
 
 
 class TrackAnalyzer(Protocol):
     def analyze(self, path: str, video_id: str) -> dict[str, object]: ...
+
+
+class DownloadPreparer(Protocol):
+    def prepare_download(self, video_id: str) -> tuple[Mapping[str, object], int]: ...
 
 
 class NumpyTrackAnalyzer:
@@ -59,15 +62,25 @@ class NumpyTrackAnalyzer:
         }
 
     def _decode(self, path: str) -> np.ndarray:
-        import numpy as np
-
         executable = self._ffmpeg.exe_path()
         if not executable:
             raise RuntimeError("ffmpeg is unavailable")
         result = subprocess.run(
             [
-                executable, "-v", "error", "-t", str(self._MAX_SECONDS), "-i", path,
-                "-ac", "1", "-ar", str(self._SAMPLE_RATE), "-f", "f32le", "pipe:1",
+                executable,
+                "-v",
+                "error",
+                "-t",
+                str(self._MAX_SECONDS),
+                "-i",
+                path,
+                "-ac",
+                "1",
+                "-ar",
+                str(self._SAMPLE_RATE),
+                "-f",
+                "f32le",
+                "pipe:1",
             ],
             capture_output=True,
             timeout=90,
@@ -78,8 +91,6 @@ class NumpyTrackAnalyzer:
         return np.frombuffer(result.stdout, dtype=np.float32)
 
     def _onset_envelope(self, samples: np.ndarray) -> tuple[np.ndarray, int]:
-        import numpy as np
-
         frame, hop = 1024, 512
         usable = samples.size - frame
         if usable <= 0:
@@ -90,8 +101,6 @@ class NumpyTrackAnalyzer:
         return onset / (onset.max() or 1.0), hop
 
     def _estimate_bpm(self, onset: np.ndarray, hop: int) -> tuple[float, float]:
-        import numpy as np
-
         correlation = np.correlate(onset, onset, mode="full")[len(onset) - 1 :]
         min_lag = max(1, round(60 * self._SAMPLE_RATE / (hop * 190)))
         max_lag = min(len(correlation) - 1, round(60 * self._SAMPLE_RATE / (hop * 70)))
@@ -103,8 +112,6 @@ class NumpyTrackAnalyzer:
         return bpm, confidence
 
     def _estimate_beats(self, onset: np.ndarray, hop: int, bpm: float) -> list[float]:
-        import numpy as np
-
         beat_frames = max(1, round(60 * self._SAMPLE_RATE / (hop * bpm)))
         first = int(np.argmax(onset[:beat_frames]))
         beats: list[float] = []
@@ -117,8 +124,6 @@ class NumpyTrackAnalyzer:
         return beats
 
     def _estimate_camelot_key(self, samples: np.ndarray) -> str:
-        import numpy as np
-
         frame = 4096
         usable = samples.size - frame
         if usable <= 0:
@@ -131,7 +136,11 @@ class NumpyTrackAnalyzer:
         chroma = np.bincount(midi % 12, weights=spectrum[valid], minlength=12)
         major = np.array([6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88])
         minor = np.array([6.33, 2.68, 3.52, 5.38, 2.6, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17])
-        scores = [(float(np.dot(chroma, np.roll(template, root))), root, mode) for mode, template in (("major", major), ("minor", minor)) for root in range(12)]
+        scores = [
+            (float(np.dot(chroma, np.roll(template, root))), root, mode)
+            for mode, template in (("major", major), ("minor", minor))
+            for root in range(12)
+        ]
         _, root, mode = max(scores)
         minor_codes = ["5A", "12A", "7A", "2A", "9A", "4A", "11A", "6A", "1A", "8A", "3A", "10A"]
         major_codes = ["8B", "3B", "10B", "5B", "12B", "7B", "2B", "9B", "4B", "11B", "6B", "1B"]
@@ -143,7 +152,13 @@ class MixAnalysisService:
 
     _CATEGORY = "mix_audio_analysis"
 
-    def __init__(self, stream_service: StreamService, metadata_cache: MetadataCache, playlist_mix: PlaylistMix, analyzer: TrackAnalyzer) -> None:
+    def __init__(
+        self,
+        stream_service: DownloadPreparer,
+        metadata_cache: MetadataCache,
+        playlist_mix: PlaylistMix,
+        analyzer: TrackAnalyzer,
+    ) -> None:
         self._stream_service = stream_service
         self._metadata_cache = metadata_cache
         self._playlist_mix = playlist_mix
@@ -157,12 +172,14 @@ class MixAnalysisService:
         # rapid playlist updates from multiplying that work across CPU cores.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="mix-analysis")
 
-    def start(self, profile_name: str | None, playlist_id: str, tracks: list[dict[str, str]]) -> dict[str, object]:
+    def start(
+        self, profile_name: str | None, playlist_id: str, tracks: list[dict[str, str]]
+    ) -> dict[str, object]:
         profile_key = profile_name or "default"
         active_key = (profile_key, playlist_id)
         signature = tuple((track["instanceId"], track["videoId"]) for track in tracks)
         job_id = uuid.uuid4().hex
-        job = {
+        job: dict[str, object] = {
             "jobId": job_id,
             "playlistId": playlist_id,
             "_profile": profile_key,
@@ -175,14 +192,17 @@ class MixAnalysisService:
         with self._lock:
             active_job_id = self._active_jobs.get(active_key)
             active_job = self._jobs.get(active_job_id) if active_job_id else None
-            if active_job and active_job["status"] in {"queued", "running"}:
+            if (
+                active_job_id is not None
+                and active_job
+                and active_job["status"] in {"queued", "running"}
+            ):
                 if active_job["_signature"] == signature:
                     return self._public_job(active_job)
                 self._cancel_events[active_job_id].set()
                 active_job["status"] = "cancelled"
-                if future := self._futures.get(active_job_id):
-                    if future.cancel():
-                        del self._futures[active_job_id]
+                if (future := self._futures.get(active_job_id)) and future.cancel():
+                    del self._futures[active_job_id]
             self._jobs[job_id] = job
             self._cancel_events[job_id] = threading.Event()
             self._active_jobs[active_key] = job_id
@@ -192,14 +212,22 @@ class MixAnalysisService:
                 self._futures.pop(job_id, None)
         return self._public_job(job)
 
-    def get_job(self, profile_name: str | None, playlist_id: str, job_id: str) -> dict[str, object] | None:
+    def get_job(
+        self, profile_name: str | None, playlist_id: str, job_id: str
+    ) -> dict[str, object] | None:
         with self._lock:
             job = self._jobs.get(job_id)
-            if not job or job["playlistId"] != playlist_id or job["_profile"] != (profile_name or "default"):
+            if (
+                not job
+                or job["playlistId"] != playlist_id
+                or job["_profile"] != (profile_name or "default")
+            ):
                 return None
             return self._public_job(job)
 
-    def _run(self, job_id: str, profile_name: str | None, playlist_id: str, tracks: list[dict[str, str]]) -> None:
+    def _run(
+        self, job_id: str, profile_name: str | None, playlist_id: str, tracks: list[dict[str, str]]
+    ) -> None:
         try:
             if self._is_cancelled(job_id):
                 return
@@ -221,8 +249,12 @@ class MixAnalysisService:
             with self._lock:
                 self._futures.pop(job_id, None)
                 job = self._jobs.get(job_id)
-                if job and self._active_jobs.get((job["_profile"], playlist_id)) == job_id:
-                    del self._active_jobs[(job["_profile"], playlist_id)]
+                profile = job.get("_profile") if job else None
+                if (
+                    isinstance(profile, str)
+                    and self._active_jobs.get((profile, playlist_id)) == job_id
+                ):
+                    del self._active_jobs[(profile, playlist_id)]
 
     def _is_cancelled(self, job_id: str) -> bool:
         with self._lock:
@@ -238,10 +270,11 @@ class MixAnalysisService:
         if cached is not None:
             return cached
         payload, status = self._stream_service.prepare_download(video_id)
-        if status != 200 or not isinstance(payload.get("path"), str):
+        path = payload.get("path")
+        if status != 200 or not isinstance(path, str):
             return {"videoId": video_id, "status": "unavailable"}
         try:
-            result = self._analyzer.analyze(payload["path"], video_id)
+            result = self._analyzer.analyze(path, video_id)
         except (ImportError, OSError, RuntimeError, ValueError, subprocess.SubprocessError):
             return {"videoId": video_id, "status": "failed"}
         self._metadata_cache.put(self._CATEGORY, cache_key, result)

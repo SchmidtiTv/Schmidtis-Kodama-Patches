@@ -5,31 +5,31 @@ from flask_cors import CORS
 
 from src.config import Config, config_dirs
 from src.lib import (
+    YTDLP,
     Album,
     BandMemberFinder,
     CacheSettings,
-    LastFM,
     ComposerBridge,
     ComposerSettings,
     DownloadService,
     ExportService,
     FFmpeg,
+    LastFM,
     LyricsService,
-    MixAnalysisService,
     MetadataCache,
+    MixAnalysisService,
     MusixMatch,
     NetworkSettings,
+    NumpyTrackAnalyzer,
     OverlayServer,
     Playlist,
     PlaylistMix,
-    NumpyTrackAnalyzer,
     Profile,
     RemoteControl,
     SongCreditsCache,
     StreamService,
     VideoSyncService,
     YoutubeMusicSession,
-    YTDLP,
     load_feedback_webhook,
     setup_debug,
     setup_log_tee,
@@ -37,12 +37,11 @@ from src.lib import (
 )
 from src.routes import register_blueprints
 
-
 CORS_ORIGINS = [
-    "http://localhost:1421",     # Tauri dev server
-    "tauri://localhost",         # Tauri production (Windows/Linux)
-    "https://tauri.localhost",   # Tauri production (Tauri 2.x, WebView2)
-    "http://tauri.localhost",    # fallback
+    "http://localhost:1421",  # Tauri dev server
+    "tauri://localhost",  # Tauri production (Windows/Linux)
+    "https://tauri.localhost",  # Tauri production (Tauri 2.x, WebView2)
+    "http://tauri.localhost",  # fallback
     "http://localhost",
     "http://127.0.0.1",
 ]

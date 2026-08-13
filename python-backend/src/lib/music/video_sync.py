@@ -1,5 +1,6 @@
 """Resolve and synchronize song/official-video counterpart releases."""
 
+import contextlib
 import hashlib
 import json
 import logging
@@ -8,10 +9,12 @@ import shutil
 import subprocess
 import tempfile
 import threading
-from concurrent.futures import ThreadPoolExecutor
 from collections.abc import Mapping
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import cast
+
+import numpy as np
 
 from src.config import config_dirs, config_ytdlp
 from src.lib.integrations.ffmpeg import FFmpeg
@@ -48,6 +51,7 @@ class VideoSyncService:
 
     def _download_clip(self, video_id: str, output_wav: Path, ffmpeg_dir: str | None) -> None:
         import yt_dlp
+        from yt_dlp.utils import download_range_func
 
         raw_template = str(output_wav.with_name(f"{output_wav.stem}_raw.%(ext)s"))
         last_error: Exception | None = None
@@ -60,9 +64,7 @@ class VideoSyncService:
                     "quiet": True,
                     "no_warnings": True,
                     "outtmpl": raw_template,
-                    "download_ranges": yt_dlp.utils.download_range_func(
-                        None, [(0, self.CLIP_SECONDS)]
-                    ),
+                    "download_ranges": download_range_func([], [(0, self.CLIP_SECONDS)]),
                     "force_keyframes_at_cuts": True,
                     "postprocessors": [{"key": "FFmpegExtractAudio", "preferredcodec": "wav"}],
                 }
@@ -97,12 +99,12 @@ class VideoSyncService:
         ffmpeg_exe = self._ffmpeg.exe_path()
         if not ffmpeg_exe:
             raise RuntimeError("ffmpeg not found")
-        platform_options = {"creationflags": 0x08000000} if os.name == "nt" else {}
         result = subprocess.run(
             [ffmpeg_exe, "-y", "-i", str(raw_wav), "-ac", "1", "-ar", "8000", str(output_wav)],
             capture_output=True,
             timeout=60,
-            **platform_options,
+            creationflags=0x08000000 if os.name == "nt" else 0,
+            check=False,
         )
         raw_wav.unlink(missing_ok=True)
         if result.returncode != 0 or not output_wav.exists():
@@ -110,7 +112,6 @@ class VideoSyncService:
 
     @staticmethod
     def _compute_offset(song_wav: Path, video_wav: Path) -> tuple[float, float]:
-        import numpy as np
         from scipy.io import wavfile
         from scipy.signal import fftconvolve
 
@@ -119,7 +120,7 @@ class VideoSyncService:
         if song_rate != video_rate:
             raise RuntimeError(f"sample rate mismatch: {song_rate} vs {video_rate}")
 
-        def envelope(samples: object) -> object:
+        def envelope(samples: object) -> np.ndarray:
             values = np.asarray(samples).astype(np.float64)
             window = max(1, int(song_rate * 0.05))
             count = len(values) // window
@@ -156,7 +157,9 @@ class VideoSyncService:
         with self._offset_lock:
             if cache_path.exists():
                 try:
-                    return cast(dict[str, object], json.loads(cache_path.read_text(encoding="utf-8")))
+                    return cast(
+                        "dict[str, object]", json.loads(cache_path.read_text(encoding="utf-8"))
+                    )
                 except (OSError, ValueError, TypeError):
                     pass
 
@@ -165,14 +168,17 @@ class VideoSyncService:
                 watch = self._music_session.get_system_client().get_watch_playlist(
                     videoId=video_id, limit=1
                 )
-                tracks = watch.get("tracks") or []
-                counterpart = (tracks[0].get("counterpart") if tracks else None) or None
+                raw_tracks = watch.get("tracks")
+                tracks = raw_tracks if isinstance(raw_tracks, list) else []
+                first_track = tracks[0] if tracks and isinstance(tracks[0], dict) else {}
+                raw_counterpart = first_track.get("counterpart")
+                counterpart = raw_counterpart if isinstance(raw_counterpart, dict) else None
                 counterpart_id = counterpart.get("videoId") if counterpart else None
                 if not counterpart_id:
                     # Some uploads are videos themselves rather than audio releases with a
                     # separate official-video counterpart. Their existing audio clock can drive
                     # the same muted video at offset zero without cross-correlation.
-                    video_type = (tracks[0].get("videoType") if tracks else None) or ""
+                    video_type = first_track.get("videoType") or ""
                     if video_type and video_type != "MUSIC_VIDEO_TYPE_ATV":
                         result = {
                             "available": True,
@@ -183,7 +189,7 @@ class VideoSyncService:
                         }
                 else:
                     ffmpeg_dir = self._ffmpeg.find()
-                    if ffmpeg_dir is False:
+                    if not isinstance(ffmpeg_dir, str):
                         result = {"available": False, "error": "ffmpeg not found"}
                     else:
                         temp_dir = Path(tempfile.mkdtemp())
@@ -225,10 +231,8 @@ class VideoSyncService:
                 result = {"available": False, "error": str(error)}
 
             if "error" not in result:
-                try:
+                with contextlib.suppress(OSError):
                     cache_path.write_text(json.dumps(result), encoding="utf-8")
-                except OSError:
-                    pass
             return result
 
     @staticmethod
@@ -256,7 +260,7 @@ class VideoSyncService:
             and entry.get("vcodec") not in (None, "none")
         ]
         candidates.sort(key=lambda entry: entry.get("height") or 0)
-        return cast(str, candidates[-1]["url"]) if candidates else None
+        return cast("str", candidates[-1]["url"]) if candidates else None
 
     def _extract_video(
         self,
@@ -282,7 +286,7 @@ class VideoSyncService:
         host = "music.youtube.com" if use_music_host else "www.youtube.com"
         with yt_dlp.YoutubeDL(cast("yt_dlp._Params", options)) as ydl:
             return cast(
-                dict[str, object],
+                "dict[str, object]",
                 ydl.extract_info(f"https://{host}/watch?v={video_id}", download=False),
             )
 
@@ -330,16 +334,13 @@ class VideoSyncService:
                 ):
                     continue
                 try:
-                    info = self._extract_video(
-                        video_id, None, extra, anonymous, use_music_host
-                    )
+                    info = self._extract_video(video_id, None, extra, anonymous, use_music_host)
                     formats = info.get("formats")
                     if max_height and isinstance(formats, list):
                         capped = [
                             entry
                             for entry in formats
-                            if isinstance(entry, dict)
-                            and (entry.get("height") or 0) <= max_height
+                            if isinstance(entry, dict) and (entry.get("height") or 0) <= max_height
                         ]
                         if capped:
                             info = {**info, "formats": capped}
