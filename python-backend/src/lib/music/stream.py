@@ -1,12 +1,12 @@
 """Audio stream resolution and progressive proxying for the player.
 
-A single ``StreamService`` instance owns the cached browser-cookie extraction
+A single ``StreamService`` instance owns the in-memory browser-cookie extraction
 state and the resolved-URL cache so every stream request shares one extraction
-path. yt-dlp client options, the audio format, and the browser-cookie file live
-in :class:`~src.config.ConfigYTDLP`.
+path. No extracted browser cookies are persisted to disk.
 """
 
 import glob
+import io
 import logging
 import os
 import tempfile
@@ -53,6 +53,7 @@ class StreamService:
         self._logger = logger or logging.getLogger(__name__)
         self._browser_cookie_lock = threading.Lock()
         self._browser_cookie_last_extract = 0.0
+        self._browser_cookie_data_cache: str | None = None
         self._audio_url_cache = {}  # video_id -> (url, expiry_ts)
         self._audio_url_lock = threading.Lock()
         self._audio_url_inflight: dict[str, threading.Event] = {}
@@ -61,13 +62,22 @@ class StreamService:
 
     # ── yt-dlp extraction helpers ────────────────────────────────────────────
     # Old server.py: _ydl_extract_url
-    def _extract_url(self, video_id: str, fmt: str, skip_download: bool = True, extra_opts: Mapping[str, object] | None = None, skip_auth: bool = False, use_ytm: bool = True) -> dict[str, object]:
+    def _extract_url(
+        self,
+        video_id: str,
+        fmt: str,
+        skip_download: bool = True,
+        extra_opts: Mapping[str, object] | None = None,
+        skip_auth: bool = False,
+        use_ytm: bool = True,
+    ) -> dict[str, object]:
         """Run yt-dlp extraction with the given format string. Returns info dict.
 
         use_ytm=True  → music.youtube.com (authenticated / YouTube Music content)
         use_ytm=False → www.youtube.com   (anonymous fallback; wider format availability)
         """
         import yt_dlp
+
         ydl_opts: dict[str, object] = {
             "format": fmt,
             "quiet": True,
@@ -81,12 +91,22 @@ class StreamService:
             self._ytdlp.apply_active_session_auth(ydl_opts)
         base = "music.youtube.com" if use_ytm else "www.youtube.com"
         with yt_dlp.YoutubeDL(cast("yt_dlp._Params", ydl_opts)) as ydl:
-            return cast(dict[str, object], ydl.extract_info(f"https://{base}/watch?v={video_id}", download=False))
+            return cast(
+                dict[str, object],
+                ydl.extract_info(f"https://{base}/watch?v={video_id}", download=False),
+            )
 
     # Old server.py: _ydl_pick_any_audio
-    def _pick_any_audio(self, video_id: str, extra_opts: Mapping[str, object] | None = None, skip_auth: bool = False, use_ytm: bool = True) -> str | None:
+    def _pick_any_audio(
+        self,
+        video_id: str,
+        extra_opts: Mapping[str, object] | None = None,
+        skip_auth: bool = False,
+        use_ytm: bool = True,
+    ) -> str | None:
         """Last-resort: fetch all formats without a selector and pick manually."""
         import yt_dlp
+
         ydl_opts: dict[str, object] = {
             "quiet": True,
             "no_warnings": True,
@@ -101,8 +121,14 @@ class StreamService:
         with yt_dlp.YoutubeDL(cast("yt_dlp._Params", ydl_opts)) as ydl:
             info = ydl.extract_info(f"https://{base}/watch?v={video_id}", download=False)
         fmts = info.get("formats") or []
-        self._logger.info(f"[stream] {video_id} available formats: {[f.get('format_id') for f in fmts]}")
-        audio_only = [f for f in fmts if f.get("acodec") != "none" and f.get("vcodec") == "none" and f.get("url")]
+        self._logger.info(
+            f"[stream] {video_id} available formats: {[f.get('format_id') for f in fmts]}"
+        )
+        audio_only = [
+            f
+            for f in fmts
+            if f.get("acodec") != "none" and f.get("vcodec") == "none" and f.get("url")
+        ]
         has_audio = [f for f in fmts if f.get("acodec") != "none" and f.get("url")]
         candidates = audio_only or has_audio or [f for f in fmts if f.get("url")]
         if candidates:
@@ -119,7 +145,11 @@ class StreamService:
         if not isinstance(formats, list):
             return None
         entries = [entry for entry in formats if isinstance(entry, dict)]
-        audio_formats = [entry for entry in entries if entry.get("acodec") != "none" and entry.get("vcodec") == "none"]
+        audio_formats = [
+            entry
+            for entry in entries
+            if entry.get("acodec") != "none" and entry.get("vcodec") == "none"
+        ]
         chosen = audio_formats[-1] if audio_formats else entries[-1] if entries else None
         candidate = chosen.get("url") if chosen else None
         return candidate if isinstance(candidate, str) else None
@@ -162,60 +192,64 @@ class StreamService:
     def _is_unavailable(err_str: str) -> bool:
         return any(k in err_str for k in ("Video unavailable", "This video is not available"))
 
-    # ── Cached browser-cookie file ───────────────────────────────────────────
+    # ── In-memory browser cookies ────────────────────────────────────────────
     # yt-dlp's `cookiesfrombrowser` re-decrypts the browser's cookie DB on EVERY
     # call. On macOS that means a "Chrome Safe Storage" keychain prompt for every
     # single /stream request (the "Always Allow" grant does not persist for an
     # unsigned dev Python). To avoid that, we extract the browser cookies ONCE
-    # into a Netscape cookie file and reuse it via `cookiefile`, so the keychain
-    # is touched at most once per refresh interval instead of once per track.
+    # into Netscape-format text held only in memory, so the keychain is touched
+    # at most once per refresh interval instead of once per track.
     #
-    # Trade-off vs. cookiesfrombrowser: a static cookie file cannot auto-extract
+    # Trade-off vs. cookiesfrombrowser: cached cookie data cannot auto-extract
     # PO tokens from live browser storage. In practice this is fine here; log in
     # via the app for a first-class authenticated session if a track needs it.
     # Old server.py: _get_browser_cookiefile
-    def _browser_cookiefile(self, force: bool = False) -> str | None:
-        """Return a path to a cached Netscape cookie file extracted from the
-        user's browser, or None if none could be produced. Extraction (which may
-        trigger a keychain prompt) runs at most once per TTL, and never more than
-        once per BROWSER_COOKIE_MIN_GAP even when forced."""
-        cookie_path = str(config_ytdlp.BROWSER_COOKIE_FILE)
+    def _browser_cookie_data(self, force: bool = False) -> str | None:
+        """Return browser cookies as in-memory Netscape text.
+
+        Extraction may trigger a keychain prompt. It runs at most once per TTL,
+        and never more than once per ``BROWSER_COOKIE_MIN_GAP`` even when forced.
+        """
         with self._browser_cookie_lock:
             now = time.time()
-            have = os.path.exists(cookie_path)
-            fresh = have and (now - os.path.getmtime(cookie_path) < config_ytdlp.BROWSER_COOKIE_TTL)
+            cached = self._browser_cookie_data_cache
+            fresh = cached is not None and (
+                now - self._browser_cookie_last_extract < config_ytdlp.BROWSER_COOKIE_TTL
+            )
             if fresh and not force:
-                return cookie_path
+                return cached
             if now - self._browser_cookie_last_extract < config_ytdlp.BROWSER_COOKIE_MIN_GAP:
-                return cookie_path if have else None
+                return cached
             self._browser_cookie_last_extract = now
             try:
-                from yt_dlp.cookies import extract_cookies_from_browser, YoutubeDLCookieJar
-            except Exception as e:
-                self._logger.debug(f"[cookies] yt-dlp cookie API unavailable: {e}")
-                return cookie_path if have else None
+                from yt_dlp.cookies import YoutubeDLCookieJar, extract_cookies_from_browser
+            except Exception as error:
+                self._logger.debug(f"[cookies] yt-dlp cookie API unavailable: {error}")
+                return cached
             for browser in ("chrome", "edge", "brave", "firefox", "opera", "vivaldi", "chromium"):
                 try:
                     jar = extract_cookies_from_browser(browser)
-                except Exception as e:
-                    self._logger.debug(f"[cookies] {browser} extract failed: {e}")
+                except Exception as error:
+                    self._logger.debug(f"[cookies] {browser} extract failed: {error}")
                     continue
-                # Keep only YouTube/Google cookies — never dump the whole browser
-                # cookie store to a plaintext file.
+                # Keep only YouTube/Google cookies and never persist them.
                 filtered = YoutubeDLCookieJar()
-                for c in jar:
-                    d = (c.domain or "").lower()
-                    if "youtube" in d or "google" in d:
-                        filtered.set_cookie(c)
+                for cookie in jar:
+                    domain = (cookie.domain or "").lower()
+                    if "youtube" in domain or "google" in domain:
+                        filtered.set_cookie(cookie)
                 if len(filtered):
-                    try:
-                        filtered.save(cookie_path, ignore_discard=True, ignore_expires=True)
-                        self._logger.info(f"[cookies] cached {len(filtered)} cookies from {browser} -> browser_cookies.txt")
-                        return cookie_path
-                    except Exception as e:
-                        self._logger.debug(f"[cookies] failed to save cookie file: {e}")
-            self._logger.info("[cookies] no browser cookies found to cache")
-            return cookie_path if have else None
+                    cookie_buffer = io.StringIO()
+                    filtered.save(cookie_buffer, ignore_discard=True, ignore_expires=True)
+                    self._browser_cookie_data_cache = cookie_buffer.getvalue()
+                    self._logger.info(
+                        "[cookies] cached %s %s cookies in memory",
+                        len(filtered),
+                        browser,
+                    )
+                    return self._browser_cookie_data_cache
+            self._logger.info("[cookies] no browser cookies found")
+            return cached
 
     # ── /stream ──────────────────────────────────────────────────────────────
     # Old server.py: stream_url
@@ -258,36 +292,54 @@ class StreamService:
                 f"{time.time()-_t:.1f}s: {e}"
             )
 
-        # ── Tier 1: browser cookies via a CACHED cookie file ─────────────────
-        # Uses a cookie file extracted from the browser once (see
-        # _browser_cookiefile) rather than re-reading the browser on every call,
+        # ── Tier 1: browser cookies held only in memory ──────────────────────
+        # Uses cookie data extracted from the browser once (see
+        # _browser_cookie_data) rather than re-reading the browser on every call,
         # which would trigger a keychain prompt per track on macOS.
-        _bcf = self._browser_cookiefile()
-        if _bcf:
+        browser_cookie_data = self._browser_cookie_data()
+        if browser_cookie_data:
             _t = time.time()
             try:
-                info = self._extract_url(video_id, config_ytdlp.AUDIO_FORMAT, extra_opts={"cookiefile": _bcf}, skip_auth=True)
+                info = self._extract_url(
+                    video_id,
+                    config_ytdlp.AUDIO_FORMAT,
+                    extra_opts={"cookiefile": io.StringIO(browser_cookie_data)},
+                    skip_auth=True,
+                )
                 url = self._stream_url_from_info(info)
                 if url and self._probe_audio_url(video_id, url):
-                    self._logger.info(f"[stream] {video_id} OK via cached browser cookies in {time.time()-_t:.1f}s (total {time.time()-_t_total:.1f}s)")
+                    self._logger.info(
+                        f"[stream] {video_id} OK via cached browser cookies in {time.time()-_t:.1f}s (total {time.time()-_t_total:.1f}s)"
+                    )
                     return {"url": url}, 200
             except Exception as e:
                 last_err = e
-                self._logger.warning(f"[stream] {video_id} cached-browser-cookies FAILED in {time.time()-_t:.1f}s: {e}")
+                self._logger.warning(
+                    f"[stream] {video_id} cached-browser-cookies FAILED in {time.time()-_t:.1f}s: {e}"
+                )
                 # Cookies may have gone stale — force one refresh (rate-limited to
                 # once per 10 min) and retry, then fall through to the other tiers.
                 if not self._is_hard_error(str(e)):
-                    _bcf2 = self._browser_cookiefile(force=True)
-                    if _bcf2:
+                    refreshed_cookie_data = self._browser_cookie_data(force=True)
+                    if refreshed_cookie_data:
                         try:
-                            info = self._extract_url(video_id, config_ytdlp.AUDIO_FORMAT, extra_opts={"cookiefile": _bcf2}, skip_auth=True)
+                            info = self._extract_url(
+                                video_id,
+                                config_ytdlp.AUDIO_FORMAT,
+                                extra_opts={"cookiefile": io.StringIO(refreshed_cookie_data)},
+                                skip_auth=True,
+                            )
                             url = self._stream_url_from_info(info)
                             if url and self._probe_audio_url(video_id, url):
-                                self._logger.info(f"[stream] {video_id} OK via refreshed browser cookies in {time.time()-_t:.1f}s")
+                                self._logger.info(
+                                    f"[stream] {video_id} OK via refreshed browser cookies in {time.time()-_t:.1f}s"
+                                )
                                 return {"url": url}, 200
                         except Exception as e2:
                             last_err = e2
-                            self._logger.warning(f"[stream] {video_id} refreshed-browser-cookies FAILED: {e2}")
+                            self._logger.warning(
+                                f"[stream] {video_id} refreshed-browser-cookies FAILED: {e2}"
+                            )
 
         # ── Tier 2: STREAM_ATTEMPTS (app cookies + anonymous mobile/web) ─────
         for fmt, extra, no_auth in config_ytdlp.STREAM_ATTEMPTS:
@@ -296,11 +348,15 @@ class StreamService:
                 info = self._extract_url(video_id, fmt, extra_opts=extra, skip_auth=no_auth)
                 url = self._stream_url_from_info(info)
                 if url and self._probe_audio_url(video_id, url):
-                    self._logger.info(f"[stream] {video_id} OK via attempt {extra} no_auth={no_auth} in {time.time()-_t:.1f}s (total {time.time()-_t_total:.1f}s)")
+                    self._logger.info(
+                        f"[stream] {video_id} OK via attempt {extra} no_auth={no_auth} in {time.time()-_t:.1f}s (total {time.time()-_t_total:.1f}s)"
+                    )
                     return {"url": url}, 200
             except Exception as e:
                 last_err = e
-                self._logger.warning(f"[stream] {video_id} attempt {extra} no_auth={no_auth} FAILED in {time.time()-_t:.1f}s: {e}")
+                self._logger.warning(
+                    f"[stream] {video_id} attempt {extra} no_auth={no_auth} FAILED in {time.time()-_t:.1f}s: {e}"
+                )
                 if self._is_hard_error(str(e)):
                     break
 
@@ -312,22 +368,42 @@ class StreamService:
         for no_auth, use_ytm in ((False, True), (True, True), (True, False)):
             if _hard_stop:
                 break
-            for extra in (None, config_ytdlp.WEB_MUSIC_OPTIONS, config_ytdlp.MWEB_OPTIONS,
-                          config_ytdlp.ANDROID_OPTIONS, config_ytdlp.IOS_OPTIONS, config_ytdlp.TV_OPTIONS):
-                if extra in (config_ytdlp.ANDROID_OPTIONS, config_ytdlp.IOS_OPTIONS,
-                             config_ytdlp.TV_OPTIONS, config_ytdlp.MWEB_OPTIONS) and not no_auth:
+            for extra in (
+                None,
+                config_ytdlp.WEB_MUSIC_OPTIONS,
+                config_ytdlp.MWEB_OPTIONS,
+                config_ytdlp.ANDROID_OPTIONS,
+                config_ytdlp.IOS_OPTIONS,
+                config_ytdlp.TV_OPTIONS,
+            ):
+                if (
+                    extra
+                    in (
+                        config_ytdlp.ANDROID_OPTIONS,
+                        config_ytdlp.IOS_OPTIONS,
+                        config_ytdlp.TV_OPTIONS,
+                        config_ytdlp.MWEB_OPTIONS,
+                    )
+                    and not no_auth
+                ):
                     continue  # never combine mobile clients with cookies
                 try:
-                    url = self._pick_any_audio(video_id, extra_opts=extra, skip_auth=no_auth, use_ytm=use_ytm)
+                    url = self._pick_any_audio(
+                        video_id, extra_opts=extra, skip_auth=no_auth, use_ytm=use_ytm
+                    )
                     if url and self._probe_audio_url(video_id, url):
-                        self._logger.info(f"[stream] {video_id} recovered via brute-force no_auth={no_auth} ytm={use_ytm}")
+                        self._logger.info(
+                            f"[stream] {video_id} recovered via brute-force no_auth={no_auth} ytm={use_ytm}"
+                        )
                         return {"url": url}, 200
                 except Exception as e:
                     last_err = e
                     if self._is_hard_error(str(e)) or self._is_unavailable(str(e)):
                         _hard_stop = True
                         break
-                    self._logger.warning(f"[stream] {video_id} brute-force no_auth={no_auth} ytm={use_ytm}: {e}")
+                    self._logger.warning(
+                        f"[stream] {video_id} brute-force no_auth={no_auth} ytm={use_ytm}: {e}"
+                    )
 
         err_str = str(last_err) if last_err else "No URL found"
         premium = "Music Premium" in err_str
@@ -343,6 +419,7 @@ class StreamService:
         Rust reads from disk — no HTTP proxy overhead, no truncation. Returns
         ``(payload, status_code)``."""
         import yt_dlp
+
         cache_dir = os.path.join(tempfile.gettempdir(), "kiyoshi-audio")
         os.makedirs(cache_dir, exist_ok=True)
 
@@ -376,16 +453,22 @@ class StreamService:
                 if not no_auth:
                     self._ytdlp.apply_active_session_auth(ydl_opts)
                 with yt_dlp.YoutubeDL(cast("yt_dlp._Params", ydl_opts)) as ydl:
-                    info = ydl.extract_info(f"https://music.youtube.com/watch?v={video_id}", download=True)
+                    info = ydl.extract_info(
+                        f"https://music.youtube.com/watch?v={video_id}", download=True
+                    )
                     path = ydl.prepare_filename(info)
-                self._logger.info(f"[stream-prepare] downloaded {video_id}: {os.path.getsize(path)} bytes")
+                self._logger.info(
+                    f"[stream-prepare] downloaded {video_id}: {os.path.getsize(path)} bytes"
+                )
                 return {"path": path}, 200
             except Exception as e:
                 last_err = e
                 err_str = str(e)
                 if self._is_hard_error(err_str):
                     break
-                self._logger.warning(f"[stream-prepare] {video_id} fmt={fmt} auth={not no_auth} failed: {e}")
+                self._logger.warning(
+                    f"[stream-prepare] {video_id} fmt={fmt} auth={not no_auth} failed: {e}"
+                )
         err_str = str(last_err) if last_err else "Download failed"
         premium = "Music Premium" in err_str
         unavailable = self._is_unavailable(err_str)
@@ -442,7 +525,9 @@ class StreamService:
                 in_flight.set()
 
     # Old server.py: audio_stream (resolution portion)
-    def open_audio_stream(self, video_id: str, range_header: str | None = None) -> tuple[requests.Response | None, tuple[dict[str, str | bool], int] | None]:
+    def open_audio_stream(
+        self, video_id: str, range_header: str | None = None
+    ) -> tuple[requests.Response | None, tuple[dict[str, str | bool], int] | None]:
         """Resolve and open the upstream googlevideo response.
 
         Returns ``(upstream, error)`` where ``error`` is ``(payload, status)``

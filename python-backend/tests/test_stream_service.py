@@ -12,8 +12,12 @@ class StreamServiceTests(unittest.TestCase):
 
     def test_uses_fast_anonymous_www_resolution_before_music_client_retries(self) -> None:
         with (
-            patch.object(self.service, "_browser_cookiefile", return_value="/tmp/cookies.txt") as cookiefile,
-            patch.object(self.service, "_extract_url", return_value={"url": "https://stream/audio"}) as extract,
+            patch.object(
+                self.service, "_browser_cookie_data", return_value="cookies"
+            ) as cookie_data,
+            patch.object(
+                self.service, "_extract_url", return_value={"url": "https://stream/audio"}
+            ) as extract,
             patch.object(self.service, "_probe_audio_url", return_value=True) as probe,
         ):
             payload, status = self.service.resolve_stream("video")
@@ -25,12 +29,12 @@ class StreamServiceTests(unittest.TestCase):
             skip_auth=True,
             use_ytm=False,
         )
-        cookiefile.assert_not_called()
+        cookie_data.assert_not_called()
         probe.assert_called_once_with("video", "https://stream/audio")
 
     def test_rejected_media_url_falls_through_to_cookie_resolution(self) -> None:
         with (
-            patch.object(self.service, "_browser_cookiefile", return_value="/tmp/cookies.txt"),
+            patch.object(self.service, "_browser_cookie_data", return_value="cookies"),
             patch.object(
                 self.service,
                 "_extract_url",
@@ -38,12 +42,14 @@ class StreamServiceTests(unittest.TestCase):
                     {"url": "https://stream/rejected"},
                     {"url": "https://stream/working"},
                 ],
-            ),
+            ) as extract,
             patch.object(self.service, "_probe_audio_url", side_effect=[False, True]) as probe,
         ):
             payload, status = self.service.resolve_stream("video")
 
         self.assertEqual((payload, status), ({"url": "https://stream/working"}, 200))
+        cookie_stream = extract.call_args_list[1].kwargs["extra_opts"]["cookiefile"]
+        self.assertEqual(cookie_stream.getvalue(), "cookies")
         self.assertEqual(
             probe.call_args_list,
             [
@@ -76,8 +82,12 @@ class StreamServiceTests(unittest.TestCase):
             patch.object(self.service, "_extract_url", side_effect=extract),
             patch.object(self.service, "_probe_audio_url", return_value=True),
         ):
-            first = threading.Thread(target=lambda: responses.append(self.service.resolve_stream("first")))
-            second = threading.Thread(target=lambda: responses.append(self.service.resolve_stream("second")))
+            first = threading.Thread(
+                target=lambda: responses.append(self.service.resolve_stream("first"))
+            )
+            second = threading.Thread(
+                target=lambda: responses.append(self.service.resolve_stream("second"))
+            )
             first.start()
             self.assertTrue(first_started.wait(timeout=2))
             second.start()
@@ -111,8 +121,12 @@ class StreamServiceTests(unittest.TestCase):
             return Response()
 
         with patch("src.lib.music.stream.requests.get", side_effect=get) as request_get:
-            first = threading.Thread(target=lambda: responses.append(self.service.resolve_audio_url("video")))
-            second = threading.Thread(target=lambda: responses.append(self.service.resolve_audio_url("video")))
+            first = threading.Thread(
+                target=lambda: responses.append(self.service.resolve_audio_url("video"))
+            )
+            second = threading.Thread(
+                target=lambda: responses.append(self.service.resolve_audio_url("video"))
+            )
             first.start()
             self.assertTrue(started.wait(timeout=2))
             second.start()
