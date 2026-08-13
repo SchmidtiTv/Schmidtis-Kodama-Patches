@@ -3,12 +3,11 @@
 from flask import jsonify, request
 
 from src.lib.music.audio_versions import prefer_audio_versions
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._formatters import is_signed_out_ytmusic_error, song_result
 from ._services import metadata_cache, music_session, profiles
-from src.type_defs import RouteResponse
-
 
 DEFAULT_PAGE_SIZE = 50
 MAX_PAGE_SIZE = 100
@@ -42,7 +41,12 @@ def liked_songs() -> RouteResponse:
         offset = request.args.get("offset", default=0, type=int)
         limit = request.args.get("limit", default=DEFAULT_PAGE_SIZE, type=int)
         if offset is None or offset < 0 or limit is None or not 1 <= limit <= MAX_PAGE_SIZE:
-            return jsonify({"error": "offset must be non-negative and limit must be between 1 and 100"}), 400
+            return (
+                jsonify(
+                    {"error": "offset must be non-negative and limit must be between 1 and 100"}
+                ),
+                400,
+            )
 
         # The upstream client continues a playlist only up to its limit. Request
         # just enough tracks for this page, then return the requested slice.
@@ -58,12 +62,14 @@ def liked_songs() -> RouteResponse:
             total = int(total)
         except (TypeError, ValueError):
             total = len(raw_tracks)
-        return jsonify({
-            "tracks": [song_result(track) for track in page_tracks],
-            "total": total,
-            "offset": offset,
-            "hasMore": offset + len(page_tracks) < total,
-        })
+        return jsonify(
+            {
+                "tracks": [song_result(track) for track in page_tracks],
+                "total": total,
+                "offset": offset,
+                "hasMore": offset + len(page_tracks) < total,
+            }
+        )
     except Exception as error:
         if is_signed_out_ytmusic_error(error):
             return jsonify({"error": "YouTube session expired", "code": "auth_expired"}), 401

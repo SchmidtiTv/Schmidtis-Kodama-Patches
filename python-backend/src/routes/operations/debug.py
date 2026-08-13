@@ -9,15 +9,16 @@ from flask import jsonify
 
 from src.config import config_dirs
 from src.lib.runtime.logging import DEBUG_LOG, DEBUG_LOG_LOCK
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._services import music_session, server_start_time, stream_service
-from src.type_defs import RouteResponse
 
 
 def _pkg_version(name: str) -> str:
     try:
         import importlib.metadata
+
         return importlib.metadata.version(name)
     except Exception:
         return "—"
@@ -42,18 +43,20 @@ def debug_info() -> RouteResponse:
         else int(time.time() - session.state.psidts_last_refresh)
     )
 
-    return jsonify({
-        "python":     sys.version.split()[0],
-        "ytdlp":      _pkg_version("yt-dlp"),
-        "ytmusicapi": _pkg_version("ytmusicapi"),
-        "flask":      _pkg_version("flask"),
-        "node":       node_path,
-        "profile":    session.state.current_profile or "—",
-        "platform":   platform.system() + " " + platform.release(),
-        "uptime":     uptime_str,
-        "data_dir":   str(config_dirs.BASE_DIR),
-        "logs":       logs[-300:],
-        "authed": session.state.last_authenticated,
-        "cookieRefreshAgeS": refresh_age,
-        "lastStreamError": stream_service().last_error,
-    })
+    return jsonify(
+        {
+            "python": sys.version.split()[0],
+            "ytdlp": _pkg_version("yt-dlp"),
+            "ytmusicapi": _pkg_version("ytmusicapi"),
+            "flask": _pkg_version("flask"),
+            "node": node_path,
+            "profile": session.state.current_profile or "—",
+            "platform": platform.system() + " " + platform.release(),
+            "uptime": uptime_str,
+            "data_dir": str(config_dirs.BASE_DIR),
+            "logs": logs[-300:],
+            "authed": session.state.last_authenticated,
+            "cookieRefreshAgeS": refresh_age,
+            "lastStreamError": stream_service().last_error,
+        }
+    )

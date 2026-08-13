@@ -8,6 +8,7 @@ from src.type_defs import RouteResponse
 
 blueprint = Blueprint("feedback", __name__)
 
+
 @blueprint.route("/feedback", methods=["POST"])
 def submit_feedback() -> RouteResponse:
     webhook_url = current_app.extensions.get("feedback_webhook_url", "")
@@ -25,8 +26,12 @@ def submit_feedback() -> RouteResponse:
     if not title and not description:
         return jsonify({"error": "empty"}), 400
 
-    color = {"Bug": 0xE24B4A, "Absturz": 0xA32D2D, "UI / Design": 0x378ADD,
-             "Vorschlag": 0x1D9E75}.get(category, 0x888780)
+    color = {
+        "Bug": 0xE24B4A,
+        "Absturz": 0xA32D2D,
+        "UI / Design": 0x378ADD,
+        "Vorschlag": 0x1D9E75,
+    }.get(category, 0x888780)
     fields = [
         {"name": "Category", "value": category or "—", "inline": True},
         {"name": "Version", "value": version, "inline": True},
@@ -49,6 +54,7 @@ def submit_feedback() -> RouteResponse:
     if shot:
         try:
             import base64
+
             if "," in shot and shot.strip().startswith("data:"):
                 shot = shot.split(",", 1)[1]
             png = base64.b64decode(shot)
@@ -63,9 +69,9 @@ def submit_feedback() -> RouteResponse:
         files["file_log"] = ("backend-log.txt", log_text.encode("utf-8"), "text/plain")
     try:
         if files:
-            resp = requests.post(webhook_url,
-                                 data={"payload_json": json.dumps(payload)},
-                                 files=files, timeout=15)
+            resp = requests.post(
+                webhook_url, data={"payload_json": json.dumps(payload)}, files=files, timeout=15
+            )
         else:
             resp = requests.post(webhook_url, json=payload, timeout=12)
         if resp.status_code >= 300:

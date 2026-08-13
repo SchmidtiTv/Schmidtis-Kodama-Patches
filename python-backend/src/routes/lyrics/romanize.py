@@ -2,9 +2,10 @@
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import lyrics_service
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/romanize-lyrics", methods=["POST"])
@@ -15,4 +16,7 @@ def romanize_lyrics() -> RouteResponse:
     try:
         return jsonify({"romanizations": lyrics_service().romanize(lines)})
     except ImportError:
-        return jsonify({"error": "pykakasi nicht installiert.", "romanizations": [""] * len(lines)}), 503
+        return (
+            jsonify({"error": "pykakasi nicht installiert.", "romanizations": [""] * len(lines)}),
+            503,
+        )

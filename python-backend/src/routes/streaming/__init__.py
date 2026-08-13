@@ -2,7 +2,6 @@
 
 from flask import Blueprint
 
-
 blueprint = Blueprint("streaming", __name__)
 
-from . import stream, prepare, audio, video_sync  # noqa: E402,F401
+from . import audio, prepare, stream, video_sync

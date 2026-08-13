@@ -1,11 +1,11 @@
 """Complete Last.fm desktop authorization."""
 
 from flask import jsonify, request
-from typing import cast
+
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._services import lastfm_client, read_active_metadata, write_active_metadata
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/session", methods=["POST"])
@@ -23,7 +23,12 @@ def lastfm_session() -> RouteResponse:
         return jsonify({"error": "session_failed"}), 400
     key = lastfm_session.get("key", "")
     username = lastfm_session.get("name", "")
-    if not isinstance(key, str) or not key.strip() or not isinstance(username, str) or not username.strip():
+    if (
+        not isinstance(key, str)
+        or not key.strip()
+        or not isinstance(username, str)
+        or not username.strip()
+    ):
         return jsonify({"error": "invalid_session"}), 502
 
     metadata = read_active_metadata()

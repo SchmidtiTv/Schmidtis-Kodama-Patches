@@ -4,10 +4,10 @@ from flask import jsonify, request
 
 from src.lib import YoutubeResponseMapper
 from src.lib.music.audio_versions import prefer_audio_versions
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._services import metadata_cache, music_session
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/radio/<playlist_id>")
@@ -38,12 +38,20 @@ def get_radio(playlist_id: str) -> RouteResponse:
             if isinstance(track, dict) and track.get("videoId")
         ]
         tracks: list[dict[str, object]] = []
-        for t in prefer_audio_versions(session.get_system_client(), None, resolvable_tracks, metadata_cache()):
+        for t in prefer_audio_versions(
+            session.get_system_client(), None, resolvable_tracks, metadata_cache()
+        ):
             artist_list = t.get("artists") or []
-            artists = ", ".join(
-                name for artist in artist_list if isinstance(artist, dict)
-                if isinstance(name := artist.get("name"), str)
-            ) if isinstance(artist_list, list) else ""
+            artists = (
+                ", ".join(
+                    name
+                    for artist in artist_list
+                    if isinstance(artist, dict)
+                    if isinstance(name := artist.get("name"), str)
+                )
+                if isinstance(artist_list, list)
+                else ""
+            )
             # get_watch_playlist returns thumbnail as a list of dicts OR a plain string
             thumb_raw = t.get("thumbnails") or t.get("thumbnail") or []
             if isinstance(thumb_raw, list):
@@ -53,15 +61,17 @@ def get_radio(playlist_id: str) -> RouteResponse:
             else:
                 thumb = ""
             album = t.get("album") or {}
-            tracks.append({
-                "videoId":    t.get("videoId", ""),
-                "title":      t.get("title", ""),
-                "artists":    artists,
-                "album":      album.get("name", "") if isinstance(album, dict) else "",
-                "thumbnail":  thumb,
-                "duration":   t.get("duration") or t.get("length", ""),
-                "isExplicit": bool(t.get("isExplicit", False)),
-            })
+            tracks.append(
+                {
+                    "videoId": t.get("videoId", ""),
+                    "title": t.get("title", ""),
+                    "artists": artists,
+                    "album": album.get("name", "") if isinstance(album, dict) else "",
+                    "thumbnail": thumb,
+                    "duration": t.get("duration") or t.get("length", ""),
+                    "isExplicit": bool(t.get("isExplicit", False)),
+                }
+            )
         return jsonify({"tracks": tracks})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

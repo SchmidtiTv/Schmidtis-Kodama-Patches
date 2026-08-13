@@ -1,8 +1,9 @@
 """Forward a signed Unison lyric report."""
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._unison import forward_signed_request
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/unison/lyrics/<lyrics_id>/report", methods=["POST"])

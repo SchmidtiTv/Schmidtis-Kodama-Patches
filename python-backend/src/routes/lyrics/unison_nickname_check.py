@@ -1,8 +1,9 @@
 """Check an Unison nickname through the signed proxy."""
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._unison import forward_signed_request
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/unison/auth/nickname/check", methods=["POST"])

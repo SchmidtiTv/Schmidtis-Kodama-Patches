@@ -1,8 +1,9 @@
 """Send the current track to Last.fm."""
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._actions import submit_track_action
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/now-playing", methods=["POST"])

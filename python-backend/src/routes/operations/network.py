@@ -2,9 +2,10 @@
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import network_settings
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/network/ipv4-first", methods=["GET", "POST"])

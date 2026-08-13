@@ -4,11 +4,11 @@ from flask import jsonify
 
 from src.lib import YoutubeResponseMapper
 from src.lib.music.audio_versions import prefer_audio_versions
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._formatters import is_podcast_section, song_result
 from ._services import metadata_cache, music_session
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/home")
@@ -41,7 +41,9 @@ def get_home() -> RouteResponse:
                             "browseId": item.get("browseId", ""),
                             "title": item.get("title", ""),
                             "subtitle": item.get("description", "") or item.get("date", ""),
-                            "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                            "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                                item.get("thumbnails", [])
+                            ),
                         }
                     )
                 elif item.get("playlistId"):
@@ -52,7 +54,9 @@ def get_home() -> RouteResponse:
                             "title": item.get("title", ""),
                             "subtitle": item.get("description", "")
                             or ", ".join(artist["name"] for artist in item.get("artists", [])),
-                            "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                            "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                                item.get("thumbnails", [])
+                            ),
                         }
                     )
                 elif item.get("podcastId"):
@@ -64,7 +68,9 @@ def get_home() -> RouteResponse:
                             "browseId": item.get("browseId", ""),
                             "title": item.get("title", ""),
                             "subtitle": author.get("name", "") if isinstance(author, dict) else "",
-                            "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                            "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                                item.get("thumbnails", [])
+                            ),
                         }
                     )
                 elif item.get("browseId"):
@@ -73,7 +79,7 @@ def get_home() -> RouteResponse:
                     is_podcast_channel = browse_id.startswith("MPSP") or is_podcast
                     if is_podcast_channel and not is_artist:
                         item_type = "podcast"
-                        playlist_id = browse_id[4:] if browse_id.startswith("MPSP") else browse_id
+                        playlist_id = browse_id.removeprefix("MPSP")
                     else:
                         item_type = "artist" if is_artist else "album"
                         playlist_id = ""
@@ -83,7 +89,9 @@ def get_home() -> RouteResponse:
                         "title": item.get("title", ""),
                         "subtitle": ", ".join(artist["name"] for artist in item.get("artists", []))
                         or item.get("year", ""),
-                        "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                        "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                            item.get("thumbnails", [])
+                        ),
                     }
                     if playlist_id:
                         entry["playlistId"] = playlist_id

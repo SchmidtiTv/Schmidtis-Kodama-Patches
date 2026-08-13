@@ -1,12 +1,14 @@
 """Library listings for playlists, albums, and artists."""
 
+from typing import Any, cast
+
 from flask import jsonify
 
 from src.lib import YoutubeResponseMapper
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._services import music_session, profiles
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/library/playlists")
@@ -20,7 +22,16 @@ def library_playlists() -> RouteResponse:
                 rows = db.execute(
                     "SELECT playlist_id, title, description, (SELECT COUNT(*) FROM playlist_tracks WHERE playlist_id=p.playlist_id) FROM playlists p ORDER BY updated_at DESC"
                 ).fetchall()
-            result = [{"playlistId": r[0], "title": r[1], "description": r[2], "count": str(r[3]), "thumbnail": ""} for r in rows]
+            result = [
+                {
+                    "playlistId": r[0],
+                    "title": r[1],
+                    "description": r[2],
+                    "count": str(r[3]),
+                    "thumbnail": "",
+                }
+                for r in rows
+            ]
             return jsonify({"playlists": result})
         # ``None`` follows every continuation. Numeric limits stop at a page boundary and
         # silently truncate larger libraries (for example, limit=50 returned roughly 75 of 229).
@@ -32,12 +43,14 @@ def library_playlists() -> RouteResponse:
             # library response, which otherwise creates a duplicate playlist card.
             if p.get("playlistId") == "LM":
                 continue
-            result.append({
-                "playlistId": p.get("playlistId", ""),
-                "title": p.get("title", ""),
-                "count": p.get("count", ""),
-                "thumbnail": YoutubeResponseMapper.select_thumbnail(p.get("thumbnails", [])),
-            })
+            result.append(
+                {
+                    "playlistId": p.get("playlistId", ""),
+                    "title": p.get("title", ""),
+                    "count": p.get("count", ""),
+                    "thumbnail": YoutubeResponseMapper.select_thumbnail(p.get("thumbnails", [])),
+                }
+            )
         return jsonify({"playlists": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -51,17 +64,20 @@ def library_albums() -> RouteResponse:
     try:
         if profile_repo.is_local(profile_name):
             return jsonify({"albums": []})
-        albums = session.get_active_client().get_library_albums(limit=None)
+        client = cast(Any, session.get_active_client())
+        albums = client.get_library_albums(limit=None)
         result = []
         for a in albums:
             artists = ", ".join(x["name"] for x in a.get("artists", []))
-            result.append({
-                "browseId": a.get("browseId", ""),
-                "title": a.get("title", ""),
-                "artists": artists,
-                "year": a.get("year", ""),
-                "thumbnail": YoutubeResponseMapper.select_thumbnail(a.get("thumbnails", [])),
-            })
+            result.append(
+                {
+                    "browseId": a.get("browseId", ""),
+                    "title": a.get("title", ""),
+                    "artists": artists,
+                    "year": a.get("year", ""),
+                    "thumbnail": YoutubeResponseMapper.select_thumbnail(a.get("thumbnails", [])),
+                }
+            )
         return jsonify({"albums": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -75,15 +91,18 @@ def library_artists() -> RouteResponse:
     try:
         if profile_repo.is_local(profile_name):
             return jsonify({"artists": []})
-        artists = session.get_active_client().get_library_artists(limit=None)
+        client = cast(Any, session.get_active_client())
+        artists = client.get_library_artists(limit=None)
         result = []
         for a in artists:
-            result.append({
-                "browseId": a.get("browseId", ""),
-                "artist": a.get("artist", ""),
-                "songs": a.get("songs", ""),
-                "thumbnail": YoutubeResponseMapper.select_thumbnail(a.get("thumbnails", [])),
-            })
+            result.append(
+                {
+                    "browseId": a.get("browseId", ""),
+                    "artist": a.get("artist", ""),
+                    "songs": a.get("songs", ""),
+                    "thumbnail": YoutubeResponseMapper.select_thumbnail(a.get("thumbnails", [])),
+                }
+            )
         return jsonify({"artists": result})
     except Exception as e:
         return jsonify({"error": str(e)}), 500

@@ -3,10 +3,10 @@
 from flask import jsonify, request
 
 from src.lib import YoutubeResponseMapper
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._services import music_session
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/artist_albums")
@@ -24,7 +24,9 @@ def get_artist_albums() -> RouteResponse:
                         "browseId": album.get("browseId", ""),
                         "title": album.get("title", ""),
                         "year": album.get("year", ""),
-                        "thumbnail": YoutubeResponseMapper.select_thumbnail(album.get("thumbnails", [])),
+                        "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                            album.get("thumbnails", [])
+                        ),
                         "type": album.get("type", ""),
                     }
                     for album in albums or []

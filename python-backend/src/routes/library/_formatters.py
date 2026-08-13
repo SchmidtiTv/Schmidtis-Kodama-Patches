@@ -9,12 +9,12 @@ from src.lib.music.video_variants import has_video_thumbnail, video_evidence
 # Old server.py: the `fmt` closure in stream_playlist / the track loop in get_playlist
 def format_track(track: dict[str, object]) -> dict[str, object]:
     """Full track object as returned by /playlist/<id> and /playlist/<id>/stream."""
-    artist_list = cast(list[dict[str, str]], track.get("artists", []))
+    artist_list = cast("list[dict[str, str]]", track.get("artists", []))
     artists = ", ".join(a["name"] for a in artist_list)
     artist_browse_id = (artist_list[0].get("id") or "") if artist_list else ""
-    album = cast(dict[str, str], track.get("album") or {})
+    album = cast("dict[str, str]", track.get("album") or {})
     thumbnails = cast(
-        list[dict[str, object]], track.get("thumbnails") or track.get("thumbnail") or []
+        "list[dict[str, object]]", track.get("thumbnails") or track.get("thumbnail") or []
     )
     normalized_track = {**track, "thumbnails": thumbnails}
     evidence = video_evidence(normalized_track)

@@ -1,7 +1,7 @@
 """HTTP response decoration shared by Composer Bridge endpoints."""
 
-from urllib.parse import quote
 from collections.abc import Mapping
+from urllib.parse import quote
 
 from flask import Response
 

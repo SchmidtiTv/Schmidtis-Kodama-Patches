@@ -1,8 +1,9 @@
 """Mark a track as loved on Last.fm."""
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._actions import submit_track_action
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/love", methods=["POST"])

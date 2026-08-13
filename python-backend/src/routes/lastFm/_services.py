@@ -1,6 +1,7 @@
 """Shared access to Last.fm and active-profile services."""
 
-from typing import Mapping, cast
+from collections.abc import Mapping
+from typing import cast
 
 from flask import current_app
 
@@ -10,15 +11,15 @@ from src.lib.profiles.profile import Profile
 
 
 def lastfm_client() -> LastFM:
-    return cast(LastFM, current_app.extensions["lastfm_client"])
+    return cast("LastFM", current_app.extensions["lastfm_client"])
 
 
 def profile_repository() -> Profile:
-    return cast(Profile, current_app.extensions["profile_repository"])
+    return cast("Profile", current_app.extensions["profile_repository"])
 
 
 def active_profile_name() -> str:
-    session = cast(YoutubeMusicSession, current_app.extensions["youtube_music_session"])
+    session = cast("YoutubeMusicSession", current_app.extensions["youtube_music_session"])
     return session.state.current_profile or "default"
 
 

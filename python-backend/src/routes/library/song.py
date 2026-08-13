@@ -6,29 +6,33 @@ import re
 import requests
 from flask import jsonify
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import music_session, song_credits_cache
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/song/meta/<video_id>")
 def song_meta(video_id: str) -> RouteResponse:
     """Minimal track metadata for a videoId — used to turn a shared kodama://song/<id>
-    deep link into a playable track object on the frontend."""
+    deep link into a playable track object on the frontend.
+    """
     try:
         info = music_session().get_active_client().get_song(video_id) or {}
         vd = info.get("videoDetails", {}) or {}
-        thumbs = ((vd.get("thumbnail") or {}).get("thumbnails") or [])
+        thumbs = (vd.get("thumbnail") or {}).get("thumbnails") or []
         thumb = thumbs[-1]["url"] if thumbs else None
         secs = int(vd.get("lengthSeconds") or 0)
         dur = f"{secs // 60}:{secs % 60:02d}" if secs else None
-        return jsonify({
-            "videoId": vd.get("videoId") or video_id,
-            "title": vd.get("title"),
-            "artists": vd.get("author"),
-            "thumbnail": thumb,
-            "duration": dur,
-        })
+        return jsonify(
+            {
+                "videoId": vd.get("videoId") or video_id,
+                "title": vd.get("title"),
+                "artists": vd.get("author"),
+                "thumbnail": thumb,
+                "duration": dur,
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 502
 
@@ -44,23 +48,24 @@ def song_info(video_id: str) -> RouteResponse:
         # Try to get browse ids from a matching search hit
         try:
             result = client.search(
-                f"{details.get('title', '')} {details.get('author', '')}",
-                filter="songs", limit=1
+                f"{details.get('title', '')} {details.get('author', '')}", filter="songs", limit=1
             )
             if result:
                 hit = result[0]
                 al = hit.get("artists", [])
                 artist_id = (al[0].get("id") or "") if al else ""
                 album = hit.get("album") or {}
-                album_id = (album.get("id") or "")
+                album_id = album.get("id") or ""
             else:
                 album_id = ""
         except Exception:
             album_id = ""
-        return jsonify({
-            "artistBrowseId": artist_id,
-            "albumBrowseId": album_id,
-        })
+        return jsonify(
+            {
+                "artistBrowseId": artist_id,
+                "albumBrowseId": album_id,
+            }
+        )
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -71,7 +76,7 @@ def song_stats(video_id: str) -> RouteResponse:
         r = requests.get(
             f"https://returnyoutubedislikeapi.com/votes?videoId={video_id}",
             timeout=5,
-            headers={"Accept": "application/json"}
+            headers={"Accept": "application/json"},
         )
         if r.status_code == 200:
             d = r.json()
@@ -84,14 +89,17 @@ def song_stats(video_id: str) -> RouteResponse:
                 if n >= 1_000:
                     return f"{n/1_000:.1f}K"
                 return str(n)
-            return jsonify({
-                "views":    fmt_num(d.get("viewCount")),
-                "likes":    fmt_num(d.get("likes")),
-                "dislikes": fmt_num(d.get("dislikes")),
-                "viewsRaw":    d.get("viewCount"),
-                "likesRaw":    d.get("likes"),
-                "dislikesRaw": d.get("dislikes"),
-            })
+
+            return jsonify(
+                {
+                    "views": fmt_num(d.get("viewCount")),
+                    "likes": fmt_num(d.get("likes")),
+                    "dislikes": fmt_num(d.get("dislikes")),
+                    "viewsRaw": d.get("viewCount"),
+                    "likesRaw": d.get("likes"),
+                    "dislikesRaw": d.get("dislikes"),
+                }
+            )
         return jsonify({"error": "stats unavailable"}), 502
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -110,7 +118,10 @@ def get_song_credits(video_id: str) -> RouteResponse:
     # truncated YTMusic shortDescription from music.youtube.com/youtubei/v1/player)
     try:
         # Public InnerTube key (same one used by the YouTube web client itself)
-        url = "https://www.youtube.com/youtubei/v1/next?key=AIzaSy" + "AO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+        url = (
+            "https://www.youtube.com/youtubei/v1/next?key=AIzaSy"
+            "AO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+        )
         payload = {
             "videoId": video_id,
             "context": {
@@ -120,7 +131,7 @@ def get_song_credits(video_id: str) -> RouteResponse:
                     "hl": "en",
                     "gl": "US",
                 }
-            }
+            },
         }
         headers = {
             "Content-Type": "application/json",
@@ -133,10 +144,10 @@ def get_song_credits(video_id: str) -> RouteResponse:
         # Path: contents → twoColumnWatchNextResults → results → results → contents[]
         # → videoSecondaryInfoRenderer → attributedDescription.content
         #   OR description.runs[].text
-        results = (data.get("contents") or {})
-        results = (results.get("twoColumnWatchNextResults") or {})
-        results = (results.get("results") or {})
-        results = (results.get("results") or {})
+        results = data.get("contents") or {}
+        results = results.get("twoColumnWatchNextResults") or {}
+        results = results.get("results") or {}
+        results = results.get("results") or {}
         contents = results.get("contents") or []
         for item in contents:
             vsir = item.get("videoSecondaryInfoRenderer")
@@ -164,25 +175,26 @@ def get_song_credits(video_id: str) -> RouteResponse:
                 "Accept-Language": "en-US,en;q=0.9",
             }
             r = requests.get(page_url, headers=headers, timeout=12)
-            match = re.search(r'ytInitialPlayerResponse\s*=\s*\{', r.text)
+            match = re.search(r"ytInitialPlayerResponse\s*=\s*\{", r.text)
             if match:
                 start = match.end() - 1
                 depth, end = 0, start
                 for i, c in enumerate(r.text[start:]):
-                    if c == '{':
+                    if c == "{":
                         depth += 1
-                    elif c == '}':
+                    elif c == "}":
                         depth -= 1
                         if depth == 0:
                             end = start + i + 1
                             break
                 page_data = json.loads(r.text[start:end])
-                description = ((page_data.get("videoDetails") or {})
-                               .get("shortDescription") or "").strip()
+                description = (
+                    (page_data.get("videoDetails") or {}).get("shortDescription") or ""
+                ).strip()
         except Exception as e:
             last_error = f"scrape: {e}"
 
-    result = {"description": description}
+    result: dict[str, object] = {"description": description}
     if not description and last_error:
         result["error"] = last_error
     song_credits_cache().put(video_id, result)

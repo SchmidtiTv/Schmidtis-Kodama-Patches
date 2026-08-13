@@ -6,9 +6,10 @@ editor preview iframe works even when the dedicated OBS server is disabled.
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import overlay_server
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/overlay")

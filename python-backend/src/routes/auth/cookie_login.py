@@ -4,9 +4,10 @@ import threading
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import music_session, profiles
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/cookie-login", methods=["POST"])
@@ -67,7 +68,9 @@ def cookie_login() -> RouteResponse:
         metadata.pop("logged_out", None)
         metadata.setdefault("displayName", profile_name.capitalize())
         profile_repository.write_metadata(profile_name, metadata)
-        threading.Thread(target=session.refresh_account_info, args=(profile_name,), daemon=True).start()
+        threading.Thread(
+            target=session.refresh_account_info, args=(profile_name,), daemon=True
+        ).start()
         session.state.adding_account = False
         return jsonify({"ok": True, "profile": profile_name})
     except Exception as error:

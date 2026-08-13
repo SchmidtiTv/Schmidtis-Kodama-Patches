@@ -3,10 +3,10 @@
 from flask import jsonify
 
 from src.config import config_lastfm
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._services import lastfm_client
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/connect")

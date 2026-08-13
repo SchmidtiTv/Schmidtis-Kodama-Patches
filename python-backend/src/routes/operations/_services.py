@@ -4,32 +4,32 @@ from typing import cast
 
 from flask import current_app
 
-from src.lib.music.youtube_music import YoutubeMusicSession
 from src.lib.music.stream import StreamService
+from src.lib.music.youtube_music import YoutubeMusicSession
 from src.lib.runtime.network import NetworkSettings
 from src.lib.runtime.overlay import OverlayServer
 from src.lib.runtime.remote import RemoteControl
 
 
 def overlay_server() -> OverlayServer:
-    return cast(OverlayServer, current_app.extensions["overlay_server"])
+    return cast("OverlayServer", current_app.extensions["overlay_server"])
 
 
 def remote_control() -> RemoteControl:
-    return cast(RemoteControl, current_app.extensions["remote_control"])
+    return cast("RemoteControl", current_app.extensions["remote_control"])
 
 
 def network_settings() -> NetworkSettings:
-    return cast(NetworkSettings, current_app.extensions["network_settings"])
+    return cast("NetworkSettings", current_app.extensions["network_settings"])
 
 
 def music_session() -> YoutubeMusicSession:
-    return cast(YoutubeMusicSession, current_app.extensions["youtube_music_session"])
+    return cast("YoutubeMusicSession", current_app.extensions["youtube_music_session"])
 
 
 def stream_service() -> StreamService:
-    return cast(StreamService, current_app.extensions["stream_service"])
+    return cast("StreamService", current_app.extensions["stream_service"])
 
 
 def server_start_time() -> float:
-    return cast(float, current_app.extensions["server_start_time"])
+    return cast("float", current_app.extensions["server_start_time"])

@@ -2,7 +2,6 @@
 
 from flask import Blueprint
 
-
 blueprint = Blueprint("discovery", __name__)
 
-from . import podcast, mood  # noqa: E402,F401
+from . import mood, podcast

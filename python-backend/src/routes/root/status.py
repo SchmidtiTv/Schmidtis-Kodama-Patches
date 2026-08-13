@@ -2,8 +2,9 @@
 
 from flask import jsonify
 
-from . import blueprint
 from src.type_defs import RouteResponse
+
+from . import blueprint
 
 
 @blueprint.route("/status")

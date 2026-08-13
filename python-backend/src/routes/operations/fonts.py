@@ -1,15 +1,18 @@
 """Local system fonts (Windows Registry)."""
 
-from flask import jsonify
 from typing import Protocol, cast
 
-from . import blueprint
+from flask import jsonify
+
 from src.type_defs import RouteResponse
+
+from . import blueprint
 
 
 class WindowsRegistry(Protocol):
     HKEY_LOCAL_MACHINE: object
     HKEY_CURRENT_USER: object
+
     def OpenKey(self, hive: object, path: str) -> object: ...
     def EnumValue(self, key: object, index: int) -> tuple[str, object, object]: ...
     def CloseKey(self, key: object) -> None: ...
@@ -20,22 +23,40 @@ def api_local_fonts() -> RouteResponse:
     """Return sorted list of font family names installed on the system (Windows Registry)."""
     families = set()
     _style_suffixes = (
-        " Bold Italic", " Bold", " Italic", " Regular",
-        " Light Italic", " Light", " Medium Italic", " Medium",
-        " SemiBold Italic", " SemiBold", " Demi Bold", " Demi",
-        " Black Italic", " Black", " Thin Italic", " Thin",
-        " ExtraLight Italic", " ExtraLight", " ExtraBold Italic", " ExtraBold",
-        " Condensed Bold Italic", " Condensed Bold", " Condensed Italic", " Condensed",
-        " Narrow Bold", " Narrow",
+        " Bold Italic",
+        " Bold",
+        " Italic",
+        " Regular",
+        " Light Italic",
+        " Light",
+        " Medium Italic",
+        " Medium",
+        " SemiBold Italic",
+        " SemiBold",
+        " Demi Bold",
+        " Demi",
+        " Black Italic",
+        " Black",
+        " Thin Italic",
+        " Thin",
+        " ExtraLight Italic",
+        " ExtraLight",
+        " ExtraBold Italic",
+        " ExtraBold",
+        " Condensed Bold Italic",
+        " Condensed Bold",
+        " Condensed Italic",
+        " Condensed",
+        " Narrow Bold",
+        " Narrow",
     )
     try:
         import winreg
-        registry = cast(WindowsRegistry, winreg)
+
+        registry = cast("WindowsRegistry", winreg)
         reg_paths = [
-            (registry.HKEY_LOCAL_MACHINE,
-             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"),
-            (registry.HKEY_CURRENT_USER,
-             r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"),
+            (registry.HKEY_LOCAL_MACHINE, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"),
+            (registry.HKEY_CURRENT_USER, r"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts"),
         ]
         for hive, path in reg_paths:
             try:

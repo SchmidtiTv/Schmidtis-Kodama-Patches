@@ -2,9 +2,10 @@
 
 from flask import jsonify
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import music_session
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/begin-add", methods=["POST"])

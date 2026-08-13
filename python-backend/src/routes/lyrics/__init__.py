@@ -2,7 +2,6 @@
 
 from flask import Blueprint
 
-
 blueprint = Blueprint("lyrics", __name__)
 
 from . import (

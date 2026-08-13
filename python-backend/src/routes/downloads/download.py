@@ -2,9 +2,10 @@
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import download_service
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/song/download/<video_id>", methods=["POST"])

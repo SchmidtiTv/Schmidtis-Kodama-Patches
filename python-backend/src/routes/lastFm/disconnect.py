@@ -2,9 +2,10 @@
 
 from flask import jsonify
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import read_active_metadata, write_active_metadata
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/disconnect", methods=["POST"])

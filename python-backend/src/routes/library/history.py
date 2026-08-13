@@ -2,9 +2,10 @@
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import music_session, profiles
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/ytmusic/history", methods=["POST"])
@@ -23,9 +24,7 @@ def add_history_item() -> RouteResponse:
     try:
         client = session.get_active_client()
         song = client.get_song(video_id.strip())
-        playback_url = ((song or {}).get("playbackTracking") or {}).get(
-            "videostatsPlaybackUrl"
-        )
+        playback_url = ((song or {}).get("playbackTracking") or {}).get("videostatsPlaybackUrl")
         if not playback_url:
             return jsonify({"error": "no_playback_tracking"}), 502
         response = client.add_history_item(song)

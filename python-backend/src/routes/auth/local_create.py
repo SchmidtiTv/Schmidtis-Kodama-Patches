@@ -1,13 +1,14 @@
 """Create and activate a local profile without a Google account."""
 
-import re
 import os
+import re
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import music_session, profiles
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/local-create", methods=["POST"])

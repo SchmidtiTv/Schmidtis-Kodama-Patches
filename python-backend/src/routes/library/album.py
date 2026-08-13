@@ -4,10 +4,10 @@ from flask import jsonify, request
 
 from src.lib import YoutubeResponseMapper
 from src.lib.music.audio_versions import prefer_audio_versions
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._services import album_cache, cache_settings, metadata_cache, music_session
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/album/<browse_id>")
@@ -24,28 +24,50 @@ def get_album(browse_id: str) -> RouteResponse:
         session = music_session()
         client = session.get_active_client()
         album = client.get_album(browse_id)
-        raw_tracks = [track for track in album.get("tracks", []) if track.get("videoId")]
-        raw_tracks = prefer_audio_versions(session.get_system_client(), None, raw_tracks, metadata_cache())
+        album_tracks = album.get("tracks")
+        track_items = album_tracks if isinstance(album_tracks, list) else []
+        raw_tracks = [
+            track for track in track_items if isinstance(track, dict) and track.get("videoId")
+        ]
+        raw_tracks = prefer_audio_versions(
+            session.get_system_client(), None, raw_tracks, metadata_cache()
+        )
         tracks = []
-        album_artists = album.get("artists", [])
+        raw_album_artists = album.get("artists")
+        album_artists = (
+            [artist for artist in raw_album_artists if isinstance(artist, dict)]
+            if isinstance(raw_album_artists, list)
+            else []
+        )
         album_artist_name = ", ".join(a["name"] for a in album_artists)
         album_artist_browse_id = album_artists[0].get("id", "") if album_artists else ""
         for t in raw_tracks:
-            track_artists = t.get("artists", [])
+            raw_track_artists = t.get("artists")
+            track_artists = (
+                [artist for artist in raw_track_artists if isinstance(artist, dict)]
+                if isinstance(raw_track_artists, list)
+                else []
+            )
             artists = ", ".join(a["name"] for a in track_artists) or album_artist_name
-            artist_browse_id = track_artists[0].get("id", "") if track_artists else album_artist_browse_id
+            artist_browse_id = (
+                track_artists[0].get("id", "") if track_artists else album_artist_browse_id
+            )
             thumbnail = YoutubeResponseMapper.select_thumbnail(album.get("thumbnails", []))
-            tracks.append({
-                "videoId": t.get("videoId", ""),
-                "title": t.get("title", ""),
-                "artists": artists,
-                "artistBrowseId": artist_browse_id,
-                "artistLinks": YoutubeResponseMapper.build_artist_links(track_artists or album_artists),
-                "album": album.get("title", ""),
-                "duration": t.get("duration", ""),
-                "thumbnail": thumbnail,
-                "isExplicit": bool(t.get("isExplicit", False)),
-            })
+            tracks.append(
+                {
+                    "videoId": t.get("videoId", ""),
+                    "title": t.get("title", ""),
+                    "artists": artists,
+                    "artistBrowseId": artist_browse_id,
+                    "artistLinks": YoutubeResponseMapper.build_artist_links(
+                        track_artists or album_artists
+                    ),
+                    "album": album.get("title", ""),
+                    "duration": t.get("duration", ""),
+                    "thumbnail": thumbnail,
+                    "isExplicit": bool(t.get("isExplicit", False)),
+                }
+            )
         result = {
             "title": album.get("title", ""),
             "artists": album_artist_name,

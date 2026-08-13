@@ -2,9 +2,10 @@
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import video_sync_service
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/video-sync/offset/<video_id>")

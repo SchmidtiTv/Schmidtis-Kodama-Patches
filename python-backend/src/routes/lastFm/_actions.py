@@ -1,10 +1,14 @@
 """Shared Last.fm track-action request handling."""
 
+import contextlib
+from collections.abc import Callable
+from typing import cast
+
 from flask import jsonify, request
-from typing import Callable, cast
+
+from src.type_defs import RouteResponse
 
 from ._services import lastfm_client, read_active_metadata
-from src.type_defs import RouteResponse
 
 
 def submit_track_action(
@@ -17,7 +21,7 @@ def submit_track_action(
     if not session_key:
         return jsonify({"error": "not_connected"}), 400
 
-    data = cast(dict[str, object], request.json or {})
+    data = cast("dict[str, object]", request.json or {})
     artist, track = data.get("artist", ""), data.get("track", "")
     if not artist or not track:
         return jsonify({"error": "missing_meta"}), 400
@@ -27,10 +31,8 @@ def submit_track_action(
         params["album"] = data["album"]
     duration = data.get("duration")
     if isinstance(duration, str | int | float):
-        try:
+        with contextlib.suppress(TypeError, ValueError):
             params["duration"] = str(int(float(duration)))
-        except (TypeError, ValueError):
-            pass
     if extra is not None:
         params.update(extra(data))
 

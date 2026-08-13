@@ -4,10 +4,10 @@ from flask import jsonify
 
 from src.config import config_dirs
 from src.lib import CacheSettings, DirectoryInspector
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._services import cache_settings, metadata_cache
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/cache/stats")

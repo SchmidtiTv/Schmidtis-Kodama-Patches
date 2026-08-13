@@ -2,10 +2,11 @@
 
 from flask import Response, jsonify
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._responses import bridge_headers
 from ._services import composer_bridge
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/composer-bridge/thumb/<video_id>")

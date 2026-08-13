@@ -2,9 +2,10 @@
 
 from flask import Response, jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import ffmpeg
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/ffmpeg/status")

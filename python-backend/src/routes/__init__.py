@@ -1,11 +1,12 @@
 import logging
-from typing import List, Tuple
 
-from flask import Flask, Blueprint
+from flask import Blueprint, Flask
+
+from src.config import Config
+
 from .auth import blueprint as auth_blueprint
-from .news import blueprint as news_blueprint
-from .clientlog import blueprint as clientlog_blueprint
 from .cache import blueprint as cache_blueprint
+from .clientlog import blueprint as clientlog_blueprint
 from .composer import blueprint as composer_blueprint
 from .discovery import blueprint as discovery_blueprint
 from .downloads import blueprint as downloads_blueprint
@@ -13,17 +14,16 @@ from .feedback import blueprint as feedback_blueprint
 from .lastFm import blueprint as lastfm_blueprint
 from .library import blueprint as library_blueprint
 from .lyrics import blueprint as lyrics_blueprint
+from .news import blueprint as news_blueprint
 from .operations import blueprint as operations_blueprint
 from .profiles import blueprint as profiles_blueprint
 from .root import blueprint as root_blueprint
 from .streaming import blueprint as streaming_blueprint
-from src.config import Config
-
 
 logger = logging.getLogger(__name__)
 
 # List of a Tuple with the blueprint and if debug
-blueprints: List[Tuple[Blueprint, bool]] = [
+blueprints: list[tuple[Blueprint, bool]] = [
     (auth_blueprint, False),
     (news_blueprint, False),
     (clientlog_blueprint, True),

@@ -2,7 +2,6 @@
 
 from flask import Blueprint
 
-
 blueprint = Blueprint("library", __name__)
 
-from . import library, playlist, radio, album, artist, history, mix, song  # noqa: E402,F401
+from . import album, artist, history, library, mix, playlist, radio, song

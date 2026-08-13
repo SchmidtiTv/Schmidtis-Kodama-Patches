@@ -2,9 +2,10 @@
 
 from flask import jsonify
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import ytdlp
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/ytdlp/check-update")

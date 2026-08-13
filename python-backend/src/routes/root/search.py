@@ -1,21 +1,34 @@
 """Search YouTube Music and normalize the supported result categories."""
 
-from flask import jsonify, request
 from typing import Literal, cast
 
+from flask import jsonify, request
+
 from src.lib import YoutubeResponseMapper
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._formatters import song_result
 from ._services import music_session
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/search")
 def search() -> RouteResponse:
     query = request.args.get("q", "")
     filter_type = request.args.get("filter", "songs")
-    allowed_filters = {"all", "albums", "artists", "community_playlists", "episodes", "featured_playlists", "playlists", "podcasts", "profiles", "songs", "videos"}
+    allowed_filters = {
+        "all",
+        "albums",
+        "artists",
+        "community_playlists",
+        "episodes",
+        "featured_playlists",
+        "playlists",
+        "podcasts",
+        "profiles",
+        "songs",
+        "videos",
+    }
     if filter_type not in allowed_filters:
         filter_type = "songs"
     if not query:
@@ -25,7 +38,7 @@ def search() -> RouteResponse:
             None
             if filter_type == "all"
             else cast(
-                Literal["albums", "artists", "community_playlists", "episodes", "featured_playlists", "playlists", "podcasts", "profiles", "songs", "videos"],
+                "Literal['albums', 'artists', 'community_playlists', 'episodes', 'featured_playlists', 'playlists', 'podcasts', 'profiles', 'songs', 'videos']",
                 filter_type,
             )
         )
@@ -40,12 +53,18 @@ def search() -> RouteResponse:
                 # A "Top result" card carries the artist inside `artists` instead of
                 # the `title`/`browseId` pair the regular artist rows use.
                 top_artist = next(iter(result.get("artists") or []), {})
-                browse_id = result.get("browseId", "") or result.get("channelId", "") or top_artist.get("id", "")
+                browse_id = (
+                    result.get("browseId", "")
+                    or result.get("channelId", "")
+                    or top_artist.get("id", "")
+                )
                 items.append(
                     {
                         "type": "artist",
                         "browseId": browse_id,
-                        "title": result.get("title", "") or result.get("artist", "") or top_artist.get("name", ""),
+                        "title": result.get("title", "")
+                        or result.get("artist", "")
+                        or top_artist.get("name", ""),
                         "subtitle": result.get("subscribers", ""),
                         "thumbnail": thumbnail,
                     }

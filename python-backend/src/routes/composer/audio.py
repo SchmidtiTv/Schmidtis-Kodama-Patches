@@ -3,11 +3,11 @@
 from flask import Response, jsonify, send_file
 
 from src.lib import ComposerBridgeError
+from src.type_defs import RouteResponse
 
 from . import blueprint
 from ._responses import bridge_headers, bridge_headers_with_metadata
 from ._services import composer_bridge
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/composer-bridge/audio/<video_id>")

@@ -2,9 +2,10 @@
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import lyrics_service
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/lyrics/custom", methods=["POST"])

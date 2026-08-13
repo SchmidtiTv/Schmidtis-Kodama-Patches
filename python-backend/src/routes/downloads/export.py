@@ -2,9 +2,10 @@
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import export_service, ffmpeg, music_session
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/song/export/<video_id>", methods=["POST"])
@@ -19,7 +20,9 @@ def export_audio(video_id: str) -> RouteResponse:
         return jsonify({"ok": True, "status": "exporting"})
     year = data.get("year", "")
     album_browse_id = data.get("albumBrowseId", "")
-    print(f"Export request: video_id={video_id} fmt={fmt} year='{year}' albumBrowseId='{album_browse_id}' thumbnail='{data.get('thumbnail','')[:60]}'")
+    print(
+        f"Export request: video_id={video_id} fmt={fmt} year='{year}' albumBrowseId='{album_browse_id}' thumbnail='{data.get('thumbnail','')[:60]}'"
+    )
     # Try to fetch year from album data if not provided
     if not year and album_browse_id:
         try:

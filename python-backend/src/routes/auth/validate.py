@@ -4,9 +4,10 @@ import os
 
 from flask import jsonify
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import music_session, profiles
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/validate")

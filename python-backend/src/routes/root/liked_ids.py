@@ -2,9 +2,10 @@
 
 from flask import jsonify
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import music_session, profiles
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/liked/ids")
@@ -15,7 +16,10 @@ def liked_ids() -> RouteResponse:
     try:
         if profile_repository.is_local(profile_name):
             with profile_repository.local_database(profile_name or "default") as database:
-                ids = [row[0] for row in database.execute("SELECT video_id FROM liked_songs").fetchall()]
+                ids = [
+                    row[0]
+                    for row in database.execute("SELECT video_id FROM liked_songs").fetchall()
+                ]
             return jsonify({"ids": ids})
 
         songs = session.get_active_client().get_liked_songs()

@@ -2,9 +2,10 @@
 
 from flask import jsonify
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import stream_service
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/stream-prepare/<video_id>")

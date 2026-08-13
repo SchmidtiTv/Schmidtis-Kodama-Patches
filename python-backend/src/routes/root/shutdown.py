@@ -4,8 +4,9 @@ import os
 import threading
 import time
 
-from . import blueprint
 from src.type_defs import RouteResponse
+
+from . import blueprint
 
 
 @blueprint.route("/shutdown", methods=["GET", "POST"])
