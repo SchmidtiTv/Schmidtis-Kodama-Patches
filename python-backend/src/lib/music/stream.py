@@ -2,7 +2,7 @@
 
 A single ``StreamService`` instance owns the in-memory browser-cookie extraction
 state and the resolved-URL cache so every stream request shares one extraction
-path. No extracted browser cookies are persisted to disk.
+path. Extracted cookies are persisted only as authenticated ciphertext.
 """
 
 import glob
@@ -13,12 +13,13 @@ import tempfile
 import threading
 import time
 from collections.abc import Mapping
-from typing import Generator, cast
+from typing import Generator, Protocol, cast
 
 import requests
 
 from src.config import BACKEND_PORT, config_ytdlp
 from src.lib.integrations.ytdlp import YTDLP
+from src.lib.security import EncryptedCredentialStore
 
 
 class _QuietYTDLPLogger:
@@ -40,6 +41,16 @@ class _QuietYTDLPLogger:
         return None
 
 
+class _BrowserCookieStore(Protocol):
+    """Persistence boundary for encrypted browser-cookie text."""
+
+    def read(self) -> str | None:
+        """Return decrypted cookie data when available."""
+
+    def write(self, value: str) -> bool:
+        """Persist cookie data securely."""
+
+
 class StreamService:
     """Resolve YouTube Music audio URLs and proxy progressive audio streams."""
 
@@ -48,12 +59,24 @@ class StreamService:
     # symphonia has no Opus decoder, so WebM is intentionally excluded.
     PLAYABLE_EXTS = {".m4a", ".mp4", ".mp3", ".ogg", ".flac", ".wav"}
 
-    def __init__(self, ytdlp: YTDLP, logger: logging.Logger | None = None) -> None:
+    def __init__(
+        self,
+        ytdlp: YTDLP,
+        logger: logging.Logger | None = None,
+        browser_cookie_store: _BrowserCookieStore | None = None,
+    ) -> None:
         self._ytdlp = ytdlp
         self._logger = logger or logging.getLogger(__name__)
         self._browser_cookie_lock = threading.Lock()
         self._browser_cookie_last_extract = 0.0
         self._browser_cookie_data_cache: str | None = None
+        self._browser_cookie_store_loaded = False
+        self._browser_cookie_store = browser_cookie_store or EncryptedCredentialStore(
+            config_ytdlp.BROWSER_COOKIE_STORE_FILE,
+            service="dev.kodama.music",
+            account="browser-cookie-encryption-key-v1",
+        )
+        self._migrate_legacy_browser_cookies()
         self._audio_url_cache = {}  # video_id -> (url, expiry_ts)
         self._audio_url_lock = threading.Lock()
         self._audio_url_inflight: dict[str, threading.Event] = {}
@@ -204,6 +227,27 @@ class StreamService:
     # PO tokens from live browser storage. In practice this is fine here; log in
     # via the app for a first-class authenticated session if a track needs it.
     # Old server.py: _get_browser_cookiefile
+    def _migrate_legacy_browser_cookies(self) -> None:
+        """Encrypt a legacy plaintext cookie file before removing it."""
+        legacy_path = config_ytdlp.LEGACY_BROWSER_COOKIE_FILE
+        try:
+            cookie_data = legacy_path.read_text(encoding="utf-8")
+        except OSError:
+            return
+
+        if cookie_data:
+            self._browser_cookie_data_cache = cookie_data
+            self._browser_cookie_last_extract = time.time()
+            self._browser_cookie_store_loaded = True
+            if not self._browser_cookie_store.write(cookie_data):
+                self._logger.warning(
+                    "[cookies] secure storage unavailable; keeping browser cookies in memory only"
+                )
+        try:
+            legacy_path.unlink()
+        except OSError as error:
+            self._logger.warning("[cookies] could not remove legacy cookie file: %s", error)
+
     def _browser_cookie_data(self, force: bool = False) -> str | None:
         """Return browser cookies as in-memory Netscape text.
 
@@ -212,6 +256,11 @@ class StreamService:
         """
         with self._browser_cookie_lock:
             now = time.time()
+            if not self._browser_cookie_store_loaded:
+                self._browser_cookie_data_cache = self._browser_cookie_store.read()
+                self._browser_cookie_store_loaded = True
+                if self._browser_cookie_data_cache is not None:
+                    self._browser_cookie_last_extract = now
             cached = self._browser_cookie_data_cache
             fresh = cached is not None and (
                 now - self._browser_cookie_last_extract < config_ytdlp.BROWSER_COOKIE_TTL
@@ -232,7 +281,7 @@ class StreamService:
                 except Exception as error:
                     self._logger.debug(f"[cookies] {browser} extract failed: {error}")
                     continue
-                # Keep only YouTube/Google cookies and never persist them.
+                # Keep only YouTube/Google cookies; persistence is encrypted below.
                 filtered = YoutubeDLCookieJar()
                 for cookie in jar:
                     domain = (cookie.domain or "").lower()
@@ -240,8 +289,17 @@ class StreamService:
                         filtered.set_cookie(cookie)
                 if len(filtered):
                     cookie_buffer = io.StringIO()
-                    filtered.save(cookie_buffer, ignore_discard=True, ignore_expires=True)
+                    # yt-dlp accepts text streams here, although its stub names only paths.
+                    filtered.save(
+                        cast(str, cookie_buffer),
+                        ignore_discard=True,
+                        ignore_expires=True,
+                    )
                     self._browser_cookie_data_cache = cookie_buffer.getvalue()
+                    if not self._browser_cookie_store.write(self._browser_cookie_data_cache):
+                        self._logger.warning(
+                            "[cookies] secure storage unavailable; keeping browser cookies in memory only"
+                        )
                     self._logger.info(
                         "[cookies] cached %s %s cookies in memory",
                         len(filtered),

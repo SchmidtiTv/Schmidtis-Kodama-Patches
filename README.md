@@ -58,6 +58,8 @@ It does **not** use this fork's separate `master` branch as the baseline. See th
 - Made streaming more resilient to expired or rejected signed URLs, avoided duplicate source
   resolution, and preferred audio-capable variants in library and playlist results.
 - Hardened authentication, including brand-account sign-in and actionable embedded-login errors.
+- Protected yt-dlp browser-cookie persistence with authenticated encryption and an encryption key
+  stored in the operating system's credential vault.
 - Isolated profile-scoped playlist caches and stopped playback cleanly when changing profiles.
 - Improved lyrics-provider matching, credit-line filtering, synchronization labels, provider
   preference migration, and the Lyrics Browser's Composer action.
@@ -92,6 +94,17 @@ cd python-backend
 uv run python setup_auth.py
 cd ..
 ```
+
+### Browser-cookie security
+
+Browser cookies used by yt-dlp are never persisted as plaintext. Kodama stores authenticated
+ciphertext in the backend cache and protects its encryption key with the operating system's
+credential vault through Python's `keyring` library. If no secure credential backend is available,
+the cookies remain in memory for the current process instead of being written to disk.
+
+During development, the encrypted cookie file is `.cache/browser-cookies.enc` under
+`python-backend/`. A legacy `browser_cookies.txt` file is encrypted and removed automatically when
+the backend starts. The `.cache/` directory is ignored by Git and must not be committed.
 
 ### Run and verify
 

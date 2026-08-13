@@ -242,11 +242,9 @@ class ConfigYTDLP:
     BROWSER_COOKIE_TTL = 6 * 3600
     BROWSER_COOKIE_MIN_GAP = 600
 
-    def __init__(self, base_dir: Path) -> None:
-        try:
-            (base_dir / "browser_cookies.txt").unlink(missing_ok=True)
-        except OSError:
-            pass
+    def __init__(self, base_dir: Path, cache_dir: Path | None = None) -> None:
+        self.LEGACY_BROWSER_COOKIE_FILE = base_dir / "browser_cookies.txt"
+        self.BROWSER_COOKIE_STORE_FILE = (cache_dir or base_dir) / "browser-cookies.enc"
         self.STREAM_ATTEMPTS = [
             (self.AUDIO_FORMAT, self.WEB_MUSIC_OPTIONS, False),
             (self.AUDIO_FORMAT, None, False),
@@ -335,6 +333,6 @@ config_lastfm = ConfigLastFM()
 config_ytmusic = ConfigYTMusic()
 config_composer = ConfigComposer(config_dirs.BASE_DIR)
 config_lyrics = ConfigLyrics()
-config_ytdlp = ConfigYTDLP(config_dirs.BASE_DIR)
+config_ytdlp = ConfigYTDLP(config_dirs.BASE_DIR, config_dirs.CACHE_DIR)
 config_overlay = ConfigOverlay()
 config_musixmatch = ConfigMusixMatch()

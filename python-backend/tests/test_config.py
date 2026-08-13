@@ -67,13 +67,13 @@ class ConfigDirsTests:
             assert legacy_database.read_bytes() == b"legacy"
             assert destination_database.read_bytes() == b"current"
 
-    def test_ytdlp_config_removes_the_legacy_browser_cookie_file(self) -> None:
-        """Delete the insecure browser-cookie cache during configuration."""
+    def test_ytdlp_config_separates_legacy_and_encrypted_cookie_paths(self) -> None:
+        """Keep migration input separate from the encrypted destination."""
         with tempfile.TemporaryDirectory() as directory:
             base_dir = Path(directory)
-            legacy_cookie_file = base_dir / "browser_cookies.txt"
-            legacy_cookie_file.write_text("plaintext", encoding="utf-8")
+            cache_dir = base_dir / ".cache"
 
-            ConfigYTDLP(base_dir)
+            config = ConfigYTDLP(base_dir, cache_dir)
 
-            assert not legacy_cookie_file.exists()
+            assert config.LEGACY_BROWSER_COOKIE_FILE == base_dir / "browser_cookies.txt"
+            assert config.BROWSER_COOKIE_STORE_FILE == cache_dir / "browser-cookies.enc"

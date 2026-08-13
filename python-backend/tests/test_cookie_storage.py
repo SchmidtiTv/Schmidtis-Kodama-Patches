@@ -6,11 +6,31 @@ import tempfile
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import MagicMock
+from typing import cast
+from unittest.mock import MagicMock, patch
 
 import yt_dlp
 
+from src.config import config_ytdlp
 from src.lib.integrations.ytdlp import YTDLP
+from src.lib.music.stream import StreamService
+from src.lib.music.youtube_music import YoutubeMusicSessionState
+
+
+class FakeEncryptedStore:
+    """Record encrypted-store interactions without opening the real keyring."""
+
+    def __init__(self, value: str | None = None) -> None:
+        self.value = value
+        self.writes: list[str] = []
+
+    def read(self) -> str | None:
+        return self.value
+
+    def write(self, value: str) -> bool:
+        self.value = value
+        self.writes.append(value)
+        return True
 
 
 class CookieStorageTests:
@@ -40,7 +60,10 @@ class CookieStorageTests:
                 ytm=SimpleNamespace(_session=session),
             )
 
-            ytdlp = YTDLP(profiles=profiles, music_state=state)
+            ytdlp = YTDLP(
+                profiles=profiles,
+                music_state=cast(YoutubeMusicSessionState, state),
+            )
             ytdlp.last_cookie_refresh = time.time()
             options: dict[str, object] = {}
 
@@ -52,8 +75,30 @@ class CookieStorageTests:
             assert "SID\tprofile" in cookie_text
             assert "__Secure-PSID\tsession" in cookie_text
             cookie_stream.seek(0)
-            with yt_dlp.YoutubeDL({"cookiefile": cookie_stream, "quiet": True}) as downloader:
+            params = cast("yt_dlp._Params", {"cookiefile": cookie_stream, "quiet": True})
+            with yt_dlp.YoutubeDL(params) as downloader:
                 cookie_names = {cookie.name for cookie in downloader.cookiejar}
             assert {"SID", "__Secure-PSID"} <= cookie_names
             assert not legacy_cookie_file.exists()
             assert not list(profiles_dir.glob("*_ydl_cookies.txt"))
+
+    def test_plaintext_browser_cookie_file_is_encrypted_then_removed(self) -> None:
+        """Migrate legacy cookies without retaining plaintext on disk."""
+        with tempfile.TemporaryDirectory() as directory:
+            legacy_cookie_file = Path(directory) / "browser_cookies.txt"
+            legacy_cookie_file.write_text("SID=legacy", encoding="utf-8")
+            encrypted_store = FakeEncryptedStore()
+
+            with patch.object(
+                config_ytdlp,
+                "LEGACY_BROWSER_COOKIE_FILE",
+                legacy_cookie_file,
+            ):
+                service = StreamService(
+                    MagicMock(),
+                    browser_cookie_store=encrypted_store,
+                )
+
+            assert encrypted_store.writes == ["SID=legacy"]
+            assert service._browser_cookie_data_cache == "SID=legacy"
+            assert not legacy_cookie_file.exists()

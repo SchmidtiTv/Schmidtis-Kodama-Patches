@@ -40,13 +40,14 @@ for _pkg in ("yt_dlp_ejs", "yt_dlp_plugins"):
 # files, so romaji silently failed in packaged builds while working in dev (where the
 # data files are just sitting on disk next to the installed package).
 _kakasi_datas, _kakasi_binaries, _kakasi_hidden = _collect_all("pykakasi")
+_keyring_datas, _keyring_binaries, _keyring_hidden = _collect_all("keyring")
 
 a = Analysis(
     ['server.py'],
     pathex=[],
-    binaries=_kakasi_binaries,
-    datas=[(_ytm_locales, 'ytmusicapi/locales'), (_composer_dist, 'composer_dist')] + _extra_datas + _pot_datas + _kakasi_datas,
-    hiddenimports=["jaconv"] + _pot_hidden + _kakasi_hidden,
+    binaries=_kakasi_binaries + _keyring_binaries,
+    datas=[(_ytm_locales, 'ytmusicapi/locales'), (_composer_dist, 'composer_dist')] + _extra_datas + _pot_datas + _kakasi_datas + _keyring_datas,
+    hiddenimports=["jaconv"] + _pot_hidden + _kakasi_hidden + _keyring_hidden,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
