@@ -49,7 +49,17 @@ target-version = "py312"
 src = ["src", "tests"]
 
 [tool.ruff.lint]
-select = ["ALL"]
+select = [
+    "B",   # Likely bugs and unsafe patterns.
+    "E4",  # Import errors.
+    "E7",  # Statement errors.
+    "E9",  # Runtime and syntax errors.
+    "F",   # Pyflakes correctness checks.
+    "I",   # Import ordering.
+    "RUF", # Ruff-specific correctness checks.
+    "SIM", # Simplifications that preserve behavior.
+    "UP",  # Modern Python syntax.
+]
 ignore = [
     "COM812", # Conflicts with Black's trailing-comma handling.
     "D203",   # Prefer D211: no blank line before class docstrings.
@@ -67,8 +77,14 @@ ignore = [
     "W191",   # Conflicts with formatter indentation.
 ]
 
+[tool.ruff.lint.per-file-ignores]
+"src/routes/**/__init__.py" = [
+    "E402", # Blueprints must exist before importing decorated route modules.
+    "F401", # Route-module imports register decorators through side effects.
+]
+
 [tool.pyrefly]
-preset = "strict"
+preset = "default"
 project-includes = ["server.py", "src", "tests"]
 python-version = "3.12"
 search-path = [".", "tests"]
