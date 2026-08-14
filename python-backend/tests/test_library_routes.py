@@ -131,6 +131,50 @@ class PlaylistRouteTests(RouteTestCase):
         )
         assert invalid.status_code == 400
 
+    def test_playlist_mix_analysis_routes_preserve_validation_and_job_responses(self) -> None:
+        assert self.client.post("/playlist/pl/mix/analysis").status_code == 400
+        assert (
+            self.client.post("/playlist/pl/mix/analysis", json={"tracks": ["bad"]}).status_code
+            == 400
+        )
+        assert (
+            self.client.post(
+                "/playlist/pl/mix/analysis",
+                json={"tracks": [{"instanceId": "", "videoId": "video-a"}]},
+            ).status_code
+            == 400
+        )
+
+        started = self.client.post(
+            "/playlist/pl/mix/analysis",
+            json={
+                "tracks": [
+                    {"instanceId": " set-a ", "videoId": " video-a "},
+                    {"instanceId": "set-b", "videoId": "video-b"},
+                ]
+            },
+        )
+
+        assert started.status_code == 202
+        assert started.json == {
+            "jobId": "job-1",
+            "playlistId": "pl",
+            "status": "queued",
+            "total": 2,
+            "completed": 0,
+            "tracks": {},
+        }
+        assert self.mix_analysis.started_with == (
+            "default",
+            "pl",
+            [
+                {"instanceId": "set-a", "videoId": "video-a"},
+                {"instanceId": "set-b", "videoId": "video-b"},
+            ],
+        )
+        assert self.client.get("/playlist/pl/mix/analysis/job-1").json == started.json
+        assert self.client.get("/playlist/pl/mix/analysis/missing").status_code == 404
+
     def test_online_playlist_mutation_routes(self) -> None:
         assert self.client.post("/playlist/create", json={}).status_code == 400
         created = self.client.post(
@@ -337,7 +381,10 @@ class LibraryDetailRouteTests(RouteTestCase):
             def json(self) -> object:
                 return {"viewCount": 1_250_000, "likes": 42_500, "dislikes": 321}
 
-        with patch("src.routes.library.song.requests.get", return_value=StatsResponse()) as request:
+        with patch(
+            "src.routes.library.song.stats.by_video_id.index.requests.get",
+            return_value=StatsResponse(),
+        ) as request:
             stats = self.client.get("/song/stats/vid")
 
         assert stats.status_code == 200
@@ -351,7 +398,10 @@ class LibraryDetailRouteTests(RouteTestCase):
         class FailedStatsResponse:
             status_code = 404
 
-        with patch("src.routes.library.song.requests.get", return_value=FailedStatsResponse()):
+        with patch(
+            "src.routes.library.song.stats.by_video_id.index.requests.get",
+            return_value=FailedStatsResponse(),
+        ):
             response = self.client.get("/song/stats/vid")
 
         assert response.status_code == 502
@@ -381,7 +431,10 @@ class LibraryDetailRouteTests(RouteTestCase):
             def json(self) -> object:
                 return payload
 
-        with patch("src.routes.library.song.requests.post", return_value=JsonResponse()) as post:
+        with patch(
+            "src.routes.library.song.credits.by_video_id.index.requests.post",
+            return_value=JsonResponse(),
+        ) as post:
             first = self.client.get("/song/credits/vid")
             second = self.client.get("/song/credits/vid")
 

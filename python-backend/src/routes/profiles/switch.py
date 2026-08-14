@@ -4,9 +4,10 @@ import threading
 
 from flask import jsonify, request
 
+from src.type_defs import RouteResponse
+
 from . import blueprint
 from ._services import music_session
-from src.type_defs import RouteResponse
 
 
 @blueprint.route("/switch", methods=["POST"])

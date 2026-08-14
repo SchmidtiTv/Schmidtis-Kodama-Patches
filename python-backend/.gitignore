@@ -5,7 +5,7 @@ __pycache__/
 .cache/
 browser_cookies.txt
 server_startup.log
-profiles/
+/profiles/
 imgcache/
 album_cache/
 lyrics_cache/

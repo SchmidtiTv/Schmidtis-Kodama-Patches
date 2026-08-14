@@ -25,8 +25,8 @@ class OperationsRouteTests(RouteTestCase):
 
     def test_debug_info_route_reports_runtime_context(self) -> None:
         with (
-            patch("src.routes.operations.debug.time.time", return_value=1065.0),
-            patch("src.routes.operations.debug.shutil.which", return_value="/usr/bin/node"),
+            patch("src.routes.operations.debug.info.time.time", return_value=1065.0),
+            patch("src.routes.operations.debug.info.shutil.which", return_value="/usr/bin/node"),
         ):
             response = self.client.get("/debug/info")
 

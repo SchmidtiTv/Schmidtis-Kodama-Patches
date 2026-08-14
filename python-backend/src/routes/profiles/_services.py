@@ -1,9 +1,11 @@
 """Shared access to services registered on the Flask application."""
 
 from typing import cast
+
 from flask import current_app
-from src.lib.profiles.profile import Profile
+
 from src.lib.music.youtube_music import YoutubeMusicSession
+from src.lib.profiles.profile import Profile
 
 
 def profiles() -> Profile:

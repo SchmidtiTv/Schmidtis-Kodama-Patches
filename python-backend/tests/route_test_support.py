@@ -756,6 +756,32 @@ class FakeVideoSyncService:
         return {"url": f"https://video/{video_id}", "maxHeight": max_height}, 200
 
 
+class FakeMixAnalysisService:
+    def __init__(self) -> None:
+        self.jobs: dict[tuple[str, str, str], dict[str, object]] = {}
+        self.started_with: tuple[str | None, str, list[dict[str, str]]] | None = None
+
+    def start(
+        self, profile_name: str | None, playlist_id: str, tracks: list[dict[str, str]]
+    ) -> dict[str, object]:
+        self.started_with = (profile_name, playlist_id, tracks)
+        job: dict[str, object] = {
+            "jobId": "job-1",
+            "playlistId": playlist_id,
+            "status": "queued",
+            "total": len(tracks),
+            "completed": 0,
+            "tracks": {},
+        }
+        self.jobs[(profile_name or "default", playlist_id, "job-1")] = job
+        return job
+
+    def get_job(
+        self, profile_name: str | None, playlist_id: str, job_id: str
+    ) -> dict[str, object] | None:
+        return self.jobs.get((profile_name or "default", playlist_id, job_id))
+
+
 class FakeComposerBridge:
     EXPOSED_HEADERS = "x-track-title,x-track-artist"
 
@@ -1137,6 +1163,7 @@ class RouteTestCase:
         self.composer = FakeComposerBridge(self.root)
         self.stream = FakeStreamService()
         self.video_sync = FakeVideoSyncService()
+        self.mix_analysis = FakeMixAnalysisService()
         self.playlist_cache = FakePlaylistCache()
         self.album_cache = FakeAlbumCache()
         self.band_member_finder = SimpleNamespace(find=lambda artist_name: [])
@@ -1160,6 +1187,7 @@ class RouteTestCase:
                 "composer_bridge": self.composer,
                 "stream_service": self.stream,
                 "video_sync_service": self.video_sync,
+                "mix_analysis_service": self.mix_analysis,
                 "playlist_cache": self.playlist_cache,
                 "album_cache": self.album_cache,
                 "band_member_finder": self.band_member_finder,

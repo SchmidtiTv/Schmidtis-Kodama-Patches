@@ -4,4 +4,4 @@ from flask import Blueprint
 
 blueprint = Blueprint("streaming", __name__)
 
-from . import audio, prepare, stream, video_sync
+from . import audio_stream, stream, stream_prepare, video_sync

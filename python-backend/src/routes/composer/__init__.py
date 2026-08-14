@@ -4,4 +4,4 @@ from flask import Blueprint
 
 blueprint = Blueprint("composer", __name__)
 
-from . import app, audio, autocache, health, thumb
+from . import composer_app, composer_bridge

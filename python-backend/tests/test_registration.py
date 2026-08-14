@@ -1,9 +1,14 @@
+from unittest.mock import patch
+
+from flask import Flask
+from src.routes import blueprints, register_blueprints
+
 from route_test_support import RouteTestCase
 
 
 class RouteRegistrationTests(RouteTestCase):
     def test_all_migrated_routes_are_registered(self) -> None:
-        rules = {str(rule) for rule in self.app.url_map.iter_rules()}
+        rules = {str(rule) for rule in self.app.url_map.iter_rules() if rule.endpoint != "static"}
         expected = {
             "/auth/begin-add",
             "/auth/cookie-login",
@@ -85,6 +90,7 @@ class RouteRegistrationTests(RouteTestCase):
             "/mood/playlists",
             "/debug/info",
             "/api/local-fonts",
+            "/network/ipv4-first",
             "/overlay",
             "/overlay/stream",
             "/overlay/push",
@@ -109,14 +115,62 @@ class RouteRegistrationTests(RouteTestCase):
             "/liked",
             "/liked/ids",
             "/search",
+            "/search/suggestions",
             "/shutdown",
             "/status",
             "/stream/<video_id>",
             "/stream-prepare/<video_id>",
             "/audio-stream/<video_id>",
             "/audio-stream/<video_id>/warm",
+            "/video-sync/offset/<video_id>",
+            "/video-sync/stream/<video_id>",
+            "/playlist/<playlist_id>/mix",
+            "/playlist/<playlist_id>/mix/analysis",
+            "/playlist/<playlist_id>/mix/analysis/<job_id>",
+            "/ytmusic/history",
             "/news",
             "/feedback",
             "/clientlog",
         }
-        assert not expected - rules
+        assert rules == expected
+
+    def test_route_methods_and_registrations_are_not_duplicated(self) -> None:
+        rules = [rule for rule in self.app.url_map.iter_rules() if rule.endpoint != "static"]
+        signatures = [(str(rule), frozenset(rule.methods or set())) for rule in rules]
+        assert len(signatures) == len(set(signatures))
+
+        methods_by_rule: dict[str, set[str]] = {}
+        for rule in rules:
+            methods_by_rule.setdefault(str(rule), set()).update(
+                (rule.methods or set()) - {"HEAD", "OPTIONS"}
+            )
+
+        expected_methods = {
+            "/cache/settings": {"GET", "POST"},
+            "/composer-bridge/autocache": {"GET", "POST"},
+            "/lyrics/custom/<video_id>": {"GET", "DELETE"},
+            "/network/ipv4-first": {"GET", "POST"},
+            "/overlay/config": {"GET", "POST"},
+            "/playlist/<playlist_id>": {"GET", "DELETE"},
+            "/playlist/<playlist_id>/mix": {"GET", "PUT", "DELETE"},
+            "/shutdown": {"GET", "POST"},
+            "/song/cached/<video_id>": {"GET", "DELETE"},
+            "/unison/auth/nickname": {"PUT", "DELETE"},
+            "/unison/lyrics/<lyrics_id>/vote": {"POST", "DELETE"},
+        }
+        assert {rule: methods_by_rule[rule] for rule in expected_methods} == expected_methods
+
+    def test_blueprint_registry_is_unique_and_clientlog_remains_debug_only(self) -> None:
+        names = [blueprint.name for blueprint, _ in blueprints]
+        assert len(names) == len(set(names))
+        assert [(blueprint.name, is_debug) for blueprint, is_debug in blueprints].count(
+            ("clientlog", True)
+        ) == 1
+
+        production_app = Flask(__name__)
+        with patch("src.routes.Config.DEBUG", False):
+            register_blueprints(production_app)
+
+        production_rules = {str(rule) for rule in production_app.url_map.iter_rules()}
+        assert "/clientlog" not in production_rules
+        assert "/status" in production_rules

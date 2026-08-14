@@ -29,7 +29,9 @@ class LyricsRouteTests(RouteTestCase):
         upstream = SimpleNamespace(
             content=b'{"ok":true}', status_code=201, headers={"Content-Type": "application/json"}
         )
-        with patch("src.routes.lyrics._unison.requests.request", return_value=upstream) as request:
+        with patch(
+            "src.routes.lyrics.unison._forwarding.requests.request", return_value=upstream
+        ) as request:
             vote = self.client.post("/unison/lyrics/lyr/vote", json={"signed": True})
             report = self.client.post("/unison/lyrics/lyr/report", json={"signed": True})
             nickname = self.client.put("/unison/auth/nickname", json={"signed": True})

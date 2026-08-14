@@ -1,4 +1,4 @@
-from src.routes.library._formatters import has_video_thumbnail, video_evidence
+from src.routes.library.playlist._formatters import has_video_thumbnail, video_evidence
 
 
 class TrackFormatterTests:

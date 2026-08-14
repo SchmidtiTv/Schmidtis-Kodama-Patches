@@ -4,4 +4,4 @@ from flask import Blueprint
 
 blueprint = Blueprint("library", __name__)
 
-from . import album, artist, history, library, mix, playlist, radio, song
+from . import album, artist, library, playlist, radio, song, ytmusic
