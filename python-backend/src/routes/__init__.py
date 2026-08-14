@@ -11,7 +11,7 @@ from .composer import blueprint as composer_blueprint
 from .discovery import blueprint as discovery_blueprint
 from .downloads import blueprint as downloads_blueprint
 from .feedback import blueprint as feedback_blueprint
-from .lastFm import blueprint as lastfm_blueprint
+from .lastfm import blueprint as lastfm_blueprint
 from .library import blueprint as library_blueprint
 from .lyrics import blueprint as lyrics_blueprint
 from .news import blueprint as news_blueprint

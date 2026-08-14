@@ -27,7 +27,7 @@ class LastFMRouteTests(RouteTestCase):
         assert session.json == {"connected": True, "username": "bob"}
         assert self.profile_repository.metadata["default"]["lastfm_session"] == "new-sk"
 
-        with patch("src.routes.lastFm.session.lastfm_client") as lastfm_client:
+        with patch("src.routes.lastfm.session.lastfm_client") as lastfm_client:
             lastfm_client.return_value.lastfm_call.return_value = (
                 True,
                 {"session": {"key": "", "name": "bob"}},

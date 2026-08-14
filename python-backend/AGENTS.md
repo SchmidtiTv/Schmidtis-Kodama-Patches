@@ -28,7 +28,7 @@ route handlers, domain behavior, or application state to `server.py`.
 | `tests/`               | Route and runtime tests using isolated fakes.             |
 
 Route families are organized by domain: `auth`, `profiles`, `library`,
-`streaming`, `discovery`, `downloads`, `lyrics`, `composer`, `cache`, `lastFm`,
+`streaming`, `discovery`, `downloads`, `lyrics`, `composer`, `cache`, `lastfm`,
 `operations`, and `root`.
 
 Dependency direction is `server.py -> create_app() -> routes -> lib`. Library
