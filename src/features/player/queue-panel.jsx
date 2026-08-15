@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Button,
@@ -49,6 +49,24 @@ function TrackArtwork({ thumbnail, className }) {
   );
 }
 
+// Plain button rather than HeroUI's, for the same reason the track rows use one: a queued
+// playlist can be thousands of entries, and each react-aria button brings its own hooks,
+// generated id and attribute set. aria-label carries the accessible name that isIconOnly
+// would otherwise have demanded.
+function QueueIconButton({ label, onClick, className = "", children }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      onClick={onClick}
+      className={`h-7 min-w-7 px-1 rounded-[var(--r-sm)] border-0 bg-transparent cursor-default inline-flex items-center justify-center transition-[background-color,color,transform] duration-150 hover:bg-hover active:scale-[0.90] ${className}`}
+    >
+      {children}
+    </button>
+  );
+}
+
 function QueueRow({
   track,
   globalIdx,
@@ -63,6 +81,7 @@ function QueueRow({
   onToggleLike,
   onEditFade,
   fadeSecs,
+  labels,
 }) {
   const isDragOver = dragOver === globalIdx;
   const anim = useAnimations();
@@ -136,15 +155,13 @@ function QueueRow({
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          isIconOnly
-          onPress={() => onToggleLike?.(track)}
-          className={`h-7 min-w-7 rounded-[var(--r-sm)] ${isLiked ? "text-accent" : "text-muted hover:text-secondary"}`}
+        <QueueIconButton
+          label={isLiked ? labels.unlike : labels.like}
+          onClick={() => onToggleLike?.(track)}
+          className={isLiked ? "text-accent" : "text-muted hover:text-secondary"}
         >
           <Heart size={14} weight={isLiked ? "fill" : "regular"} />
-        </Button>
+        </QueueIconButton>
       </span>
 
       {/* Remove button */}
@@ -154,18 +171,16 @@ function QueueRow({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
-          <Button
-            variant="ghost"
-            size="sm"
-            isIconOnly
-            onPress={() => {
+          <QueueIconButton
+            label={labels.remove}
+            onClick={() => {
               if (anim) dissolve(rowRef.current, () => onRemove(track.videoId));
               else onRemove(track.videoId);
             }}
-            className="h-7 min-w-7 rounded-[var(--r-sm)] text-muted hover:text-[var(--status-danger)]!"
+            className="text-muted hover:text-[var(--status-danger)]"
           >
             <Trash size={13} />
-          </Button>
+          </QueueIconButton>
         </span>
       )}
     </div>
@@ -184,6 +199,12 @@ export function QueuePanel({
   const { crossfade = 0, crossfadeOverrides = {} } = usePlaybackConfig();
   const { setQueue, setTrack, setCrossfadeOverride, removeCrossfadeOverride } = usePlayerActions();
   const t = useLang();
+  // Built once here rather than a translation hook per row — a queued playlist can be
+  // thousands of them.
+  const rowLabels = useMemo(
+    () => ({ like: t("like"), unlike: t("unlike"), remove: t("removeFromQueue") }),
+    [t]
+  );
   const [panelTab, setPanelTab] = useState("queue");
   // Keep the list mounted briefly during the dock slide-out, then stop rendering
   // hidden queue rows so large queues do not keep doing work off-screen.
@@ -447,6 +468,7 @@ export function QueuePanel({
               {played.map((qt, i) => (
                 <QueueRow
                   key={qt.videoId || i}
+                  labels={rowLabels}
                   track={qt}
                   globalIdx={i}
                   isDraggable={true}
@@ -476,6 +498,7 @@ export function QueuePanel({
                 {t("nowPlaying")}
               </div>
               <QueueRow
+                labels={rowLabels}
                 track={currentTrack}
                 globalIdx={currentIdx}
                 isDraggable={false}
@@ -511,6 +534,7 @@ export function QueuePanel({
                 return (
                   <QueueRow
                     key={qt.videoId || i}
+                    labels={rowLabels}
                     track={qt}
                     globalIdx={gIdx}
                     isDraggable={true}
