@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@heroui/react";
 import { API } from "@/shared/api/client.js";
-import { thumb } from "@/shared/api/thumbnails.js";
+import { thumb, hiResThumb } from "@/shared/api/thumbnails.js";
 import { RetryingImage } from "@/shared/ui/retrying-image.jsx";
 import { useAnimations, useTrackNumbers } from "@/features/settings/display-context.jsx";
 import { useLang } from "@/shared/i18n/context.jsx";
@@ -166,7 +166,7 @@ export function TableRow({
         <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-md bg-elevated">
           {track.thumbnail ? (
             <RetryingImage
-              src={thumb(track.thumbnail)}
+              src={thumb(hiResThumb(track.thumbnail, 120))}
               alt=""
               className="w-full h-full object-cover"
             />
