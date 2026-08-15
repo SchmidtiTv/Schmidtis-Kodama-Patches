@@ -185,6 +185,17 @@ export function QueuePanel({
   const { setQueue, setTrack, setCrossfadeOverride, removeCrossfadeOverride } = usePlayerActions();
   const t = useLang();
   const [panelTab, setPanelTab] = useState("queue");
+  // Keep the list mounted briefly during the dock slide-out, then stop rendering
+  // hidden queue rows so large queues do not keep doing work off-screen.
+  const [mountList, setMountList] = useState(visible);
+  useEffect(() => {
+    if (visible) {
+      setMountList(true);
+      return;
+    }
+    const id = setTimeout(() => setMountList(false), 450);
+    return () => clearTimeout(id);
+  }, [visible]);
   const [fadeEdit, setFadeEdit] = useState(null); // { from, to } — open the per-transition fade editor
   const fadeKey = (a, b) => `${a?.videoId}__${b?.videoId}`;
   const [songDesc, setSongDesc] = useState(null); // null=loading, ""=none, str=text
@@ -408,7 +419,7 @@ export function QueuePanel({
         </div>
       )}
 
-      {panelTab === "queue" && (
+      {mountList && panelTab === "queue" && (
         <ScrollShadowRoot
           ref={listRef}
           size={28}
