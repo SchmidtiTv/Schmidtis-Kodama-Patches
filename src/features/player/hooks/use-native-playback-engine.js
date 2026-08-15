@@ -33,6 +33,7 @@ export function useNativePlaybackEngine({
   setProgress,
   setDuration,
   setLoading,
+  setBuffered,
   setIsPlaying,
   setTrack,
   setShuffle,
@@ -206,6 +207,9 @@ export function useNativePlaybackEngine({
       if (Number.isFinite(progress?.position)) setProgress(progress.position);
       if (Number.isFinite(progress?.duration)) setDuration(progress.duration);
       if (typeof progress?.paused === "boolean") setIsPlaying(!progress.paused);
+      // null for anything not streamed over the network (local files and classic downloads are
+      // already complete), which is the signal for the seek bar to leave the indicator off.
+      setBuffered(typeof progress?.buffered === "number" ? progress.buffered : null);
       setLoading(false);
     }).then((cleanup) => {
       if (cancelled) cleanup();
@@ -215,7 +219,7 @@ export function useNativePlaybackEngine({
       cancelled = true;
       unlisten();
     };
-  }, [setDuration, setIsPlaying, setLoading, setProgress]);
+  }, [setBuffered, setDuration, setIsPlaying, setLoading, setProgress]);
 
   return nativeAvailable;
 }
