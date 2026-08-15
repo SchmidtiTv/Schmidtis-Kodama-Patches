@@ -121,6 +121,7 @@ export const AppShell = memo(function AppShell({
     setLyricsTranslationLang,
     lyricsTranslationFontSize,
     showRomaji,
+    setShowRomaji,
     lyricsRomajiFontSize,
     showAgentTags,
     syllableZoom,
@@ -483,6 +484,22 @@ export const AppShell = memo(function AppShell({
     },
     [autoCoverRef, setShowLyrics]
   );
+  // Shared by the ⋮ menu entries and the lyrics-view chips, so both stay in sync with the
+  // same persisted preference instead of maintaining two independent writers.
+  const toggleLyricsTranslation = useCallback(() => {
+    setShowLyricsTranslation((prev) => {
+      const next = !prev;
+      localStorage.setItem("kiyoshi-lyrics-translation", String(next));
+      return next;
+    });
+  }, [setShowLyricsTranslation]);
+  const toggleRomaji = useCallback(() => {
+    setShowRomaji((prev) => {
+      const next = !prev;
+      localStorage.setItem("kiyoshi-lyrics-romaji", String(next));
+      return next;
+    });
+  }, [setShowRomaji]);
 
   const [queueSettled, setQueueSettled] = useState(false);
   const setQueueOpen = useCallback(
@@ -974,11 +991,7 @@ export const AppShell = memo(function AppShell({
                 failedLyricsProviders={failedLyricsProviders}
                 language={language}
                 showLyricsTranslation={showLyricsTranslation}
-                onToggleLyricsTranslation={() => {
-                  const next = !showLyricsTranslation;
-                  setShowLyricsTranslation(next);
-                  localStorage.setItem("kiyoshi-lyrics-translation", String(next));
-                }}
+                onToggleLyricsTranslation={toggleLyricsTranslation}
                 lyricsTranslationLang={lyricsTranslationLang}
                 onSetLyricsTranslationLang={(lang) => {
                   setLyricsTranslationLang(lang);
@@ -1026,9 +1039,11 @@ export const AppShell = memo(function AppShell({
           setCurrentLyricsSource={setCurrentLyricsSource}
           setFailedLyricsProviders={setFailedLyricsProviders}
           showLyricsTranslation={showLyricsTranslation}
+          onToggleLyricsTranslation={toggleLyricsTranslation}
           lyricsTranslationLang={lyricsTranslationLang}
           lyricsTranslationFontSize={lyricsTranslationFontSize}
           showRomaji={showRomaji}
+          onToggleRomaji={toggleRomaji}
           lyricsRomajiFontSize={lyricsRomajiFontSize}
           setIsCustomLyrics={setIsCustomLyrics}
           importLyricsRef={importLyricsRef}
