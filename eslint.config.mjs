@@ -28,6 +28,10 @@ export default [
       "react-hooks/set-state-in-effect": "warn",
       "react-hooks/static-components": "warn",
       "react-refresh/only-export-components": "warn",
+      // Vite compiles a read-before-declaration without complaint; it only surfaces at
+      // runtime as a blank screen. Warning, not error: it also flags references inside
+      // callbacks that only run later, which is harmless and common in these components.
+      "no-use-before-define": ["warn", { functions: false, classes: false, variables: true }],
     },
     languageOptions: {
       ecmaVersion: "latest",

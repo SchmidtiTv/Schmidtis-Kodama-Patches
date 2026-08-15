@@ -5,32 +5,43 @@ use super::decoder::StreamingSource;
 use super::engine::{
     CrossfadeRequest, PlaybackEngine, PlaybackSourceRequest, PlaybackStatus, TransportUpdate,
 };
+use super::http_source::DownloadProgress;
 use super::mix_processor::render_transition;
 
-pub(super) type SourceMessage = (StreamingSource, u64, bool, String);
-pub(super) type CrossfadeSourceMessage = (StreamingSource, String, f64, u64, bool);
+pub(super) type SourceMessage = (StreamingSource, u64, bool, String, Option<DownloadProgress>);
+pub(super) type CrossfadeSourceMessage =
+    (StreamingSource, String, f64, u64, bool, Option<DownloadProgress>);
 
 pub(super) struct PcmTransitionMessage {
     pub pcm: Vec<f32>,
     pub channels: u16,
     pub sample_rate: u32,
     pub continuation: StreamingSource,
+    pub continuation_progress: Option<DownloadProgress>,
     pub url: String,
     pub duration: f64,
     pub incoming_offset_seconds: f64,
     pub generation: u64,
 }
 
-pub(super) fn build_streaming_source(url: &str, seek_to: f64) -> Result<StreamingSource, String> {
+/// Builds a ready-to-play source for any of our URL kinds. Only the network-streamed case
+/// returns a progress handle — the other two branches have the whole file in hand before they
+/// return, so there is nothing to watch and the caller reports them as fully buffered.
+pub(super) fn build_streaming_source(
+    url: &str,
+    seek_to: f64,
+) -> Result<(StreamingSource, Option<DownloadProgress>), String> {
     if url.contains("/audio-stream/") {
         let source = super::http_source::HttpStream::new(url.to_string())
             .map_err(|error| error.to_string())?;
-        return StreamingSource::new_streaming(Box::new(source), seek_to);
+        let progress = source.progress();
+        return StreamingSource::new_streaming(Box::new(source), seek_to)
+            .map(|s| (s, Some(progress)));
     }
     if let Some(path) = url.strip_prefix("file://") {
         let data = std::fs::read(path.replace("%20", " "))
             .map_err(|error| format!("File read error: {error}"))?;
-        return StreamingSource::new_with_seek(data, seek_to);
+        return StreamingSource::new_with_seek(data, seek_to).map(|s| (s, None));
     }
 
     let client = reqwest::blocking::Client::builder()
@@ -46,7 +57,7 @@ pub(super) fn build_streaming_source(url: &str, seek_to: f64) -> Result<Streamin
         .bytes()
         .map(|bytes| bytes.to_vec())
         .map_err(|error| error.to_string())?;
-    StreamingSource::new_with_seek(data, seek_to)
+    StreamingSource::new_with_seek(data, seek_to).map(|s| (s, None))
 }
 
 fn resolve_automatic_source(request: &PlaybackSourceRequest) -> Result<String, String> {
@@ -108,11 +119,12 @@ pub(super) fn spawn_automatic_source(
     engine: PlaybackEngine,
 ) {
     std::thread::spawn(move || {
-        let result = resolve_automatic_source(&request)
-            .and_then(|url| build_streaming_source(&url, 0.0).map(|source| (source, url)));
+        let result = resolve_automatic_source(&request).and_then(|url| {
+            build_streaming_source(&url, 0.0).map(|(source, progress)| (source, url, progress))
+        });
         match result {
-            Ok((source, url)) => {
-                let _ = source_tx.send((source, generation, false, url));
+            Ok((source, url, progress)) => {
+                let _ = source_tx.send((source, generation, false, url, progress));
             }
             Err(error) => {
                 let _ = engine.update_transport(TransportUpdate {
@@ -146,11 +158,12 @@ pub(super) fn spawn_automatic_crossfade(
             track: request.to_track.clone(),
             progressive: request.progressive,
         };
-        let result = resolve_automatic_source(&source_request)
-            .and_then(|url| build_streaming_source(&url, 0.0).map(|source| (source, url)));
+        let result = resolve_automatic_source(&source_request).and_then(|url| {
+            build_streaming_source(&url, 0.0).map(|(source, progress)| (source, url, progress))
+        });
         match result {
-            Ok((source, url)) => {
-                let _ = source_tx.send((source, url, request.seconds, generation, true));
+            Ok((source, url, progress)) => {
+                let _ = source_tx.send((source, url, request.seconds, generation, true, progress));
             }
             Err(error) => {
                 let _ = engine.fail_crossfade();
@@ -192,8 +205,8 @@ pub(super) fn spawn_automatic_transition(
                 progressive: request.progressive,
             };
             let incoming_url = resolve_automatic_source(&source_request)?;
-            let mut outgoing = build_streaming_source(&outgoing_url, outgoing_position)?;
-            let mut incoming = build_streaming_source(&incoming_url, 0.0)?;
+            let (mut outgoing, _) = build_streaming_source(&outgoing_url, outgoing_position)?;
+            let (mut incoming, _) = build_streaming_source(&incoming_url, 0.0)?;
             if outgoing.channels() != incoming.channels()
                 || outgoing.sample_rate() != incoming.sample_rate()
             {
@@ -216,7 +229,7 @@ pub(super) fn spawn_automatic_transition(
                 &transition,
                 request.mix_tempo_lock,
             )?;
-            let continuation =
+            let (continuation, continuation_progress) =
                 build_streaming_source(&incoming_url, rendered.incoming_offset_seconds)?;
             let duration = continuation
                 .total_duration()
@@ -227,6 +240,7 @@ pub(super) fn spawn_automatic_transition(
                 channels,
                 sample_rate,
                 continuation,
+                continuation_progress,
                 url: incoming_url,
                 duration,
                 incoming_offset_seconds: rendered.incoming_offset_seconds,

@@ -2,6 +2,7 @@
 // the highlight/wipe/zoom/glow can update at 60fps without fighting whatever re-rendered the
 // surrounding line. The video-sync caption overlay can
 // reuse the exact same visual treatment for its single active line.
+import { isRtlText } from "@/shared/i18n/i18n.js";
 
 // Map each non-space word entry to its space-delimited word-group index (for word-level glow).
 export function wordGroupIndices(allWords) {
@@ -27,7 +28,9 @@ export function wordGroupIndices(allWords) {
 // Paints a single karaoke word sequence (its own active-word index, stored under
 // idxKey on idxRef). Main vocals and background vocals are painted as INDEPENDENT
 // sequences so a bg line starting does not mark the main line as fully sung.
-export function paintWordSeq(words, timestamps, els, idxRef, idxKey, t, zoomMaxRef, glow, groups) {
+export function paintWordSeq(words, timestamps, els, idxRef, idxKey, t, zoomMaxRef, glow, groups, rtl = false) {
+  // The wipe has to run with the reading direction, so the gradient axis flips for RTL.
+  const AXIS = rtl ? "to left" : "to right";
   if (!words.length || !els.length) return;
   let curWordIdx = idxRef[idxKey] ?? -1;
   // Normal playback only needs to inspect the next syllable. A binary search handles a seek
@@ -102,8 +105,8 @@ export function paintWordSeq(words, timestamps, els, idxRef, idxKey, t, zoomMaxR
         // Future: instant reset
         el.style.transition = "text-shadow 0.4s ease-out";
         el.style.opacity = "0";
-        el.style.WebkitMaskImage = "linear-gradient(to right, black -6px, transparent 6px)";
-        el.style.maskImage = "linear-gradient(to right, black -6px, transparent 6px)";
+        el.style.WebkitMaskImage = `linear-gradient(${AXIS}, black -6px, transparent 6px)`;
+        el.style.maskImage = `linear-gradient(${AXIS}, black -6px, transparent 6px)`;
         if (dimEl) dimEl.style.color = "rgba(255,255,255,0.25)";
       }
       // Word-level glow (fluid): glow the segments of the active word that have ALREADY been
@@ -121,8 +124,8 @@ export function paintWordSeq(words, timestamps, els, idxRef, idxKey, t, zoomMaxR
     const word = words[curWordIdx];
     if (el && word) {
       const pct = Math.min(100, ((t - word.time) / Math.max(word.end - word.time, 0.001)) * 100);
-      el.style.WebkitMaskImage = `linear-gradient(to right, black calc(${pct.toFixed(1)}% - 6px), transparent calc(${pct.toFixed(1)}% + 6px))`;
-      el.style.maskImage = `linear-gradient(to right, black calc(${pct.toFixed(1)}% - 6px), transparent calc(${pct.toFixed(1)}% + 6px))`;
+      el.style.WebkitMaskImage = `linear-gradient(${AXIS}, black calc(${pct.toFixed(1)}% - 6px), transparent calc(${pct.toFixed(1)}% + 6px))`;
+      el.style.maskImage = `linear-gradient(${AXIS}, black calc(${pct.toFixed(1)}% - 6px), transparent calc(${pct.toFixed(1)}% + 6px))`;
     }
   }
   return curWordIdx;
@@ -139,6 +142,9 @@ export function paintLineWords(line, els, wordIdxRef, t, zoomMaxRef = null, glow
   const bgTimestamps = timing?.bgTimestamps || bgWords.map((word) => word.time);
   const mainEls = mainWords.length ? els.slice(0, mainWords.length) : [];
   const bgEls = bgWords.length ? els.slice(mainWords.length) : [];
+  // Cached on the line: stable for the song, so the detection runs once instead of
+  // rebuilding the string on every frame.
+  if (line._rtl === undefined) line._rtl = isRtlText(mainWords.map((word) => word.text).join(""));
   const activeMainWordIdx = paintWordSeq(
     mainWords,
     mainTimestamps,
@@ -148,7 +154,8 @@ export function paintLineWords(line, els, wordIdxRef, t, zoomMaxRef = null, glow
     t,
     zoomMaxRef,
     glow,
-    timing?.mainWordGroups || wordGroupIndices(line.words)
+    timing?.mainWordGroups || wordGroupIndices(line.words),
+    line._rtl
   );
   paintWordSeq(
     bgWords,
@@ -159,7 +166,8 @@ export function paintLineWords(line, els, wordIdxRef, t, zoomMaxRef = null, glow
     t,
     null,
     glow,
-    timing?.bgWordGroups || wordGroupIndices(line.bgWords)
+    timing?.bgWordGroups || wordGroupIndices(line.bgWords),
+    line._rtl
   );
   return activeMainWordIdx;
 }
