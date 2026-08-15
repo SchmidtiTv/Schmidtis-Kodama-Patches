@@ -29,6 +29,58 @@ import {
 } from "@/shared/icons/icons.jsx";
 import { translate } from "@/shared/i18n/i18n.js";
 
+// Targets for lyrics translation. The backend hands the code to Google Translate lowercased,
+// so anything Google accepts works without a mapping — every entry below was checked against
+// the live endpoint rather than taken from a list. Hebrew works as "he"; the legacy "iw" is
+// not needed. Sorted by native name, because at this length the list is scanned, not read.
+// Module scope: it was previously rebuilt on every render of this menu.
+const TRANSLATION_LANGS = [
+  { code: "AR", name: "العربية" },
+  { code: "BG", name: "Български" },
+  { code: "BN", name: "বাংলা" },
+  { code: "CA", name: "Català" },
+  { code: "CS", name: "Čeština" },
+  { code: "DA", name: "Dansk" },
+  { code: "DE", name: "Deutsch" },
+  { code: "EL", name: "Ελληνικά" },
+  { code: "EN", name: "English" },
+  { code: "ES", name: "Español" },
+  { code: "ET", name: "Eesti" },
+  { code: "FA", name: "فارسی" },
+  { code: "FI", name: "Suomi" },
+  { code: "FR", name: "Français" },
+  { code: "HE", name: "עברית" },
+  { code: "HI", name: "हिन्दी" },
+  { code: "HR", name: "Hrvatski" },
+  { code: "HU", name: "Magyar" },
+  { code: "ID", name: "Bahasa Indonesia" },
+  { code: "IT", name: "Italiano" },
+  { code: "JA", name: "日本語" },
+  { code: "KO", name: "한국어" },
+  { code: "LT", name: "Lietuvių" },
+  { code: "LV", name: "Latviešu" },
+  { code: "MS", name: "Bahasa Melayu" },
+  { code: "NB", name: "Norsk bokmål" },
+  { code: "NL", name: "Nederlands" },
+  { code: "PL", name: "Polski" },
+  { code: "PT", name: "Português" },
+  { code: "PT-BR", name: "Português (Brasil)" },
+  { code: "RO", name: "Română" },
+  { code: "RU", name: "Русский" },
+  { code: "SK", name: "Slovenčina" },
+  { code: "SL", name: "Slovenščina" },
+  { code: "SR", name: "Српски" },
+  { code: "SV", name: "Svenska" },
+  { code: "SW", name: "Kiswahili" },
+  { code: "TH", name: "ไทย" },
+  { code: "TL", name: "Tagalog" },
+  { code: "TR", name: "Türkçe" },
+  { code: "UK", name: "Українська" },
+  { code: "VI", name: "Tiếng Việt" },
+  { code: "ZH", name: "中文（简体）" },
+  { code: "ZH-TW", name: "中文（繁體）" },
+].sort((a, b) => a.name.localeCompare(b.name));
+
 export function PlayerActionsMenu(props) {
   const {
     buildShareLink,
@@ -53,7 +105,6 @@ export function PlayerActionsMenu(props) {
     onRemoveCustomLyrics,
     onStartSongRadio,
     onSetLyricsTranslationLang,
-    onToggleLyricsTranslation,
     showLyricsTranslation,
     t,
     toggleLike,
@@ -63,20 +114,6 @@ export function PlayerActionsMenu(props) {
   const fetched = fetchedBrowseIds[track?.videoId] || {};
   const albumId = track.albumBrowseId || fetched.albumBrowseId;
   const artistId = track.artistBrowseId || fetched.artistBrowseId;
-  const LANGS = [
-    { code: "DE", name: "Deutsch" },
-    { code: "EN", name: "English" },
-    { code: "FR", name: "Français" },
-    { code: "ES", name: "Español" },
-    { code: "IT", name: "Italiano" },
-    { code: "PT", name: "Português" },
-    { code: "NL", name: "Nederlands" },
-    { code: "PL", name: "Polski" },
-    { code: "RU", name: "Русский" },
-    { code: "JA", name: "日本語" },
-    { code: "KO", name: "한국어" },
-    { code: "ZH", name: "中文" },
-  ];
   const downloaded = cachedSongIds?.has(track.videoId);
   const downloading = downloadingIds?.has(track.videoId);
   return (
@@ -179,25 +216,25 @@ export function PlayerActionsMenu(props) {
                 {translate(language, "removeCustomLyrics")}
               </DropdownItem>
             ) : null}
-            <DropdownItem
-              textValue={translate(language, "translateLyrics")}
-              onAction={() => onToggleLyricsTranslation?.()}
-            >
-              <Translate size={14} />
-              {translate(language, "translateLyrics")}
-              {showLyricsTranslation && <Check size={12} className="ml-auto text-accent" />}
-            </DropdownItem>
+            {/* The on/off toggle lives on the lyrics view itself, next to the source chip
+                (see LyricsToolChips) — both read and write the same showLyricsTranslation
+                state, so a second toggle here would only duplicate it. The language stays
+                here: it is a long list, and a submenu suits it better than a control in the
+                corner of the lyrics view. */}
             {showLyricsTranslation ? (
               <DropdownSubmenuTrigger>
                 <DropdownItem textValue="Language">
                   <Translate size={14} />
-                  {LANGS.find((l) => l.code === lyricsTranslationLang)?.name ||
+                  {TRANSLATION_LANGS.find((l) => l.code === lyricsTranslationLang)?.name ||
                     lyricsTranslationLang}
                   <DropdownSubmenuIndicator className="ml-auto" />
                 </DropdownItem>
-                <DropdownPopover className="min-w-40 max-h-80 overflow-y-auto">
+                {/* Inline height, not max-h-80: HeroUI sizes its popover from the available
+                    viewport space, and that wins over the utility class — with 44 entries the
+                    menu grew to the full window height. */}
+                <DropdownPopover className="min-w-40 overflow-y-auto scrollable" style={{ maxHeight: 320 }}>
                   <DropdownMenu aria-label="Language">
-                    {LANGS.map(({ code, name }) => (
+                    {TRANSLATION_LANGS.map(({ code, name }) => (
                       <DropdownItem
                         key={code}
                         textValue={name}

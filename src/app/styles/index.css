@@ -1392,6 +1392,65 @@ button:not([class]) {
   background-color: rgba(255, 255, 255, 0.18) !important;
 }
 
+/* Buffer fill for progressive playback, drawn inside the seek track behind the played fill.
+   The track needs to be a positioning context for it — HeroUI lays the fill out in flow, so
+   without this the absolute child would anchor to some ancestor further up. */
+.player-seek .slider__track {
+  position: relative;
+}
+.seek-buffer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: rgba(255, 255, 255, 0.18);
+  transition: width 0.25s linear;
+}
+/* Ambient mode already lightens the track itself (0.18), so the indicator has to sit above
+   that to stay distinguishable — the same step up, not the same value. */
+[data-ambient="true"] .seek-buffer {
+  background: rgba(255, 255, 255, 0.28);
+}
+
+/* Preparing: a highlight drifting left to right while a newly-selected track has not produced
+   any audio yet (engine status Loading). Deliberately indeterminate — there is no quantity to
+   show, and a bar that filled would be inventing one. Transform-only so it animates off the
+   main thread. */
+.seek-preparing {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  overflow: hidden;
+}
+.seek-preparing::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.22), transparent);
+  animation: seekPrepare 1.5s ease-in-out infinite;
+}
+@keyframes seekPrepare {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(322%); /* 100/45 ≈ 222% to clear the track, plus its own width */
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seek-preparing::before {
+    animation: none;
+    width: 100%;
+    background: rgba(255, 255, 255, 0.12);
+  }
+}
+
 /* Breathing room between settings sub-sections (Discord-style sub-nav). Applies only between
    consecutive sections, so the first section keeps its natural top spacing. */
 [data-settings-section] + [data-settings-section] {

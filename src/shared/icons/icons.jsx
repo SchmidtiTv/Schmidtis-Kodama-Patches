@@ -46,6 +46,35 @@ function fab(name) {
   };
 }
 
+// For the rare icon Font Awesome has no good match for. Rendered as a CSS mask so it still
+// takes its color from currentColor like every fa() icon, instead of a flat <img>.
+function svgIcon(path) {
+  return function MaskIcon({ size = 16, className = "", style, ...rest }) {
+    return (
+      <span
+        aria-hidden="true"
+        className={className}
+        style={{
+          display: "inline-block",
+          width: size,
+          height: size,
+          backgroundColor: "currentColor",
+          WebkitMaskImage: `url(${path})`,
+          maskImage: `url(${path})`,
+          WebkitMaskSize: "contain",
+          maskSize: "contain",
+          WebkitMaskRepeat: "no-repeat",
+          maskRepeat: "no-repeat",
+          WebkitMaskPosition: "center",
+          maskPosition: "center",
+          ...style,
+        }}
+        {...rest}
+      />
+    );
+  };
+}
+
 // ── Window controls ──────────────────────────────────────────────────────────
 export const Minus = fa("minus");
 export const X = fa("xmark");
@@ -95,6 +124,11 @@ export const PaintBrushBroad = fa("paintbrush-fine");
 export const HardDrives = fa("hard-drive");
 export const FolderOpen = fa("folder-open");
 export const Translate = fa("language");
+// Lyrics-only actions. Deliberately separate from `Translate` (fa-language), which stands for
+// the interface language in the settings and the sidebar — same word, different meaning. Font
+// Awesome has nothing that reads as romanisation, so both are drawn icons.
+export const TranslateLyrics = svgIcon("/translate.svg");
+export const Romanization = svgIcon("/romanization.svg");
 export const Robot = fa("robot");
 export const Eyedropper = fa("eye-dropper");
 

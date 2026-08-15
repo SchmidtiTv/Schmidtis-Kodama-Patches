@@ -46,11 +46,16 @@ const ArtistView = lazy(() =>
   }))
 );
 
+// "backwards" rather than "both": filling forwards keeps the animation applied for good, and
+// an element with an applied transform animation stays promoted to its own compositing layer
+// even at the identity matrix — on a wrapper that spans a whole playlist view that is a very
+// large layer. The end state is the natural one anyway, so nothing needs holding; "backwards"
+// still covers the flash before the animation starts.
 function AnimatedView({ animations, children }) {
   return (
     <div
       style={{
-        animation: animations ? "fadeSlideIn 0.28s cubic-bezier(0.22,1,0.36,1) both" : "none",
+        animation: animations ? "fadeSlideIn 0.28s cubic-bezier(0.22,1,0.36,1) backwards" : "none",
       }}
     >
       {children}

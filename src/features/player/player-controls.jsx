@@ -54,6 +54,7 @@ export function PlayerControls(props) {
   const {
     anim,
     audioRef,
+    buffered,
     buildShareLink,
     cachedSongIds,
     currentLyricsSource,
@@ -95,7 +96,6 @@ export function PlayerControls(props) {
     onSwitchLyricsProvider,
     onToggleFullscreen,
     onToggleLyrics,
-    onToggleLyricsTranslation,
     onToggleQueue,
     prevBouncing,
     prevVolumeRef,
@@ -215,6 +215,23 @@ export function PlayerControls(props) {
           className={cn("player-seek w-full", seekDrag !== null && "seeking")}
         >
           <SliderTrack>
+            {/* Buffer fill, behind the played fill. Byte-based, so it maps onto the seconds axis
+                only approximately — fine for an indicator, and the same approximation YouTube
+                makes. Shown for the whole time a network stream is playing, including once it is
+                fully buffered: on a fast line the download finishes before playback even starts,
+                so hiding it at 100% meant it was never visible at all. Absent entirely for local
+                files and classic downloads, where there is genuinely nothing to report. */}
+            {track && buffered !== null && !loading && (
+              <div
+                className="seek-buffer"
+                aria-hidden="true"
+                style={{ width: `${Math.max(0, Math.min(1, buffered)) * 100}%` }}
+              />
+            )}
+            {/* Indeterminate sweep for the stretch where there is nothing to measure yet: the
+                engine reports Loading from the moment a track is selected until its first
+                progress tick, so no bytes have moved and no duration is known. */}
+            {track && loading && <div className="seek-preparing" aria-hidden="true" />}
             <SliderFill />
             <SliderThumb className="after:hidden! bg-transparent! shadow-none! w-0! min-w-0!" />
           </SliderTrack>
@@ -623,7 +640,6 @@ export function PlayerControls(props) {
                 onSetLyricsTranslationLang,
                 onStartSongRadio,
                 onSwitchLyricsProvider,
-                onToggleLyricsTranslation,
                 showLyricsTranslation,
                 t,
                 toggleLike,

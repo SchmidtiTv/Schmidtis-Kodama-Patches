@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@heroui/react";
 import { API } from "@/shared/api/client.js";
-import { thumb } from "@/shared/api/thumbnails.js";
+import { thumb, hiResThumb } from "@/shared/api/thumbnails.js";
 import { RetryingImage } from "@/shared/ui/retrying-image.jsx";
 import { useAnimations, useTrackNumbers } from "@/features/settings/display-context.jsx";
 import { useLang } from "@/shared/i18n/context.jsx";
@@ -166,7 +166,7 @@ export function TableRow({
         <div className="relative w-12 h-12 shrink-0 overflow-hidden rounded-md bg-elevated">
           {track.thumbnail ? (
             <RetryingImage
-              src={thumb(track.thumbnail)}
+              src={thumb(hiResThumb(track.thumbnail, 120))}
               alt=""
               className="w-full h-full object-cover"
             />
@@ -509,7 +509,7 @@ export function PlaylistLayout({
   const tableHeaderRef = useRef(null);
   const [scrollEl, setScrollEl] = useState(null);
   const [listScrollMargin, setListScrollMargin] = useState(0);
-  const [, bumpMeasure] = useState(0);
+  const [measureTick, bumpMeasure] = useState(0);
   const [tableWidth, setTableWidth] = useState(Number.POSITIVE_INFINITY);
 
   useLayoutEffect(() => {
@@ -533,8 +533,15 @@ export function PlaylistLayout({
     return () => window.removeEventListener("resize", onResize);
   }, []);
 
-  // Re-measure the list's offset within the scroll container every render (cheap, guarded);
-  // catches header-height changes as tracks/metadata stream in.
+  // Re-measures the list's offset inside the scroll container. This used to run after every
+  // render with no dependency list, and it sets state — so each pass could schedule another,
+  // which React reports as a "nested-update" commit, plus two forced-layout getBoundingClientRect
+  // calls per pass.
+  //
+  // The offset only moves when the header's height changes — which happens as the track count
+  // and metadata stream in, or the header wraps to a different width — or on resize, so those
+  // are the dependencies. Scrolling does not change it, and scrolling was what made this run
+  // dozens of times a second.
   useLayoutEffect(() => {
     const inner = listInnerRef.current;
     if (!inner) return;
@@ -546,7 +553,7 @@ export function PlaylistLayout({
       Math.round(inner.getBoundingClientRect().top - sc.getBoundingClientRect().top + sc.scrollTop)
     );
     setListScrollMargin((prev) => (prev === top ? prev : top));
-  });
+  }, [scrollEl, tracks.length, total, title, tableWidth, measureTick]);
 
   const skelN = trackSearch ? 0 : skeletonCount;
   const rowCount = visibleTracks.length + skelN;

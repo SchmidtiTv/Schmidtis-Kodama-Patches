@@ -154,6 +154,11 @@ pub fn start_audio_thread(
         // Progressive path delivers an already-probed, ready-to-play StreamingSource built off
         // the audio thread (so the probe's network reads don't block command handling).
         let (source_tx, source_rx) = std::sync::mpsc::channel::<SourceMessage>();
+        // Buffer fill of the track the UI is showing, reported alongside the play position.
+        // `None` for anything not streamed over the network (local files / classic downloads are
+        // already complete before they reach a sink), which is the signal for the UI to hide the
+        // indicator rather than draw a permanently-full bar.
+        let mut dl_progress: Option<super::http_source::DownloadProgress> = None;
 
         // ── Crossfade: a second sink for the incoming track + an equal-power volume ramp ──
         let mut sink2: Option<rodio::Sink> = None;
@@ -163,6 +168,7 @@ pub fn start_audio_thread(
         let mut xfade_dur: f64 = 0.0;
         let (xsource_tx, xsource_rx) = std::sync::mpsc::channel::<CrossfadeSourceMessage>();
         let (pcm_tx, pcm_rx) = std::sync::mpsc::channel::<PcmTransitionMessage>();
+        let mut dl_progress2: Option<super::http_source::DownloadProgress> = None;
 
         let mut play_gen: u64 = 0;
 
@@ -232,11 +238,14 @@ pub fn start_audio_thread(
             }
 
             // Progressive (HTTP-streamed) sources, already probed off-thread.
-            while let Ok((mut source, gen, start_paused, loaded_url)) = source_rx.try_recv() {
+            while let Ok((mut source, gen, start_paused, loaded_url, progress)) =
+                source_rx.try_recv()
+            {
                 if gen != play_gen {
                     eprintln!("[Audio] Ignoring stale stream source (gen {gen} != {play_gen})");
                     continue;
                 }
+                dl_progress = progress;
                 if let Some(s) = sink.take() {
                     s.stop();
                 }
@@ -328,6 +337,7 @@ pub fn start_audio_thread(
                 seek_offset = message.incoming_offset_seconds - mix_seconds;
                 audio_data = None;
                 source_url = Some(message.url);
+                dl_progress = message.continuation_progress;
                 let _ = app.emit("audio-loaded", serde_json::json!({ "duration": duration }));
                 let _ = app.emit("audio-crossfade-started", ());
                 let _ = app.emit(
@@ -338,7 +348,8 @@ pub fn start_audio_thread(
             }
 
             // Incoming fallback source: start it on sink2 at volume 0 and begin the ramp.
-            while let Ok((mut source, url, dur, gen, automatic)) = xsource_rx.try_recv() {
+            while let Ok((mut source, url, dur, gen, automatic, progress)) = xsource_rx.try_recv()
+            {
                 if gen != play_gen {
                     // A seek or track change superseded this build. Its engine request was
                     // already cancelled with the generation change, so it is not a failure.
@@ -361,6 +372,7 @@ pub fn start_audio_thread(
                     .map(|d| d.as_secs_f64())
                     .unwrap_or(0.0);
                 source_url2 = Some(url);
+                dl_progress2 = progress;
                 match rodio::Sink::try_new(&handle) {
                     Ok(s2) => {
                         let start_paused = sink.as_ref().is_some_and(|current| current.is_paused());
@@ -429,10 +441,12 @@ pub fn start_audio_thread(
                         }
                         xfade_start = None;
                         source_url2 = None;
+                        dl_progress2 = None;
                         duration = 0.0;
                         seek_offset = 0.0;
                         audio_data = None;
                         source_url = None;
+                        dl_progress = None;
                         play_gen += 1;
                         let gen = play_gen;
 
@@ -449,14 +463,18 @@ pub fn start_audio_thread(
                                 let built = super::http_source::HttpStream::new(url)
                                     .map_err(|e| e.to_string())
                                     .and_then(|hs| {
+                                        // Take the progress handle before the box hands the
+                                        // stream over — afterwards it is out of reach.
+                                        let progress = hs.progress();
                                         super::decoder::StreamingSource::new_streaming(
                                             Box::new(hs),
                                             seek_to,
                                         )
+                                        .map(|s| (s, progress))
                                     });
                                 match built {
-                                    Ok(source) => {
-                                        let _ = stx.send((source, gen, false, source_url));
+                                    Ok((source, progress)) => {
+                                        let _ = stx.send((source, gen, false, source_url, Some(progress)));
                                     }
                                     Err(e) => {
                                         eprintln!(
@@ -520,10 +538,12 @@ pub fn start_audio_thread(
                         }
                         xfade_start = None;
                         source_url2 = None;
+                        dl_progress2 = None;
                         duration = 0.0;
                         seek_offset = 0.0;
                         audio_data = None;
                         source_url = None;
+                        dl_progress = None;
                         play_gen = play_gen.wrapping_add(1);
                         spawn_automatic_source(
                             request,
@@ -586,9 +606,11 @@ pub fn start_audio_thread(
                         }
                         xfade_start = None;
                         source_url2 = None;
+                        dl_progress2 = None;
                         duration = 0.0;
                         audio_data = None;
                         source_url = None;
+                        dl_progress = None;
                         let _ = engine.update_transport(TransportUpdate {
                             status: Some(PlaybackStatus::Stopped),
                             position_seconds: Some(0.0),
@@ -620,6 +642,7 @@ pub fn start_audio_thread(
                             seek_offset = 0.0;
                             audio_data = None;
                             source_url = source_url2.take();
+                            dl_progress = dl_progress2.take();
                             xfade_start = None;
                             let _ = app.emit("audio-crossfade-done", ());
                         }
@@ -638,8 +661,10 @@ pub fn start_audio_thread(
                             std::thread::spawn(move || {
                                 let source_url = url.clone();
                                 let built = build_streaming_source(&url, t);
-                                if let Ok(source) = built {
-                                    let _ = stx.send((source, gen, was_paused, source_url));
+                                // A seek re-opens the stream, so the buffer starts filling from
+                                // the new position — the handle has to be replaced with it.
+                                if let Ok((source, progress)) = built {
+                                    let _ = stx.send((source, gen, was_paused, source_url, progress));
                                 }
                             });
                         } else if let Some(ref data) = audio_data {
@@ -734,6 +759,7 @@ pub fn start_audio_thread(
                     seek_offset = 0.0;
                     audio_data = None;
                     source_url = source_url2.take();
+                    dl_progress = dl_progress2.take();
                     xfade_start = None;
                     let _ = app.emit("audio-crossfade-done", ());
                     eprintln!("[Audio] Crossfade promoted incoming track");
@@ -755,9 +781,12 @@ pub fn start_audio_thread(
                     duration2,
                 );
                 if engine.is_ui_visible() {
+                    // `buffered` stays null unless this really is a network stream, so the UI
+                    // can hide the indicator rather than draw a permanently-full bar for local
+                    // files and classic downloads.
                     let _ = app.emit(
                         "audio-progress",
-                        serde_json::json!({ "position": position, "duration": duration2, "paused": paused }),
+                        serde_json::json!({ "position": position, "duration": duration2, "paused": paused, "buffered": dl_progress2.as_ref().and_then(|p| p.fraction()) }),
                     );
                 }
             } else if let Some(s) = &sink {
@@ -776,7 +805,7 @@ pub fn start_audio_thread(
                 if engine.is_ui_visible() {
                     let _ = app.emit(
                         "audio-progress",
-                        serde_json::json!({ "position": pos, "duration": duration, "paused": paused }),
+                        serde_json::json!({ "position": pos, "duration": duration, "paused": paused, "buffered": dl_progress.as_ref().and_then(|p| p.fraction()) }),
                     );
                 }
                 if ended {
@@ -785,6 +814,7 @@ pub fn start_audio_thread(
                     seek_offset = 0.0;
                     audio_data = None;
                     source_url = None;
+                    dl_progress = None;
                     play_gen = play_gen.wrapping_add(1);
                     match engine.advance_after_end() {
                         Ok(Some(request)) => {
