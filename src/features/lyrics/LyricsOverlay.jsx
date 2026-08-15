@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { CaretDown, UploadSimple } from "@/shared/icons/icons.jsx";
 import { API } from "@/shared/api/client.js";
 import { thumb } from "@/shared/api/thumbnails.js";
-import { translate, isRtlLang, isRtlText, hasJapaneseText } from "@/shared/i18n/i18n.js";
+import { isRtlLang, isRtlText, hasJapaneseText } from "@/shared/i18n/i18n.js";
 import { useLang } from "@/shared/i18n/context.jsx";
 import {
   parseLrc,
@@ -1066,8 +1066,10 @@ function LyricsOverlayContent({
         </div>
       )}
 
-      {/* Source badge — HeroUI Chip, glassy. Auto-hides with a slide-out like the
-          scrollbar: revealed on cursor activity, slides off-right after idle. */}
+      {/* Timing correction, translate/romaji toggles, and the source badge — one row, on the
+          same cursor reveal (slides off-right after idle) so they're there exactly when
+          someone is already looking at this corner. Offset only for synced lyrics — with no
+          timestamps there is nothing to shift. */}
       <div
         style={{
           position: "absolute",
@@ -1084,33 +1086,28 @@ function LyricsOverlayContent({
           pointerEvents: scrollActive ? "auto" : "none",
         }}
       >
-        {source && (
-          <button
-            onClick={() => setBrowserOpen(true)}
-            title={translate(language, "browseLyrics")}
-            className="border-0 bg-transparent p-0 cursor-default"
-          >
-            <ChipRoot
-              size="sm"
-              className="border-0! px-3.5! py-1.5! transition-all duration-200 hover:brightness-125"
-              style={{
-                background: "rgba(255,255,255,0.1)",
-                color: "rgba(255,255,255,0.9)",
-                backdropFilter: "blur(18px)",
-                WebkitBackdropFilter: "blur(18px)",
-              }}
-            >
-              <ChipLabel
-                className="font-semibold tracking-wide flex items-center gap-1.5"
-                style={{ fontSize: "var(--t10)" }}
-              >
-                {source}
-                {submitterName && <span style={{ opacity: 0.55 }}> · {submitterName}</span>}
-                <CaretDown size={9} weight="bold" style={{ opacity: 0.6 }} />
-              </ChipLabel>
-            </ChipRoot>
-          </button>
+        {lyricsSynced && (
+          <OffsetChips language={language} offset={offset} adjustOffset={adjustOffset} neighbourRight />
         )}
+        {lyrics && (
+          <LyricsToolChips
+            language={language}
+            showTranslation={showTranslation}
+            onToggleTranslation={onToggleTranslation}
+            showRomaji={showRomaji}
+            onToggleRomaji={onToggleRomaji}
+            romanizable={romanizable}
+            neighbourLeft={lyricsSynced}
+            neighbourRight={!!source}
+          />
+        )}
+        <SourceChip
+          language={language}
+          source={source}
+          submitterName={submitterName}
+          onPress={() => setBrowserOpen(true)}
+          neighbourLeft={!!lyrics}
+        />
       </div>
 
       {browserOpen && (
@@ -1451,7 +1448,7 @@ function LyricsOverlayContent({
               >
                 <div>
                   {(isActive || isTrailing) && line.wordSync ? (
-                    <span style={{ whiteSpace: "pre-wrap" }}>
+                    <span dir={lineRtl ? "rtl" : "ltr"} style={{ whiteSpace: "pre-wrap" }}>
                       {renderWords.map((word, wi) =>
                         word.isSpace ? (
                           <span key={wi}>{word.text}</span>
@@ -1488,7 +1485,9 @@ function LyricsOverlayContent({
                       )}
                     </span>
                   ) : (
-                    <span style={{ color: "#fff" }}>{lineText}</span>
+                    <span dir={lineRtl ? "rtl" : "ltr"} style={{ color: "#fff" }}>
+                      {lineText}
+                    </span>
                   )}
                   {/* Background vocals — rendered in smaller text below the main line.
                   Initial opacity when isActive: 0.35 (dim). RAF loop sets it to 1
@@ -1506,7 +1505,7 @@ function LyricsOverlayContent({
                       }}
                     >
                       {isActive || isTrailing ? (
-                        <span style={{ whiteSpace: "pre-wrap" }}>
+                        <span dir={lineRtl ? "rtl" : "ltr"} style={{ whiteSpace: "pre-wrap" }}>
                           {line.bgWords.map((word, wi) =>
                             word.isSpace ? (
                               <span key={wi}>{word.text}</span>
@@ -1578,6 +1577,7 @@ function LyricsOverlayContent({
                 )}
                 {showTranslation && translations?.[i] && translations[i] !== lineText && (
                   <div
+                    dir={isRtlLang(translationLang) ? "rtl" : "ltr"}
                     style={{
                       fontSize: translationFontSize,
                       fontWeight: 600,
@@ -1585,7 +1585,13 @@ function LyricsOverlayContent({
                       opacity: isActive ? 0.9 : 0.45,
                       marginTop: 6,
                       lineHeight: 1.4,
-                      textAlign,
+                      textAlign: trAlign,
+                      // Percentage padding resolves against the same width the scale acts on,
+                      // so the two cancel exactly, at any window size or zoom level.
+                      paddingRight: trAlign === "right" && textAlign !== "right" ? zoomPull : undefined,
+                      paddingLeft: trAlign === "left" && textAlign !== "left" ? zoomPull : undefined,
+                      // Follows the zoom rather than snapping while the line is still growing.
+                      transition: "padding 0.25s ease-out",
                     }}
                   >
                     {translations[i]}

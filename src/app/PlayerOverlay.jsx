@@ -36,9 +36,11 @@ export const PlayerOverlay = memo(function PlayerOverlay({
   setCurrentLyricsSource,
   setFailedLyricsProviders,
   showLyricsTranslation,
+  onToggleLyricsTranslation,
   lyricsTranslationLang,
   lyricsTranslationFontSize,
   showRomaji,
+  onToggleRomaji,
   lyricsRomajiFontSize,
   setIsCustomLyrics,
   importLyricsRef,
@@ -165,9 +167,11 @@ export const PlayerOverlay = memo(function PlayerOverlay({
                   onSourceChange={setCurrentLyricsSource}
                   onProviderFailed={(id) => setFailedLyricsProviders((s) => new Set([...s, id]))}
                   showTranslation={showLyricsTranslation}
+                  onToggleTranslation={onToggleLyricsTranslation}
                   translationLang={lyricsTranslationLang}
                   translationFontSize={lyricsTranslationFontSize}
                   showRomaji={showRomaji}
+                  onToggleRomaji={onToggleRomaji}
                   romajiFontSize={lyricsRomajiFontSize}
                   onCustomLyricsStatusChange={setIsCustomLyrics}
                   importLyricsRef={importLyricsRef}
@@ -238,6 +242,9 @@ export const PlayerOverlay = memo(function PlayerOverlay({
                     captionsTranslationLang={lyricsTranslationLang}
                     captionsRomaji={showRomaji}
                     captionsSyllableZoom={syllableZoom}
+                    onToggleTranslation={onToggleLyricsTranslation}
+                    onToggleRomaji={onToggleRomaji}
+                    language={language}
                   />
                 )}
               </div>
