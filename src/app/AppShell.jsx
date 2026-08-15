@@ -991,7 +991,6 @@ export const AppShell = memo(function AppShell({
                 failedLyricsProviders={failedLyricsProviders}
                 language={language}
                 showLyricsTranslation={showLyricsTranslation}
-                onToggleLyricsTranslation={toggleLyricsTranslation}
                 lyricsTranslationLang={lyricsTranslationLang}
                 onSetLyricsTranslationLang={(lang) => {
                   setLyricsTranslationLang(lang);
