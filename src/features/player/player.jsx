@@ -86,6 +86,10 @@ export function Player({
   // truth from SettingsContext instead of threading a duplicate copy through App.
   const { lyricsProviders } = useLyricsSettings();
   const [progress, setProgress] = useState(0);
+  // Fraction (0..1) of the current stream that has arrived, or null when there is nothing
+  // meaningful to show — classic playback and local files are already complete before they
+  // reach the player, so a bar would only invent a quantity.
+  const [buffered, setBuffered] = useState(null);
   // Stable ref so fetchUrl can read the current playback mode without re-subscribing.
   const playbackProgressiveRef = useRef(playbackProgressive);
   playbackProgressiveRef.current = playbackProgressive;
@@ -116,6 +120,14 @@ export function Player({
   // LRU cache: videoId -> url (max 50 entries, Map preserves insertion order)
   const URL_CACHE_MAX = 50;
   const urlCache = useRef(new Map());
+
+  // The cached URL is only valid for the mode that produced it — progressive hands out the
+  // streaming proxy, classic a local file path. Without this, switching modes kept serving the
+  // old URLs for every song already touched, so a user whose progressive playback failed had to
+  // restart the app before turning it off actually helped.
+  useEffect(() => {
+    urlCache.current.clear();
+  }, [playbackProgressive]);
 
   const repeatRef = useRef(repeat);
   const queueRef = useRef(queue);
@@ -182,6 +194,7 @@ export function Player({
     setProgress,
     setDuration,
     setLoading,
+    setBuffered,
     setIsPlaying,
     setTrack,
     setShuffle,
@@ -748,6 +761,7 @@ export function Player({
         prevBouncing,
         prevVolumeRef,
         progress,
+        buffered,
         playerBarControls,
         queueOpen,
         repeat,
