@@ -7,13 +7,14 @@
 // seek target for the swap, so playback lands on the corresponding moment in the other version.
 // This module just fetches that data once per track and keeps the <video> element's own position
 // corrected against ordinary clock drift against whatever audio is currently loaded.
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { API } from "@/shared/api/client.js";
 import { fetchLyrics } from "@/features/lyrics/fetch.js";
 import { DEFAULT_LYRICS_PROVIDERS } from "@/features/lyrics/providers.js";
 import { parseDurationToSeconds } from "@/features/lyrics/parse.js";
 import { paintLineWords } from "@/features/lyrics/paint.js";
 import { sustainedWordScale } from "@/features/lyrics/sustained-line.js";
+import { isRtlLang, hasJapaneseText } from "@/shared/i18n/i18n.js";
 
 // Real-world calibration (2026-07-18): a confirmed correct match ("Nachos") scored 10.5, a
 // second plausible one scored 5.2 — but a confidence of 3.38 turned out to be a false positive
@@ -147,12 +148,22 @@ export function VideoSyncVideo({ src, offsetSeconds, audioRef, isPlaying, style 
 // endTime (e.g. one voice answering another) — mirrored here the same way the main lyrics view
 // handles it: a "trailing" line stays visible (still finishing its own wipe) alongside the new
 // "main" one, instead of just snapping to the newest line the instant it starts.
-function useCaptionLine(track, audioRef, enabled, showTranslation, translationLang, showRomaji) {
+function useCaptionLine(
+  track,
+  audioRef,
+  enabled,
+  showTranslation,
+  translationLang,
+  showRomaji,
+  offsetRef
+) {
   const [mainLine, setMainLine] = useState(null);
   const [trailingLine, setTrailingLine] = useState(null);
   const [currentTranslation, setCurrentTranslation] = useState("");
   const [currentRomaji, setCurrentRomaji] = useState("");
   const [lines, setLines] = useState([]);
+  const [source, setSource] = useState("");
+  const [submitterName, setSubmitterName] = useState(null);
   const linesRef = useRef([]);
   const translationsRef = useRef(null);
   const romajisRef = useRef(null);
@@ -172,6 +183,8 @@ function useCaptionLine(track, audioRef, enabled, showTranslation, translationLa
     setCurrentTranslation("");
     setCurrentRomaji("");
     setLines([]);
+    setSource("");
+    setSubmitterName(null);
     if (!enabled || !track) return;
     let cancelled = false;
     fetchLyrics(
@@ -196,6 +209,8 @@ function useCaptionLine(track, audioRef, enabled, showTranslation, translationLa
           }));
         linesRef.current = lrc;
         setLines(lrc);
+        setSource(res?.source || "");
+        setSubmitterName(res?.submitterName || null);
       })
       .catch(() => {});
     return () => {
@@ -276,7 +291,10 @@ function useCaptionLine(track, audioRef, enabled, showTranslation, translationLa
     let raf = 0;
     const loop = () => {
       const { ct, pt, playing } = snapRef.current;
-      const t = playing ? ct + (performance.now() - pt) / 1000 : ct;
+      // Same single point as the lyrics view: subtracting looks at an earlier moment in the
+      // song, which makes every line and every word appear that much later. Applied here so
+      // line selection and the word wipe shift together.
+      const t = (playing ? ct + (performance.now() - pt) / 1000 : ct) - (offsetRef?.current || 0);
       timeRef.current = t;
       const lns = linesRef.current;
       let idx = -1;
@@ -319,12 +337,33 @@ function useCaptionLine(track, audioRef, enabled, showTranslation, translationLa
     return () => cancelAnimationFrame(raf);
   }, [enabled]);
 
+  // Lets the lyrics browser swap the shown version without refetching. Normalized the same
+  // way as the fetch above, or word-synced lines would arrive without .text.
+  const applyLyrics = useCallback((res) => {
+    const lrc = (res?.lrc || [])
+      .filter((l) => l.time >= 0)
+      .map((l) => ({
+        ...l,
+        text: l.wordSync ? (l.words || []).map((w) => w.text).join("") : l.text || "",
+      }));
+    linesRef.current = lrc;
+    curIdxRef.current = -1;
+    trailingIdxRef.current = -1;
+    setLines(lrc);
+    setSource(res?.source || "");
+    setSubmitterName(res?.submitterName || null);
+  }, []);
+
   return {
     mainLine,
     trailingLine,
     translation: currentTranslation,
     romaji: currentRomaji,
     timeRef,
+    lines,
+    source,
+    submitterName,
+    applyLyrics,
   };
 }
 
@@ -449,15 +488,28 @@ function CaptionOverlay({
   translationLang = "DE",
   showRomaji = false,
   syllableZoom = false,
+  onRomanizableChange,
+  onSourceChange,
+  offsetRef,
+  applyRef,
 }) {
-  const { mainLine, trailingLine, translation, romaji, timeRef } = useCaptionLine(
-    track,
-    audioRef,
-    true,
-    showTranslation,
-    translationLang,
-    showRomaji
-  );
+  const { mainLine, trailingLine, translation, romaji, timeRef, lines, source, submitterName, applyLyrics } =
+    useCaptionLine(track, audioRef, true, showTranslation, translationLang, showRomaji, offsetRef);
+  // Reported upward rather than decided per visible line: a button that appears and
+  // disappears as the song moves through Latin passages would be worse than none.
+  useEffect(() => {
+    onRomanizableChange?.(
+      lines.some((l) => hasJapaneseText(l.wordSync ? (l.words || []).map((w) => w.text).join("") : l.text))
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lines]);
+  useEffect(() => {
+    onSourceChange?.(source, submitterName);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [source, submitterName]);
+  useEffect(() => {
+    if (applyRef) applyRef.current = applyLyrics;
+  }, [applyRef, applyLyrics]);
   const [shownMain, setShownMain] = useState(null);
   const [shownTranslation, setShownTranslation] = useState("");
   const [shownRomaji, setShownRomaji] = useState("");
@@ -572,6 +624,9 @@ function CaptionOverlay({
       {shownTranslation && (
         <div
           key={`${animKey}-tr`}
+          // Centred, so only the direction matters here — but it still does: without it
+          // punctuation and embedded Latin words land on the wrong side of the line.
+          dir={isRtlLang(translationLang) ? "rtl" : "ltr"}
           style={{
             color: "rgba(255,255,255,0.72)",
             fontWeight: 500,
