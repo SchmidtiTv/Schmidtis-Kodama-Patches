@@ -5,7 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { CaretDown, UploadSimple } from "@/shared/icons/icons.jsx";
 import { API } from "@/shared/api/client.js";
 import { thumb } from "@/shared/api/thumbnails.js";
-import { translate } from "@/shared/i18n/i18n.js";
+import { translate, isRtlLang, isRtlText, hasJapaneseText } from "@/shared/i18n/i18n.js";
 import { useLang } from "@/shared/i18n/context.jsx";
 import {
   parseLrc,
@@ -18,10 +18,15 @@ import { paintLineWords } from "@/features/lyrics/paint.js";
 import { fetchLyrics } from "@/features/lyrics/fetch.js";
 import { DEFAULT_LYRICS_PROVIDERS } from "@/features/lyrics/providers.js";
 import { LyricsBrowserModal } from "@/features/lyrics/lyrics-browser-modal.jsx";
+import { LyricsToolChips, OffsetChips, SourceChip } from "@/features/lyrics/lyrics-tool-chips.jsx";
+import { useLyricOffset } from "@/features/lyrics/lyric-offset.js";
 import { openComposer } from "./composer-window.js";
 import { sustainedWordScale } from "./sustained-line.js";
 
 const FLUID_DRIFT_WINDOW = 6;
+// How much the active line grows in fluid mode. Needed as a constant because a translation
+// aligned to the growing edge has to be pulled back by exactly this amount.
+const LYRIC_ZOOM = 1.06;
 
 // A different track or explicit refetch is a new lyrics session. Resetting at this boundary
 // keeps transient fetch/animation state local to the session instead of synchronously clearing
@@ -43,9 +48,11 @@ function LyricsOverlayContent({
   onSourceChange,
   onProviderFailed,
   showTranslation = false,
+  onToggleTranslation,
   translationLang = "DE",
   translationFontSize = 20,
   showRomaji = false,
+  onToggleRomaji,
   romajiFontSize = 18,
   onCustomLyricsStatusChange,
   importLyricsRef,
@@ -112,6 +119,8 @@ function LyricsOverlayContent({
   const userScrolling = userScrollingTrackId === track?.videoId;
   const userScrollingRef = useRef(false);
   const t = useLang();
+  // Per-song timing correction, shared with the video-sync captions view via lyric-offset.js.
+  const { offset, offsetRef, adjustOffset } = useLyricOffset(track?.videoId);
   const lyricTextLines = useMemo(() => {
     if (!lyrics) return [];
     return lyrics.map((line) => {
@@ -120,6 +129,13 @@ function LyricsOverlayContent({
       return bg ? `${main} ${bg}` : main;
     });
   }, [lyrics]);
+  // Romaji only makes sense for Japanese script — otherwise the button would sit there doing
+  // nothing on every English song. Checked across the whole lyric, since a single line may be
+  // Latin even in a Japanese song.
+  const romanizable = useMemo(
+    () => lyricTextLines.some((line) => hasJapaneseText(line)),
+    [lyricTextLines]
+  );
   const translationKey = useMemo(
     () => `${translationLang}\u001f${lyricTextLines.join("\u001e")}`,
     [translationLang, lyricTextLines]
@@ -271,7 +287,10 @@ function LyricsOverlayContent({
     if (!isActive) return;
     const loop = () => {
       const { ct, pt, playing } = audioSnapRef.current;
-      const t = playing ? ct + (performance.now() - pt) / 1000 : ct;
+      // Subtracting looks at an earlier point in the song, which makes every line and every
+      // word fire that much later. Applied here so line detection, word highlighting and
+      // scrolling all shift together — there is no second place to keep in sync.
+      const t = (playing ? ct + (performance.now() - pt) / 1000 : ct) - offsetRef.current;
       const lyr = lyricsDataRef.current;
 
       // Line detection — normal playback advances exactly one timestamp at a time. Seeked
@@ -457,7 +476,7 @@ function LyricsOverlayContent({
       activeTrailWordIdxRef.current = -1;
       activeTrailWordIdxRef.bgCurrent = -1;
       const { ct, pt, playing } = audioSnapRef.current;
-      const tNow = playing ? ct + (performance.now() - pt) / 1000 : ct;
+      const tNow = (playing ? ct + (performance.now() - pt) / 1000 : ct) - offsetRef.current;
       paintLineWords(
         lyricsDataRef.current?.[tIdx],
         trailWordElsRef.current,
@@ -1348,8 +1367,27 @@ function LyricsOverlayContent({
 
             const seekable = line.time >= 0;
             const agentRole = line.agentRole; // "lead", "featured", "group", or null
-            const textAlign =
+            // Splitting a line into one inline-block per word takes it out of the bidi
+            // algorithm, which only orders within a single text run — the boxes then sit in
+            // DOM order, left to right, and Hebrew or Arabic comes out reversed the moment a
+            // line goes active. dir on the wrapper (below) puts the boxes back into reading
+            // order; textAlign here follows the same direction so the line reads from its
+            // own starting edge.
+            const lineRtl = isRtlText(lineText);
+            // Line and translation each follow the direction of their own script: an RTL
+            // text reads from the right, so its alignment mirrors. The agent role still
+            // decides the baseline (featured right, group centred) — direction only flips it.
+            const baseAlign =
               agentRole === "featured" ? "right" : agentRole === "group" ? "center" : "left";
+            const mirrorAlign = (a) => (a === "left" ? "right" : a === "right" ? "left" : a);
+            // Also feeds transformOrigin below, so the zoom grows away from the edge the
+            // text is anchored to instead of pushing it out of the column.
+            const textAlign = lineRtl ? mirrorAlign(baseAlign) : baseAlign;
+            const trAlign = isRtlLang(translationLang) ? mirrorAlign(baseAlign) : baseAlign;
+            const zoomPull =
+              fluidLyrics && (isActive || isTrailing)
+                ? `${((1 - 1 / LYRIC_ZOOM) * 100).toFixed(2)}%`
+                : undefined;
             // Trailing spaces in the word list would sit at the right edge and push a
             // right-aligned active line visually left. Drop them so it stays flush-right.
             let renderWords = line.words || [];
@@ -1366,7 +1404,7 @@ function LyricsOverlayContent({
                 onClick={
                   seekable
                     ? () => {
-                        audioRef.current.currentTime = line.time;
+                        audioRef.current.currentTime = Math.max(0, line.time + offsetRef.current);
                       }
                     : undefined
                 }
