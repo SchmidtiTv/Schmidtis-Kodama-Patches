@@ -5,7 +5,25 @@ class RootMusicRouteTests(RouteTestCase):
     def test_root_music_routes(self) -> None:
         assert self.client.get("/status").json["ok"] is True
         assert self.client.get("/search").json == {"results": []}
-        assert self.client.get("/search?q=song").json["results"][0]["type"] == "song"
+        song_search = self.client.get("/search?q=song").json
+        assert song_search == {
+            "results": [
+                {
+                    "type": "song",
+                    "videoId": "vid",
+                    "title": "Song",
+                    "artists": "Artist",
+                    "artistBrowseId": "UCartist",
+                    "artistLinks": [{"name": "Artist", "browseId": "UCartist"}],
+                    "album": "Album",
+                    "albumBrowseId": "MPREb",
+                    "duration": "3:00",
+                    "thumbnail": "http://img/s.jpg",
+                    "isExplicit": False,
+                }
+            ]
+        }
+        assert self.client.get("/search?q=song&filter=invalid").json == song_search
         assert (
             self.client.get("/search?q=artist&filter=artists").json["results"][0]["type"]
             == "artist"
@@ -58,6 +76,7 @@ class RootMusicRouteTests(RouteTestCase):
         like = self.client.post("/like/vid", json={"rating": "LIKE"})
         assert like.json == {"ok": True, "rating": "LIKE"}
         assert self.music_session.client.ratings == [("vid", "LIKE")]
+        assert self.client.post("/like/vid", json=[]).status_code == 400
 
         self.profile_repository.local_profiles.add("default")
         local_like = self.client.post(
@@ -74,3 +93,7 @@ class RootMusicRouteTests(RouteTestCase):
         assert local_like.json == {"ok": True, "rating": "LIKE"}
         assert self.client.get("/liked/ids").json == {"ids": ["local"]}
         assert self.client.get("/liked").json["tracks"][0]["title"] == "Local"
+
+        reset = self.client.post("/like/local", json={"rating": "INDIFFERENT"})
+        assert reset.json == {"ok": True, "rating": "INDIFFERENT"}
+        assert self.client.get("/liked/ids").json == {"ids": []}

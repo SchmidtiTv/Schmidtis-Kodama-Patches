@@ -10,7 +10,34 @@ from unittest.mock import patch
 
 import pytest
 from flask import Flask, Response
+from src.lib.accounts import (
+    ArtistSubscriptionService,
+    LibraryService,
+    LikedSongsService,
+    ListeningHistoryService,
+    LocalMusicRepository,
+    PlaylistService,
+    SessionActiveMusicProfile,
+    SongRatingService,
+)
+from src.lib.feedback import FeedbackNotConfiguredError
+from src.lib.images import ImageProxyResult
+from src.lib.integrations.image_proxy import ProxiedImage
+from src.lib.integrations.unison import NicknameCheckResult, UnisonResult
+from src.lib.music.album_details import AlbumDetailsService
+from src.lib.music.playlist import Playlist
 from src.lib.music.playlist_mix import PlaylistMix
+from src.lib.music.search import SearchService
+from src.lib.music.youtube_music import YoutubeMusicSession
+from src.lib.profiles.profile import Profile
+from src.lib.providers import SongCredits
+from src.lib.providers.youtube import (
+    YoutubeMusicCatalogProvider,
+    YoutubeMusicLibraryProvider,
+    YoutubeMusicPlaylistProvider,
+    YoutubePlaylistAudioEnricher,
+)
+from src.lib.runtime.cache import CacheSettings
 from src.lib.runtime.metadata_cache import MetadataCache
 from src.routes import register_blueprints
 
@@ -861,29 +888,71 @@ class FakePlaylistCache:
 
 class FakeAlbumCache:
     def __init__(self) -> None:
-        self.disk = {}
-        self.saved = []
+        self.disk: dict[str, dict[str, object]] = {}
+        self.saved: list[tuple[str, dict[str, object]]] = []
 
-    def load_album_disk(self, browse_id: object) -> object:
+    def load_album_disk(self, browse_id: str) -> dict[str, object] | None:
         return self.disk.get(browse_id)
 
-    def save_album_disk(self, browse_id: object, data: object) -> object:
+    def save_album_disk(self, browse_id: str, data: dict[str, object]) -> None:
         self.saved.append((browse_id, data))
         self.disk[browse_id] = data
 
 
-class FakeSongCreditsCache:
+class FakeSongCreditsService:
     def __init__(self) -> None:
-        self.entries = {}
+        self.calls: list[str] = []
+        self.cached: dict[str, SongCredits] = {}
 
-    def get(self, video_id: object) -> object:
-        return self.entries.get(video_id)
+    def get_credits(self, video_id: str) -> SongCredits:
+        if video_id not in self.cached:
+            self.calls.append(video_id)
+            self.cached[video_id] = SongCredits("Credits text")
+        return self.cached[video_id]
 
-    def put(self, video_id: object, payload: object) -> object:
-        self.entries[video_id] = payload
 
-    def clear(self) -> object:
-        self.entries.clear()
+class FakeFeedbackService:
+    def __init__(self) -> None:
+        self.configured = False
+        self.submissions: list[object] = []
+
+    def submit(self, payload: object) -> None:
+        if not self.configured:
+            raise FeedbackNotConfiguredError()
+        self.submissions.append(payload)
+
+
+class FakeUnisonClient:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, object]] = []
+
+    def vote(self, lyrics_id: str, command: object) -> UnisonResult:
+        self.calls.append(("vote", (lyrics_id, command)))
+        return UnisonResult({"ok": True}, 201)
+
+    def report(self, lyrics_id: str, command: object) -> UnisonResult:
+        self.calls.append(("report", (lyrics_id, command)))
+        return UnisonResult({"ok": True}, 201)
+
+    def check_nickname(self, command: object) -> NicknameCheckResult:
+        self.calls.append(("check", command))
+        return NicknameCheckResult({"ok": True}, 201)
+
+    def update_nickname(self, command: object) -> UnisonResult:
+        self.calls.append(("nickname", command))
+        return UnisonResult({"ok": True}, 201)
+
+
+class FakeImageProxyService:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, bool]] = []
+
+    def fetch(self, url: str, *, high_quality: bool = False) -> ImageProxyResult:
+        self.calls.append((url, high_quality))
+        return ImageProxyResult(
+            ProxiedImage(b"img", "image/jpeg", "public, max-age=604800"),
+            False,
+        )
 
 
 class FakeDownloadService:
@@ -1167,7 +1236,10 @@ class RouteTestCase:
         self.playlist_cache = FakePlaylistCache()
         self.album_cache = FakeAlbumCache()
         self.band_member_finder = SimpleNamespace(find=lambda artist_name: [])
-        self.song_credits_cache = FakeSongCreditsCache()
+        self.song_credits_service = FakeSongCreditsService()
+        self.feedback_service = FakeFeedbackService()
+        self.unison_client = FakeUnisonClient()
+        self.image_proxy_service = FakeImageProxyService()
         self.download_service = FakeDownloadService(self.root)
         self.export_service = FakeExportService()
         self.ffmpeg = FakeFFmpeg()
@@ -1176,6 +1248,48 @@ class RouteTestCase:
         self.remote_control = FakeRemoteControl()
         self.metadata_cache = MetadataCache(self.root / "cache.sqlite3")
         self.playlist_mix = PlaylistMix(self.metadata_cache)
+        self.youtube_catalog = YoutubeMusicCatalogProvider(
+            session=cast("YoutubeMusicSession", self.music_session),
+            metadata_cache=self.metadata_cache,
+        )
+        self.search_service = SearchService(self.youtube_catalog)
+        self.album_details_service = AlbumDetailsService(
+            catalog=self.youtube_catalog,
+            album_cache=self.album_cache,
+            cache_settings=self.cache_settings,
+        )
+        active_profile = SessionActiveMusicProfile(
+            cast("YoutubeMusicSession", self.music_session),
+            cast("Profile", self.profile_repository),
+        )
+        local_music = LocalMusicRepository(cast("Profile", self.profile_repository))
+        youtube_library = YoutubeMusicLibraryProvider(
+            cast("YoutubeMusicSession", self.music_session)
+        )
+        youtube_playlists = YoutubeMusicPlaylistProvider(
+            cast("YoutubeMusicSession", self.music_session)
+        )
+        audio_enricher = YoutubePlaylistAudioEnricher(
+            cast("YoutubeMusicSession", self.music_session), self.metadata_cache
+        )
+        self.library_service = LibraryService(active_profile, youtube_library, local_music)
+        self.liked_songs_service = LikedSongsService(
+            active_profile, youtube_library, local_music, audio_enricher
+        )
+        self.song_rating_service = SongRatingService(active_profile, youtube_library, local_music)
+        self.artist_subscription_service = ArtistSubscriptionService(
+            active_profile, youtube_library
+        )
+        self.listening_history_service = ListeningHistoryService(active_profile, youtube_library)
+        self.playlist_service = PlaylistService(
+            active_profile,
+            youtube_playlists,
+            youtube_playlists,
+            local_music,
+            cast("Playlist", self.playlist_cache),
+            cast("CacheSettings", self.cache_settings),
+            audio_enricher,
+        )
         self.app.extensions.update(
             {
                 "profile_repository": self.profile_repository,
@@ -1191,7 +1305,10 @@ class RouteTestCase:
                 "playlist_cache": self.playlist_cache,
                 "album_cache": self.album_cache,
                 "band_member_finder": self.band_member_finder,
-                "song_credits_cache": self.song_credits_cache,
+                "song_credits_service": self.song_credits_service,
+                "feedback_service": self.feedback_service,
+                "unison_client": self.unison_client,
+                "image_proxy_service": self.image_proxy_service,
                 "download_service": self.download_service,
                 "export_service": self.export_service,
                 "ffmpeg": self.ffmpeg,
@@ -1200,8 +1317,15 @@ class RouteTestCase:
                 "remote_control": self.remote_control,
                 "metadata_cache": self.metadata_cache,
                 "playlist_mix": self.playlist_mix,
+                "search_service": self.search_service,
+                "album_details_service": self.album_details_service,
+                "library_service": self.library_service,
+                "liked_songs_service": self.liked_songs_service,
+                "song_rating_service": self.song_rating_service,
+                "artist_subscription_service": self.artist_subscription_service,
+                "listening_history_service": self.listening_history_service,
+                "playlist_service": self.playlist_service,
                 "server_start_time": 1000.0,
-                "feedback_webhook_url": "",
             }
         )
         with patch("builtins.print"):

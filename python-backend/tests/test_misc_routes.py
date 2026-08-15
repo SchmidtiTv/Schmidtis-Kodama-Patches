@@ -1,17 +1,11 @@
-from types import SimpleNamespace
 from unittest.mock import patch
 
-from route_test_support import FakeUpstream, RouteTestCase
+from route_test_support import RouteTestCase
 
 
 class MiscRouteTests(RouteTestCase):
     def test_imgproxy_news_feedback_clientlog_and_shutdown(self) -> None:
-        image_response = FakeUpstream(status_code=200, content=b"img", content_type="image/jpeg")
-        with (
-            patch("src.routes.root.imgproxy.config_dirs", self.cache_dirs),
-            patch("src.routes.root.imgproxy.requests.get", return_value=image_response),
-        ):
-            proxied = self.client.get("/imgproxy?url=https://example.test/image.jpg")
+        proxied = self.client.get("/imgproxy?url=https://example.test/image.jpg")
         assert proxied.status_code == 200
         assert proxied.headers["X-Cache"] == "MISS"
         assert proxied.data == b"img"
@@ -26,14 +20,12 @@ class MiscRouteTests(RouteTestCase):
         assert news.json == [{"id": "release-1"}]
         assert self.client.post("/feedback", json={"title": "Bug"}).status_code == 503
 
-        self.app.extensions["feedback_webhook_url"] = "https://hooks.example.test"
-        webhook = SimpleNamespace(status_code=204)
-        with patch("src.routes.feedback.requests.post", return_value=webhook) as post:
-            feedback = self.client.post(
-                "/feedback", json={"title": "Bug", "description": "Details", "includeLogs": False}
-            )
+        self.feedback_service.configured = True
+        feedback = self.client.post(
+            "/feedback", json={"title": "Bug", "description": "Details", "includeLogs": False}
+        )
         assert feedback.json == {"ok": True}
-        assert post.call_count == 1
+        assert len(self.feedback_service.submissions) == 1
 
         assert self.client.open("/clientlog", method="OPTIONS").status_code == 204
         with patch("builtins.print"):

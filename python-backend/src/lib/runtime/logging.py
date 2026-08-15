@@ -85,3 +85,8 @@ def setup_logger() -> None:
     if _ring_handler not in werkzeug_logger.handlers:
         werkzeug_logger.addHandler(_ring_handler)
     werkzeug_logger.setLevel(logging.INFO)
+
+
+def feedback_log_snapshot() -> tuple[str, ...]:
+    """Return a stable copy for redaction by the feedback service."""
+    return tuple(FEEDBACK_LOG_RING)

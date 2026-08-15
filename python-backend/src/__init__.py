@@ -7,14 +7,24 @@ from src.config import Config, config_dirs
 from src.lib import (
     YTDLP,
     Album,
+    AlbumDetailsService,
+    ArtistSubscriptionService,
     BandMemberFinder,
     CacheSettings,
     ComposerBridge,
     ComposerSettings,
+    DiscordFeedbackWebhookClient,
     DownloadService,
     ExportService,
+    FeedbackService,
     FFmpeg,
+    HttpUnisonClient,
+    ImageProxyService,
     LastFM,
+    LibraryService,
+    LikedSongsService,
+    ListeningHistoryService,
+    LocalMusicRepository,
     LyricsService,
     MetadataCache,
     MixAnalysisService,
@@ -24,12 +34,30 @@ from src.lib import (
     OverlayServer,
     Playlist,
     PlaylistMix,
+    PlaylistService,
     Profile,
+    ProviderCollection,
     RemoteControl,
+    RequestsHttpTransport,
+    RestrictedImageProxyClient,
+    ReturnYoutubeDislikeProvider,
+    SearchService,
+    SessionActiveMusicProfile,
     SongCreditsCache,
+    SongCreditsService,
+    SongRatingService,
+    SongStatisticsCapabilities,
+    SongStatisticsService,
     StreamService,
     VideoSyncService,
+    YoutubeCapabilities,
+    YoutubeMusicCatalogProvider,
+    YoutubeMusicLibraryProvider,
+    YoutubeMusicPlaylistProvider,
     YoutubeMusicSession,
+    YoutubePlaylistAudioEnricher,
+    YoutubeSongCreditsProvider,
+    feedback_log_snapshot,
     load_feedback_webhook,
     setup_debug,
     setup_log_tee,
@@ -53,13 +81,23 @@ def create_app() -> Flask:
         setup_logger()
         app = Flask(__name__)
         app.config.from_object(Config)
+        http = RequestsHttpTransport()
         # Cache CORS preflights so the frequent local overlay updates do not issue
         # an OPTIONS request before every browser POST.
         CORS(app, origins=CORS_ORIGINS, max_age=600)
         app.extensions["server_start_time"] = time.time()
-        app.extensions["feedback_webhook_url"] = load_feedback_webhook()
+        feedback_webhook_url = load_feedback_webhook()
+        feedback_client = (
+            DiscordFeedbackWebhookClient(http=http, webhook_url=feedback_webhook_url)
+            if feedback_webhook_url
+            else None
+        )
+        app.extensions["feedback_service"] = FeedbackService(
+            client=feedback_client,
+            log_source=feedback_log_snapshot,
+        )
         app.extensions["network_settings"] = NetworkSettings()
-        app.extensions["song_credits_cache"] = SongCreditsCache()
+        song_credits_cache = SongCreditsCache()
 
         profile_repository = Profile()
         app.extensions["profile_repository"] = profile_repository
@@ -82,19 +120,94 @@ def create_app() -> Flask:
         music_session.start_cookie_refresh_loop()
         app.extensions["youtube_music_session"] = music_session
         app.extensions["lastfm_client"] = LastFM()
-        app.extensions["cache_settings"] = CacheSettings(metadata_cache=metadata_cache)
+        cache_settings = CacheSettings(metadata_cache=metadata_cache)
+        app.extensions["cache_settings"] = cache_settings
+        app.extensions["image_proxy_service"] = ImageProxyService(
+            client=RestrictedImageProxyClient(http=http),
+            cache_settings=cache_settings,
+            cache_directory=config_dirs.IMG_CACHE_DIR,
+            cache_ttl=Config.IMG_CACHE_TTL,
+        )
+        app.extensions["unison_client"] = HttpUnisonClient(http=http)
         app.extensions["composer_bridge"] = ComposerBridge(
             settings=ComposerSettings(),
-            cache_settings=app.extensions["cache_settings"],
+            cache_settings=cache_settings,
             music_session=app.extensions["youtube_music_session"],
         )
         app.extensions["lyrics_service"] = LyricsService(
-            cache_settings=app.extensions["cache_settings"],
+            cache_settings=cache_settings,
             musixmatch=MusixMatch(),
             metadata_cache=metadata_cache,
         )
-        app.extensions["album_cache"] = Album(metadata_cache=metadata_cache)
+        album_cache = Album(metadata_cache=metadata_cache)
+        app.extensions["album_cache"] = album_cache
         app.extensions["band_member_finder"] = BandMemberFinder()
+
+        providers = ProviderCollection()
+        youtube_catalog = YoutubeMusicCatalogProvider(
+            session=music_session,
+            metadata_cache=metadata_cache,
+        )
+        youtube_library = YoutubeMusicLibraryProvider(session=music_session)
+        youtube_playlists = YoutubeMusicPlaylistProvider(session=music_session)
+        youtube_credits = YoutubeSongCreditsProvider(http=http)
+        providers.use(
+            YoutubeCapabilities(
+                catalog=youtube_catalog,
+                library=youtube_library,
+                playlists=youtube_playlists,
+                credits=youtube_credits,
+            )
+        )
+        active_profile = SessionActiveMusicProfile(music_session, profile_repository)
+        local_music = LocalMusicRepository(profile_repository)
+        audio_enricher = YoutubePlaylistAudioEnricher(music_session, metadata_cache)
+        app.extensions["library_service"] = LibraryService(
+            profile_context=active_profile,
+            remote_library=youtube_library,
+            local_library=local_music,
+        )
+        app.extensions["liked_songs_service"] = LikedSongsService(
+            profile_context=active_profile,
+            remote_library=youtube_library,
+            local_library=local_music,
+            audio_enricher=audio_enricher,
+        )
+        app.extensions["song_rating_service"] = SongRatingService(
+            profile_context=active_profile,
+            remote_library=youtube_library,
+            local_library=local_music,
+        )
+        app.extensions["artist_subscription_service"] = ArtistSubscriptionService(
+            profile_context=active_profile,
+            remote_library=youtube_library,
+        )
+        app.extensions["listening_history_service"] = ListeningHistoryService(
+            profile_context=active_profile,
+            remote_library=youtube_library,
+        )
+        app.extensions["playlist_service"] = PlaylistService(
+            profile_context=active_profile,
+            remote_playlists=youtube_playlists,
+            remote_radio=youtube_playlists,
+            local_playlists=local_music,
+            cache=playlist_cache,
+            cache_settings=cache_settings,
+            audio_enricher=audio_enricher,
+        )
+        app.extensions["song_credits_service"] = SongCreditsService(
+            provider=youtube_credits,
+            cache=song_credits_cache,
+        )
+        app.extensions["search_service"] = SearchService(youtube_catalog)
+        app.extensions["album_details_service"] = AlbumDetailsService(
+            catalog=youtube_catalog,
+            album_cache=album_cache,
+            cache_settings=cache_settings,
+        )
+        statistics_provider = ReturnYoutubeDislikeProvider(http=http)
+        providers.use(SongStatisticsCapabilities(provider=statistics_provider))
+        app.extensions["song_statistics_service"] = SongStatisticsService(providers.song_statistics)
 
         ytdlp = YTDLP(
             profiles=profile_repository,

@@ -1,6 +1,3 @@
-from types import SimpleNamespace
-from unittest.mock import patch
-
 from route_test_support import RouteTestCase
 
 
@@ -26,18 +23,12 @@ class LyricsRouteTests(RouteTestCase):
         assert versions.json["versions"][0]["videoId"] == "vid"
         assert self.client.get("/unison/displayname/key").json == {"displayName": "name:key"}
 
-        upstream = SimpleNamespace(
-            content=b'{"ok":true}', status_code=201, headers={"Content-Type": "application/json"}
-        )
-        with patch(
-            "src.routes.lyrics.unison._forwarding.requests.request", return_value=upstream
-        ) as request:
-            vote = self.client.post("/unison/lyrics/lyr/vote", json={"signed": True})
-            report = self.client.post("/unison/lyrics/lyr/report", json={"signed": True})
-            nickname = self.client.put("/unison/auth/nickname", json={"signed": True})
-            check = self.client.post("/unison/auth/nickname/check", json={"signed": True})
+        vote = self.client.post("/unison/lyrics/lyr/vote", json={"signed": True})
+        report = self.client.post("/unison/lyrics/lyr/report", json={"signed": True})
+        nickname = self.client.put("/unison/auth/nickname", json={"signed": True})
+        check = self.client.post("/unison/auth/nickname/check", json={"signed": True})
         assert vote.status_code == 201
         assert report.status_code == 201
         assert nickname.status_code == 201
         assert check.status_code == 201
-        assert request.call_count == 4
+        assert len(self.unison_client.calls) == 4

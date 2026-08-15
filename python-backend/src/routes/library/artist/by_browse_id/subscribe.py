@@ -1,18 +1,26 @@
 """Artist subscription endpoint."""
 
+from collections.abc import Mapping
+
 from flask import jsonify, request
 
+from src.lib.accounts import AccountValidationError, required_id
+from src.routes.account_errors import account_error_response
 from src.routes.library import blueprint
-from src.routes.library._services import music_session
+from src.routes.library._services import artist_subscription_service
 from src.type_defs import RouteResponse
 
 
 @blueprint.route("/artist/<browse_id>/subscribe", methods=["POST"])
 def artist_subscribe(browse_id: str) -> RouteResponse:
     try:
-        data = request.get_json(silent=True) or {}
-        channel_id = data.get("channelId") or browse_id
-        music_session().get_active_client().subscribe_artists([channel_id])
+        data = request.get_json(silent=True)
+        if data is None:
+            data = {}
+        if not isinstance(data, Mapping):
+            raise AccountValidationError("JSON object required")
+        channel_id = required_id(data.get("channelId") or browse_id, "browseId")
+        artist_subscription_service().subscribe(channel_id)
         return jsonify({"ok": True})
     except Exception as error:
-        return jsonify({"error": str(error)}), 500
+        return account_error_response(error)

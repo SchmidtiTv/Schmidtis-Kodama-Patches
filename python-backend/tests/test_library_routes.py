@@ -2,7 +2,27 @@ import json
 from typing import cast
 from unittest.mock import patch
 
+import pytest
+from src.lib.providers import ProviderResponseError
+
 from route_test_support import JsonValue, RouteTestCase, TestResponse
+
+
+class FakeSongStatisticsService:
+    def __init__(
+        self,
+        result: dict[str, object] | None = None,
+        error: Exception | None = None,
+    ) -> None:
+        self.result = result or {}
+        self.error = error
+        self.video_ids: list[str] = []
+
+    def get_statistics(self, video_id: str) -> dict[str, object]:
+        self.video_ids.append(video_id)
+        if self.error is not None:
+            raise self.error
+        return self.result
 
 
 class HistoryRouteTests(RouteTestCase):
@@ -177,6 +197,7 @@ class PlaylistRouteTests(RouteTestCase):
 
     def test_online_playlist_mutation_routes(self) -> None:
         assert self.client.post("/playlist/create", json={}).status_code == 400
+        assert self.client.post("/playlist/create", json=[]).status_code == 400
         created = self.client.post(
             "/playlist/create",
             json={
@@ -190,6 +211,12 @@ class PlaylistRouteTests(RouteTestCase):
         assert self.music_session.client.created_playlists == [("New", "Desc", "PUBLIC", ["vid"])]
 
         assert self.client.post("/playlist/pl/add", json={}).status_code == 400
+        assert (
+            self.client.post(
+                "/playlist/pl/add", json={"videoIds": ["vid"], "tracks": "bad"}
+            ).status_code
+            == 400
+        )
         assert self.client.post("/playlist/pl/add", json={"videoIds": ["vid"]}).json == {"ok": True}
         assert self.music_session.client.added_playlist_items == [("pl", ["vid"])]
         assert self.playlist_cache.purged[-1] == ("pl", "default")
@@ -200,6 +227,7 @@ class PlaylistRouteTests(RouteTestCase):
         assert self.music_session.client.removed_playlist_items == [("pl", videos)]
 
         assert self.client.post("/playlist/pl/edit", json={"title": "Edited"}).json == {"ok": True}
+        assert self.client.post("/playlist/pl/edit", json=[]).status_code == 400
         assert self.music_session.client.edited_playlists[-1][0] == "pl"
 
         assert self.client.delete("/playlist/pl").json == {"ok": True}
@@ -313,6 +341,10 @@ class PlaylistRouteTests(RouteTestCase):
         assert playlist.json["title"] == "Local Playlist"
         assert playlist.json["tracks"][0]["videoId"] == "local-song"
 
+        public_playlist = self.client.get("/playlist/public-pl")
+        assert public_playlist.status_code == 200
+        assert public_playlist.json["title"] == "Playlist"
+
         events = sse_events(self.client.get("/playlist/local-pl/stream"))
         assert events[0]["type"] == "header"
         assert events[0]["cached"]
@@ -341,8 +373,26 @@ class LibraryDetailRouteTests(RouteTestCase):
 
         album = self.client.get("/album/alb")
         assert album.status_code == 200
-        assert album.json["title"] == "Album"
-        assert album.json["tracks"][0]["album"] == "Album"
+        assert album.json == {
+            "title": "Album",
+            "artists": "Artist",
+            "artistBrowseId": "UCartist",
+            "year": "2026",
+            "thumbnail": "http://img/album.jpg",
+            "tracks": [
+                {
+                    "videoId": "vid",
+                    "title": "Song",
+                    "artists": "Artist",
+                    "artistBrowseId": "UCartist",
+                    "artistLinks": [{"name": "Artist", "browseId": "UCartist"}],
+                    "album": "Album",
+                    "duration": "3:00",
+                    "thumbnail": "http://img/album.jpg",
+                    "isExplicit": False,
+                }
+            ],
+        }
         assert self.album_cache.saved[-1][0] == "alb"
 
         cached = self.client.get("/album/alb")
@@ -375,69 +425,82 @@ class LibraryDetailRouteTests(RouteTestCase):
         assert info.json == {"artistBrowseId": "UCartist", "albumBrowseId": "MPREb"}
 
     def test_song_stats_route_formats_raw_counts(self) -> None:
-        class StatsResponse:
-            status_code = 200
+        service = FakeSongStatisticsService(
+            {
+                "views": "1.2M",
+                "likes": "42.5K",
+                "dislikes": "321",
+                "viewsRaw": 1_250_000,
+                "likesRaw": 42_500,
+                "dislikesRaw": 321,
+            }
+        )
+        self.app.extensions["song_statistics_service"] = service
 
-            def json(self) -> object:
-                return {"viewCount": 1_250_000, "likes": 42_500, "dislikes": 321}
-
-        with patch(
-            "src.routes.library.song.stats.by_video_id.index.requests.get",
-            return_value=StatsResponse(),
-        ) as request:
+        with patch("requests.get") as network_get:
             stats = self.client.get("/song/stats/vid")
 
         assert stats.status_code == 200
-        assert stats.json["views"] == "1.2M"
-        assert stats.json["likes"] == "42.5K"
-        assert stats.json["dislikes"] == "321"
-        assert stats.json["viewsRaw"] == 1_250_000
-        request.assert_called_once()
+        assert stats.json == {
+            "views": "1.2M",
+            "likes": "42.5K",
+            "dislikes": "321",
+            "viewsRaw": 1_250_000,
+            "likesRaw": 42_500,
+            "dislikesRaw": 321,
+        }
+        assert service.video_ids == ["vid"]
+        network_get.assert_not_called()
 
     def test_song_stats_route_reports_unavailable_stats(self) -> None:
-        class FailedStatsResponse:
-            status_code = 404
+        service = FakeSongStatisticsService(error=ProviderResponseError())
+        self.app.extensions["song_statistics_service"] = service
 
-        with patch(
-            "src.routes.library.song.stats.by_video_id.index.requests.get",
-            return_value=FailedStatsResponse(),
-        ):
-            response = self.client.get("/song/stats/vid")
+        response = self.client.get("/song/stats/vid")
 
         assert response.status_code == 502
         assert response.json == {"error": "stats unavailable"}
 
+    @pytest.mark.parametrize("video_id", ["v", "video_ID-123", "v" * 128])
+    def test_song_stats_route_accepts_conservative_video_ids(self, video_id: str) -> None:
+        service = FakeSongStatisticsService({"viewsRaw": 1})
+        self.app.extensions["song_statistics_service"] = service
+
+        response = self.client.get(f"/song/stats/{video_id}")
+
+        assert response.status_code == 200
+        assert service.video_ids == [video_id]
+
+    @pytest.mark.parametrize(
+        "video_id",
+        ["contains%20space", "https:example.test", "control%01character", "v" * 129],
+    )
+    def test_song_stats_route_rejects_invalid_video_ids(self, video_id: str) -> None:
+        service = FakeSongStatisticsService({"viewsRaw": 1})
+        self.app.extensions["song_statistics_service"] = service
+
+        response = self.client.get(f"/song/stats/{video_id}")
+
+        assert response.status_code == 400
+        assert response.json == {"error": "invalid video id"}
+        assert service.video_ids == []
+
+    def test_song_stats_route_hides_unexpected_internal_errors(self) -> None:
+        service = FakeSongStatisticsService(error=RuntimeError("secret internal details"))
+        self.app.extensions["song_statistics_service"] = service
+
+        with patch.object(self.app.logger, "exception") as log_exception:
+            response = self.client.get("/song/stats/vid")
+
+        assert response.status_code == 500
+        assert response.json == {"error": "internal server error"}
+        assert "secret" not in str(response.json)
+        log_exception.assert_called_once_with("Unexpected song statistics failure")
+
     def test_song_credits_routes_use_cache_after_first_fetch(self) -> None:
-        self.song_credits_cache.clear()
-        payload = {
-            "contents": {
-                "twoColumnWatchNextResults": {
-                    "results": {
-                        "results": {
-                            "contents": [
-                                {
-                                    "videoSecondaryInfoRenderer": {
-                                        "attributedDescription": {"content": "Credits text"}
-                                    }
-                                }
-                            ]
-                        }
-                    }
-                }
-            }
-        }
-
-        class JsonResponse:
-            def json(self) -> object:
-                return payload
-
-        with patch(
-            "src.routes.library.song.credits.by_video_id.index.requests.post",
-            return_value=JsonResponse(),
-        ) as post:
-            first = self.client.get("/song/credits/vid")
-            second = self.client.get("/song/credits/vid")
+        first = self.client.get("/song/credits/vid")
+        second = self.client.get("/song/credits/vid")
 
         assert first.json == {"description": "Credits text"}
         assert second.json == {"description": "Credits text"}
-        assert post.call_count == 1
+        assert self.song_credits_service.calls == ["vid"]

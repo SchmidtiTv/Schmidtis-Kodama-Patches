@@ -4,10 +4,10 @@ import json
 import os
 import shutil
 import sqlite3
-from contextlib import contextmanager
 from collections.abc import Iterator, Mapping
+from contextlib import contextmanager, suppress
 from pathlib import Path
-from typing import Optional, cast
+from typing import cast
 
 from src.config import PROJECT_ROOT, config_dirs
 
@@ -17,7 +17,7 @@ from .meta import Meta
 class Profile:
     """Locates profile files and identifies local-only profiles."""
 
-    def __init__(self, profiles_dir: Optional[Path] = None, meta: Optional[Meta] = None) -> None:
+    def __init__(self, profiles_dir: Path | None = None, meta: Meta | None = None) -> None:
         self._profiles_dir = profiles_dir or config_dirs.PROFILES_DIR
         self._meta = meta or Meta()
 
@@ -30,7 +30,7 @@ class Profile:
         """Path for the non-profile marker naming the most recently active account."""
         return self._profiles_dir / ".active-profile"
 
-    def load_active_profile(self) -> Optional[str]:
+    def load_active_profile(self) -> str | None:
         """Return the remembered account name, if a previous session recorded one."""
         try:
             name = self.active_profile_path.read_text(encoding="utf-8").strip()
@@ -44,10 +44,8 @@ class Profile:
 
     def clear_active_profile(self) -> None:
         """Forget the selection after logout or deleting the active account."""
-        try:
+        with suppress(FileNotFoundError):
             self.active_profile_path.unlink()
-        except FileNotFoundError:
-            pass
 
     # Old server.py: profile_path
     def profile_file_path(self, name: str) -> Path:
@@ -89,12 +87,16 @@ class Profile:
 
     def delete_files(self, name: str) -> None:
         """Delete browser-auth, metadata, and local-database files for a profile."""
-        for path in (self.profile_file_path(name), self.metadata_file_path(name), self.local_database_path(name)):
+        for path in (
+            self.profile_file_path(name),
+            self.metadata_file_path(name),
+            self.local_database_path(name),
+        ):
             if os.path.exists(path):
                 os.remove(path)
 
     # Old server.py: _brand_user_id
-    def brand_user_id(self, name: str) -> Optional[str]:
+    def brand_user_id(self, name: str) -> str | None:
         """The brand-account user id stored for a profile, or None.
 
         Passed to YTMusic as `user=` so requests act on behalf of a brand
@@ -105,7 +107,7 @@ class Profile:
         return str(brand_id).strip() or None if brand_id else None
 
     # Old server.py: is_local_profile
-    def is_local(self, name: Optional[str]) -> bool:
+    def is_local(self, name: str | None) -> bool:
         if not name:
             return False
         path = self._meta.meta_path(name)
@@ -122,8 +124,7 @@ class Profile:
         """Open or create the SQLite database for a local profile."""
         database = sqlite3.connect(self.local_database_path(name), check_same_thread=False)
         database.execute("PRAGMA journal_mode=WAL")
-        database.executescript(
-            """
+        database.executescript("""
             CREATE TABLE IF NOT EXISTS liked_songs (
                 video_id TEXT PRIMARY KEY,
                 title TEXT, artists TEXT, album TEXT,
@@ -144,8 +145,7 @@ class Profile:
                 set_video_id TEXT,
                 position INTEGER, added_at INTEGER
             );
-            """
-        )
+            """)
         database.commit()
         return database
 
@@ -160,7 +160,7 @@ class Profile:
             database.close()
 
     # Old server.py: get_profiles
-    def list_profiles(self, active_profile: Optional[str] = None) -> list[dict[str, object]]:
+    def list_profiles(self, active_profile: str | None = None) -> list[dict[str, object]]:
         """Return Google, local, and logged-out profiles from profile storage."""
         profiles: list[dict[str, object]] = []
         seen: set[str] = set()
@@ -218,7 +218,7 @@ class Profile:
         return profiles
 
     # Old server.py: migrate_legacy
-    def migrate_legacy_browser_profile(self, active_profile: Optional[str] = None) -> None:
+    def migrate_legacy_browser_profile(self, active_profile: str | None = None) -> None:
         """Copy the legacy browser.json profile into profile storage once."""
         legacy_path = PROJECT_ROOT / "browser.json"
         if legacy_path.exists() and not self.list_profiles(active_profile):

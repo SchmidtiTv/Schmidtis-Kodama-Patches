@@ -4,12 +4,20 @@ from typing import cast
 
 from flask import current_app
 
+from src.lib.accounts import (
+    ArtistSubscriptionService,
+    LibraryService,
+    ListeningHistoryService,
+    PlaylistService,
+)
 from src.lib.music.album import Album
+from src.lib.music.album_details import AlbumDetailsService
 from src.lib.music.band_members import BandMemberFinder
-from src.lib.music.credits import SongCreditsCache
+from src.lib.music.credits import SongCreditsService
 from src.lib.music.mix_analysis import MixAnalysisService
 from src.lib.music.playlist import Playlist
 from src.lib.music.playlist_mix import PlaylistMix
+from src.lib.music.song_statistics import SongStatisticsService
 from src.lib.music.youtube_music import YoutubeMusicSession
 from src.lib.profiles.profile import Profile
 from src.lib.runtime.cache import CacheSettings
@@ -48,9 +56,39 @@ def album_cache() -> Album:
     return cast("Album", current_app.extensions["album_cache"])
 
 
+def album_details_service() -> AlbumDetailsService:
+    return cast("AlbumDetailsService", current_app.extensions["album_details_service"])
+
+
 def band_member_finder() -> BandMemberFinder:
     return cast("BandMemberFinder", current_app.extensions["band_member_finder"])
 
 
-def song_credits_cache() -> SongCreditsCache:
-    return cast("SongCreditsCache", current_app.extensions["song_credits_cache"])
+def song_credits_service() -> SongCreditsService:
+    return cast("SongCreditsService", current_app.extensions["song_credits_service"])
+
+
+def song_statistics_service() -> SongStatisticsService:
+    return cast("SongStatisticsService", current_app.extensions["song_statistics_service"])
+
+
+def library_service() -> LibraryService:
+    return cast("LibraryService", current_app.extensions["library_service"])
+
+
+def playlist_service() -> PlaylistService:
+    return cast("PlaylistService", current_app.extensions["playlist_service"])
+
+
+def artist_subscription_service() -> ArtistSubscriptionService:
+    return cast(
+        "ArtistSubscriptionService",
+        current_app.extensions["artist_subscription_service"],
+    )
+
+
+def listening_history_service() -> ListeningHistoryService:
+    return cast(
+        "ListeningHistoryService",
+        current_app.extensions["listening_history_service"],
+    )
