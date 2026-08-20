@@ -21,6 +21,7 @@ export function ProfileProvider({ controller, children }) {
     profiles,
     hasProfile,
     currentProfile,
+    sessionExpired,
     fetchProfiles,
     handleAccountSwitch,
     handleAccountAdd,
@@ -33,8 +34,8 @@ export function ProfileProvider({ controller, children }) {
 
   const state = useMemo(() => {
     const activeProfile = profiles.find((p) => p.active) || null;
-    return { profiles, activeProfile, hasProfile, currentProfile };
-  }, [profiles, hasProfile, currentProfile]);
+    return { profiles, activeProfile, hasProfile, currentProfile, sessionExpired };
+  }, [profiles, hasProfile, currentProfile, sessionExpired]);
 
   const actions = useMemo(
     () => ({

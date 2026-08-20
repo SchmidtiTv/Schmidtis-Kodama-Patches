@@ -42,6 +42,9 @@ export function useProfiles({
   const [showLogin, setShowLogin] = useState(false);
   const sessionWarnedRef = useRef(null); // profile name we've already shown the "session expired" toast for
   const sessionExpiredToastKeyRef = useRef(null);
+  // Mirrors the active profile's sessionExpired flag for views that want to explain an empty
+  // result instead of just showing the one-shot toast above (e.g. the library view).
+  const [sessionExpired, setSessionExpired] = useState(false);
   const [showLangPicker, setShowLangPicker] = useState(() => !localStorage.getItem("kiyoshi-lang"));
   const [showProfileSwitcher, setShowProfileSwitcher] = useState(false);
   const [switchingTo, setSwitchingTo] = useState(null);
@@ -78,8 +81,15 @@ export function useProfiles({
       }
       // Notify once when the active (real) account's session has expired, so the user knows to
       // refresh it. Reset when it's valid again so a later expiry warns anew.
+      //
+      // loggedOut covers a deliberate sign-out; sessionExpired covers cookies Google has
+      // stopped accepting (from the background cookie-refresh check) — a session that simply
+      // stops being accepted otherwise looks perfectly healthy here, and the account is only
+      // ever told about it once it hits a 401 on some unrelated request. Both need the same
+      // thing from the user: sign in again.
       const active = (d.profiles || []).find((p) => p.name === d.current);
-      if (active && active.type !== "local" && active.loggedOut) {
+      setSessionExpired(Boolean(active && active.type !== "local" && active.sessionExpired));
+      if (active && active.type !== "local" && (active.loggedOut || active.sessionExpired)) {
         if (sessionWarnedRef.current !== active.name) {
           sessionWarnedRef.current = active.name;
           setReauthName(active.name); // target the settings re-auth / login at this account
@@ -95,7 +105,9 @@ export function useProfiles({
             },
           });
         }
-      } else if (active && !active.loggedOut) {
+        // Both conditions have to clear, or the next poll would close the toast again right
+        // after showing it: sessionExpired leaves loggedOut false.
+      } else if (active && !active.loggedOut && !active.sessionExpired) {
         sessionWarnedRef.current = null;
         if (sessionExpiredToastKeyRef.current) {
           toast.close(sessionExpiredToastKeyRef.current);
@@ -430,6 +442,7 @@ export function useProfiles({
 
   return {
     profiles,
+    sessionExpired,
     showLogin,
     setShowLogin,
     showLangPicker,

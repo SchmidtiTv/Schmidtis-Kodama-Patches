@@ -17,8 +17,9 @@ from typing import Generator, Protocol, cast
 
 import requests
 
-from src.config import BACKEND_PORT, config_ytdlp
+from src.config import config_ytdlp
 from src.lib.integrations.ytdlp import YTDLP
+from src.lib.runtime.keyed_lock import KeyedLock
 from src.lib.security import EncryptedCredentialStore
 
 
@@ -54,10 +55,9 @@ class _BrowserCookieStore(Protocol):
 class StreamService:
     """Resolve YouTube Music audio URLs and proxy progressive audio streams."""
 
-    # Local stream resolver reused by the progressive proxy (see resolve_audio_url).
-    STREAM_ENDPOINT = f"http://127.0.0.1:{BACKEND_PORT}/stream"
-    # symphonia has no Opus decoder, so WebM is intentionally excluded.
-    PLAYABLE_EXTS = {".m4a", ".mp4", ".mp3", ".ogg", ".flac", ".wav"}
+    # WebM/Opus is playable now that the Rust core carries its own Opus decoder
+    # (see src-tauri/src/audio/decoder.rs).
+    PLAYABLE_EXTS = {".m4a", ".mp4", ".mp3", ".ogg", ".opus", ".webm", ".flac", ".wav"}
 
     def __init__(
         self,
@@ -80,7 +80,7 @@ class StreamService:
         self._audio_url_cache = {}  # video_id -> (url, expiry_ts)
         self._audio_url_lock = threading.Lock()
         self._audio_url_inflight: dict[str, threading.Event] = {}
-        self._stream_resolution_lock = threading.Lock()
+        self._stream_resolution_lock = KeyedLock()
         self.last_error: dict[str, str] | None = None
 
     # ── yt-dlp extraction helpers ────────────────────────────────────────────
@@ -312,11 +312,12 @@ class StreamService:
     # ── /stream ──────────────────────────────────────────────────────────────
     # Old server.py: stream_url
     def resolve_stream(self, video_id: str) -> tuple[dict[str, str | bool], int]:
-        # yt-dlp's YouTube extraction and challenge-solving path becomes both
-        # slow and unreliable when playback plus several queue warmers run it
-        # concurrently. Per-video de-duplication handles duplicate warm/play
-        # requests; this lock also serializes extraction across different IDs.
-        with self._stream_resolution_lock:
+        # yt-dlp's YouTube extraction and challenge-solving path becomes both slow and
+        # unreliable when duplicate requests for the SAME video run it concurrently, so those
+        # serialize here. The lock is keyed per video_id (not global) so resolving the track
+        # that's actually playing is never blocked behind a slow queue-prewarm fallback chain
+        # (up to ~45s) for a different track.
+        with self._stream_resolution_lock.acquire(video_id):
             return self._resolve_stream_unlocked(video_id)
 
     def _resolve_stream_unlocked(self, video_id: str) -> tuple[dict[str, str | bool], int]:
@@ -481,7 +482,7 @@ class StreamService:
         cache_dir = os.path.join(tempfile.gettempdir(), "kiyoshi-audio")
         os.makedirs(cache_dir, exist_ok=True)
 
-        # Check if already downloaded (skip WebM — symphonia has no Opus decoder)
+        # Check if already downloaded
         existing = glob.glob(os.path.join(cache_dir, f"{video_id}.*"))
         for ex in existing:
             ext = os.path.splitext(ex)[1].lower()
@@ -540,6 +541,21 @@ class StreamService:
     # app process (OBS-capturable). The resolved googlevideo URL is cached per
     # video (it's expensive to extract and the Rust source makes several range
     # requests per song).
+    def _prune_expired_audio_urls(self, now: float) -> None:
+        """Drop expired entries. Called with ``_audio_url_lock`` held.
+
+        Entries are otherwise only removed on a 403/410 error path, so without this a long
+        listening session accumulates a stale entry (5h TTL) for every distinct video played,
+        for the lifetime of the process.
+        """
+        expired = [
+            video_id
+            for video_id, (_url, expiry) in self._audio_url_cache.items()
+            if expiry <= now
+        ]
+        for video_id in expired:
+            del self._audio_url_cache[video_id]
+
     # Old server.py: _resolve_audio_url
     def resolve_audio_url(self, video_id: str) -> str | None:
         now = time.time()
@@ -565,7 +581,7 @@ class StreamService:
                 return ent[0] if ent and ent[1] > time.time() else None
 
         try:
-            d = requests.get(f"{self.STREAM_ENDPOINT}/{video_id}", timeout=60).json()
+            d, _status = self.resolve_stream(video_id)
         except Exception:
             d = {}
         try:
@@ -575,6 +591,7 @@ class StreamService:
             if isinstance(url, str) and url:
                 with self._audio_url_lock:
                     self._audio_url_cache[video_id] = (url, now + 5 * 3600)
+                    self._prune_expired_audio_urls(now)
                 return url
             return None
         finally:

@@ -160,8 +160,17 @@ class Profile:
             database.close()
 
     # Old server.py: get_profiles
-    def list_profiles(self, active_profile: Optional[str] = None) -> list[dict[str, object]]:
-        """Return Google, local, and logged-out profiles from profile storage."""
+    def list_profiles(
+        self, active_profile: Optional[str] = None, session_expired: bool = False
+    ) -> list[dict[str, object]]:
+        """Return Google, local, and logged-out profiles from profile storage.
+
+        `session_expired` is not the same thing as the stored `loggedOut` flag below:
+        `loggedOut` is written only on a deliberate sign-out, while a session Google simply
+        stops accepting leaves the stored profile looking perfectly healthy here. The caller
+        passes the cookie-refresher's own verdict (see `YoutubeMusicSessionState.last_authenticated`)
+        for the currently active account, so that case is surfaced too.
+        """
         profiles: list[dict[str, object]] = []
         seen: set[str] = set()
         for path in self.directory.glob("*.json"):
@@ -180,6 +189,7 @@ class Profile:
                     "avatar": meta.get("avatar", ""),
                     "type": "google",
                     "active": name == active_profile,
+                    "sessionExpired": session_expired and name == active_profile,
                 }
             )
 

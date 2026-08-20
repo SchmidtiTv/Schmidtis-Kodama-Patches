@@ -9,12 +9,14 @@ import {
   Playlist,
   Sliders,
   VinylRecord,
+  WarningCircle,
 } from "@/shared/icons/icons.jsx";
 import { API } from "@/shared/api/client.js";
 import { useLang } from "@/shared/i18n/context.jsx";
 import { LoadingState } from "@/shared/ui/loading-state.jsx";
 import { usePlayerActions } from "@/features/player/player-context.jsx";
 import { shuffleTracks } from "@/features/music/shuffle-tracks.js";
+import { useProfileState, useProfileActions } from "@/features/profiles/profile-context.jsx";
 
 export function LibraryView({ onOpenPlaylist, onOpenAlbum, onOpenArtist, onContextMenu }) {
   const [tab, setTab] = useState("playlists");
@@ -30,6 +32,8 @@ export function LibraryView({ onOpenPlaylist, onOpenAlbum, onOpenArtist, onConte
   const searchRef = useRef(null);
   const t = useLang();
   const { handlePlay } = usePlayerActions();
+  const { sessionExpired, activeProfile } = useProfileState();
+  const { reauthProfile } = useProfileActions();
 
   useEffect(() => {
     if (searchOpen) searchRef.current?.focus();
@@ -269,7 +273,53 @@ export function LibraryView({ onOpenPlaylist, onOpenAlbum, onOpenArtist, onConte
 
       {loading && <LoadingState label={t("loadingDots")} />}
       {error && <div style={{ color: "var(--status-danger)" }}>{error}</div>}
-      {!loading && !error && (
+      {/* An empty library used to render an empty grid and nothing else — which is exactly what
+          an expired session looks like too, since the request comes back with nothing. Say
+          which of the two it is instead of leaving the user to guess. */}
+      {!loading && !error && items.length === 0 && (
+        <div
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 10,
+            padding: "48px 24px",
+            textAlign: "center",
+            color: "var(--text-secondary)",
+          }}
+        >
+          {sessionExpired ? (
+            <>
+              <WarningCircle size={26} weight="fill" style={{ color: "var(--status-warning)" }} />
+              <div style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                {t("sessionExpired")}
+              </div>
+              <div style={{ maxWidth: 420 }}>{t("sessionExpiredHint")}</div>
+              {activeProfile && (
+                <button
+                  onClick={() => reauthProfile(activeProfile.name)}
+                  style={{
+                    marginTop: 6,
+                    background: "var(--bg-elevated)",
+                    border: "0.5px solid var(--border)",
+                    borderRadius: "var(--r-md)",
+                    padding: "6px 14px",
+                    fontSize: "var(--t13)",
+                    fontFamily: "var(--font)",
+                    color: "var(--text-primary)",
+                    cursor: "default",
+                  }}
+                >
+                  {t("reauthSession")}
+                </button>
+              )}
+            </>
+          ) : (
+            <div>{t(searchQuery ? "noResults" : "libraryEmpty")}</div>
+          )}
+        </div>
+      )}
+      {!loading && !error && items.length > 0 && (
         <div
           style={{
             display: "grid",

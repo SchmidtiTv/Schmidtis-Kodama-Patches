@@ -9,6 +9,7 @@
 // samples as soon as they arrive while the rest streams in. (For moov-at-end files it ends up
 // waiting for the full download, same as classic — but still correct.)
 use std::io::{self, Read, Seek, SeekFrom};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 
 use symphonia::core::io::MediaSource;
@@ -20,8 +21,29 @@ struct Shared {
     errored: bool,
 }
 
+// Lock-free mirror of `Shared`'s progress fields. `DownloadProgress::fraction()` is polled from
+// the audio player's tick loop; without this it would contend with the downloader thread's
+// `Mutex<Shared>`, which that thread holds while appending each 64KB chunk (potentially
+// reallocating a multi-MB `Vec`).
+struct ProgressState {
+    downloaded: AtomicU64,
+    total: AtomicU64, // u64::MAX sentinel for "unknown"
+    complete: AtomicBool,
+}
+
+impl ProgressState {
+    fn new(total: Option<u64>) -> Self {
+        ProgressState {
+            downloaded: AtomicU64::new(0),
+            total: AtomicU64::new(total.unwrap_or(u64::MAX)),
+            complete: AtomicBool::new(false),
+        }
+    }
+}
+
 pub struct HttpStream {
     shared: Arc<(Mutex<Shared>, Condvar)>,
+    progress: Arc<ProgressState>,
     pos: u64,
 }
 
@@ -40,7 +62,10 @@ impl HttpStream {
             .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
         let status = resp.status();
         if !(status.is_success() || status.as_u16() == 206) {
-            return Err(io::Error::new(io::ErrorKind::Other, format!("HTTP {}", status)));
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("HTTP {}", status),
+            ));
         }
         let total = resp
             .headers()
@@ -59,10 +84,12 @@ impl HttpStream {
             }),
             Condvar::new(),
         ));
+        let progress = Arc::new(ProgressState::new(total));
 
         // Background downloader: sequential, single connection.
         {
             let shared = Arc::clone(&shared);
+            let progress = Arc::clone(&progress);
             std::thread::spawn(move || {
                 let mut resp = resp;
                 let mut buf = [0u8; 65536];
@@ -72,12 +99,14 @@ impl HttpStream {
                             let (m, cv) = &*shared;
                             m.lock().unwrap().complete = true;
                             cv.notify_all();
+                            progress.complete.store(true, Ordering::Release);
                             break;
                         }
                         Ok(n) => {
                             let (m, cv) = &*shared;
                             m.lock().unwrap().data.extend_from_slice(&buf[..n]);
                             cv.notify_all();
+                            progress.downloaded.fetch_add(n as u64, Ordering::Release);
                         }
                         Err(_) => {
                             let (m, cv) = &*shared;
@@ -85,6 +114,7 @@ impl HttpStream {
                             g.errored = true;
                             g.complete = true;
                             cv.notify_all();
+                            progress.complete.store(true, Ordering::Release);
                             break;
                         }
                     }
@@ -92,34 +122,60 @@ impl HttpStream {
             });
         }
 
-        Ok(HttpStream { shared, pos: 0 })
+        Ok(HttpStream {
+            shared,
+            progress,
+            pos: 0,
+        })
     }
 
     /// A read-only view of how much has arrived, cloned out before the decoder takes ownership
-    /// of the stream itself. Cheap to hold and safe to read from the audio thread.
+    /// of the stream itself. Cheap to hold and safe to read from the audio thread — `fraction()`
+    /// never touches the downloader's `Mutex<Shared>`.
     pub fn progress(&self) -> DownloadProgress {
-        DownloadProgress(Arc::clone(&self.shared))
+        DownloadProgress {
+            data: Arc::clone(&self.shared),
+            progress: Arc::clone(&self.progress),
+        }
     }
 }
 
 #[derive(Clone)]
-pub struct DownloadProgress(Arc<(Mutex<Shared>, Condvar)>);
+pub struct DownloadProgress {
+    // Only used by `reader()`, to open a second view over the same growing buffer. `fraction()`
+    // must not touch this — see `progress` below.
+    data: Arc<(Mutex<Shared>, Condvar)>,
+    progress: Arc<ProgressState>,
+}
 
 impl DownloadProgress {
+    /// Open another reader over the same in-memory download, positioned at the start.
+    ///
+    /// Seeking re-opens the decoder, and rebuilding the HTTP stream with it would fetch the
+    /// track again from byte 0 — even when seeking backwards into bytes already held here.
+    /// The downloader thread is not tied to any one reader, so it keeps filling this buffer
+    /// no matter how often the decoder is rebuilt around it.
+    pub fn reader(&self) -> HttpStream {
+        HttpStream {
+            shared: Arc::clone(&self.data),
+            progress: Arc::clone(&self.progress),
+            pos: 0,
+        }
+    }
+
     /// How much of the stream is buffered, 0.0..=1.0. `None` while the total length is unknown
     /// (the server sent neither Content-Range nor Content-Length), so callers can hide the
-    /// indicator rather than draw a bar that means nothing.
+    /// indicator rather than draw a bar that means nothing. Lock-free: reads plain atomics.
     pub fn fraction(&self) -> Option<f64> {
-        let (m, _) = &*self.0;
-        let g = m.lock().unwrap();
-        if g.complete {
+        if self.progress.complete.load(Ordering::Acquire) {
             return Some(1.0);
         }
-        let total = g.total?;
-        if total == 0 {
+        let total = self.progress.total.load(Ordering::Acquire);
+        if total == u64::MAX || total == 0 {
             return None;
         }
-        Some((g.data.len() as f64 / total as f64).clamp(0.0, 1.0))
+        let downloaded = self.progress.downloaded.load(Ordering::Acquire) as f64;
+        Some((downloaded / total as f64).clamp(0.0, 1.0))
     }
 }
 
@@ -155,7 +211,8 @@ impl Seek for HttpStream {
             SeekFrom::Start(p) => p,
             SeekFrom::Current(d) => (self.pos as i64 + d).max(0) as u64,
             SeekFrom::End(d) => {
-                let l = total.ok_or_else(|| io::Error::new(io::ErrorKind::Other, "unknown length"))?;
+                let l =
+                    total.ok_or_else(|| io::Error::new(io::ErrorKind::Other, "unknown length"))?;
                 (l as i64 + d).max(0) as u64
             }
         };

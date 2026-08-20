@@ -81,7 +81,9 @@ function QueueRow({
   onToggleLike,
   onEditFade,
   fadeSecs,
-  labels,
+  // Defaults to {} so a call site that forgets to pass it loses the row action buttons'
+  // accessible names — which the console already warns about — instead of crashing the app.
+  labels = {},
 }) {
   const isDragOver = dragOver === globalIdx;
   const anim = useAnimations();
@@ -194,7 +196,7 @@ export function QueuePanel({
   nowPlayingContextTitle,
   onOpenArtist,
 }) {
-  const { track: currentTrack } = usePlaybackStatus();
+  const { track: currentTrack, playbackOrigin } = usePlaybackStatus();
   const { queue } = useQueueState();
   const { crossfade = 0, crossfadeOverrides = {} } = usePlaybackConfig();
   const { setQueue, setTrack, setCrossfadeOverride, removeCrossfadeOverride } = usePlayerActions();
@@ -286,6 +288,13 @@ export function QueuePanel({
   const currentIdx = queue.findIndex((t) => t.videoId === currentTrack?.videoId);
   const upNext = queue.slice(currentIdx + 1);
   const played = queue.slice(0, currentIdx);
+
+  // "Playing from" context — derived from the trackIds snapshotted when the album was played, not
+  // the live (shuffleable, editable) queue, so the position keeps meaning after a shuffle.
+  const albumOrigin = playbackOrigin?.kind === "album" ? playbackOrigin : null;
+  const albumTrackNumber = albumOrigin
+    ? albumOrigin.trackIds.indexOf(currentTrack?.videoId) + 1
+    : 0;
 
   // Open the per-transition fade editor for globalIdx → globalIdx+1.
   const openFadeEdit = (globalIdx) => {
@@ -446,6 +455,21 @@ export function QueuePanel({
           size={28}
           className="scrollable flex-1 overflow-y-auto px-2 pt-1 pb-4"
         >
+          {albumOrigin && albumTrackNumber > 0 && (
+            <div className="flex items-center gap-2 px-1.5 pt-1 pb-2.5 min-w-0">
+              {albumOrigin.thumbnail && (
+                <img
+                  src={thumb(albumOrigin.thumbnail)}
+                  alt=""
+                  className="w-6 h-6 rounded-[var(--r-sm)] object-cover shrink-0"
+                />
+              )}
+              <span className="text-t11 text-secondary truncate min-w-0">
+                {t("playingFrom", { title: albumOrigin.title })} ·{" "}
+                {t("trackOfTotal", { n: albumTrackNumber, total: albumOrigin.trackIds.length })}
+              </span>
+            </div>
+          )}
           {/* Previously played */}
           {played.length > 0 && (
             <>

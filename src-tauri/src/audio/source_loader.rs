@@ -9,8 +9,14 @@ use super::http_source::DownloadProgress;
 use super::mix_processor::render_transition;
 
 pub(super) type SourceMessage = (StreamingSource, u64, bool, String, Option<DownloadProgress>);
-pub(super) type CrossfadeSourceMessage =
-    (StreamingSource, String, f64, u64, bool, Option<DownloadProgress>);
+pub(super) type CrossfadeSourceMessage = (
+    StreamingSource,
+    String,
+    f64,
+    u64,
+    bool,
+    Option<DownloadProgress>,
+);
 
 pub(super) struct PcmTransitionMessage {
     pub pcm: Vec<f32>,
@@ -27,13 +33,24 @@ pub(super) struct PcmTransitionMessage {
 /// Builds a ready-to-play source for any of our URL kinds. Only the network-streamed case
 /// returns a progress handle — the other two branches have the whole file in hand before they
 /// return, so there is nothing to watch and the caller reports them as fully buffered.
+///
+/// `existing` is the progress handle of an in-flight download over the *same* URL, passed by a
+/// caller that is re-seeking rather than loading fresh (see the `AudioCmd::Seek` handler in
+/// player.rs). Seeking rebuilds the decoder, and rebuilding the HTTP stream with it would
+/// otherwise restart the download from byte 0 — throwing away bytes a backwards seek already
+/// has, and dropping the buffer indicator to zero every time. The downloader thread is not tied
+/// to any one reader, so a seek can simply open a second reader over the same buffer instead.
 pub(super) fn build_streaming_source(
     url: &str,
     seek_to: f64,
+    existing: Option<DownloadProgress>,
 ) -> Result<(StreamingSource, Option<DownloadProgress>), String> {
     if url.contains("/audio-stream/") {
-        let source = super::http_source::HttpStream::new(url.to_string())
-            .map_err(|error| error.to_string())?;
+        let source = match existing {
+            Some(progress) => progress.reader(),
+            None => super::http_source::HttpStream::new(url.to_string())
+                .map_err(|error| error.to_string())?,
+        };
         let progress = source.progress();
         return StreamingSource::new_streaming(Box::new(source), seek_to)
             .map(|s| (s, Some(progress)));
@@ -120,7 +137,8 @@ pub(super) fn spawn_automatic_source(
 ) {
     std::thread::spawn(move || {
         let result = resolve_automatic_source(&request).and_then(|url| {
-            build_streaming_source(&url, 0.0).map(|(source, progress)| (source, url, progress))
+            build_streaming_source(&url, 0.0, None)
+                .map(|(source, progress)| (source, url, progress))
         });
         match result {
             Ok((source, url, progress)) => {
@@ -159,7 +177,8 @@ pub(super) fn spawn_automatic_crossfade(
             progressive: request.progressive,
         };
         let result = resolve_automatic_source(&source_request).and_then(|url| {
-            build_streaming_source(&url, 0.0).map(|(source, progress)| (source, url, progress))
+            build_streaming_source(&url, 0.0, None)
+                .map(|(source, progress)| (source, url, progress))
         });
         match result {
             Ok((source, url, progress)) => {
@@ -205,8 +224,8 @@ pub(super) fn spawn_automatic_transition(
                 progressive: request.progressive,
             };
             let incoming_url = resolve_automatic_source(&source_request)?;
-            let (mut outgoing, _) = build_streaming_source(&outgoing_url, outgoing_position)?;
-            let (mut incoming, _) = build_streaming_source(&incoming_url, 0.0)?;
+            let (mut outgoing, _) = build_streaming_source(&outgoing_url, outgoing_position, None)?;
+            let (mut incoming, _) = build_streaming_source(&incoming_url, 0.0, None)?;
             if outgoing.channels() != incoming.channels()
                 || outgoing.sample_rate() != incoming.sample_rate()
             {
@@ -230,7 +249,7 @@ pub(super) fn spawn_automatic_transition(
                 request.mix_tempo_lock,
             )?;
             let (continuation, continuation_progress) =
-                build_streaming_source(&incoming_url, rendered.incoming_offset_seconds)?;
+                build_streaming_source(&incoming_url, rendered.incoming_offset_seconds, None)?;
             let duration = continuation
                 .total_duration()
                 .map(|value| value.as_secs_f64())

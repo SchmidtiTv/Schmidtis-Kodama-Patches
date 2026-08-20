@@ -5,7 +5,7 @@ use tauri::Emitter;
 
 use super::analyzer;
 use super::decoder::StreamingSource;
-use super::engine::{PlaybackEngine, PlaybackStatus, TransportUpdate};
+use super::engine::{PlaybackEngine, PlaybackStatus, TransportUpdate, MAX_CROSSFADE_SECONDS};
 use super::source_loader::{
     build_streaming_source, spawn_automatic_source, spawn_automatic_transition,
     CrossfadeSourceMessage, PcmTransitionMessage, SourceMessage,
@@ -171,6 +171,16 @@ pub fn start_audio_thread(
         let mut dl_progress2: Option<super::http_source::DownloadProgress> = None;
 
         let mut play_gen: u64 = 0;
+
+        // The loop below ticks every 20ms for crossfade-ramp accuracy, but neither the engine's
+        // transport state (write-locks `PlaybackEngine`'s shared RwLock) nor the `audio-progress`
+        // IPC emit (JSON serialize + WebView round-trip) needs that resolution — external readers
+        // (UI, the 1Hz integration worker, on-demand snapshot queries) are all fine with ~100ms
+        // staleness. Both are throttled together, except a play/pause transition always applies
+        // immediately so status changes never lag behind the throttle window.
+        const PROGRESS_EMIT_INTERVAL: std::time::Duration = std::time::Duration::from_millis(100);
+        let mut last_progress_emit = std::time::Instant::now() - PROGRESS_EMIT_INTERVAL;
+        let mut last_transport_status: Option<PlaybackStatus> = None;
 
         loop {
             while let Ok((data, seek_to, gen)) = data_rx.try_recv() {
@@ -348,8 +358,7 @@ pub fn start_audio_thread(
             }
 
             // Incoming fallback source: start it on sink2 at volume 0 and begin the ramp.
-            while let Ok((mut source, url, dur, gen, automatic, progress)) = xsource_rx.try_recv()
-            {
+            while let Ok((mut source, url, dur, gen, automatic, progress)) = xsource_rx.try_recv() {
                 if gen != play_gen {
                     // A seek or track change superseded this build. Its engine request was
                     // already cancelled with the generation change, so it is not a failure.
@@ -474,7 +483,13 @@ pub fn start_audio_thread(
                                     });
                                 match built {
                                     Ok((source, progress)) => {
-                                        let _ = stx.send((source, gen, false, source_url, Some(progress)));
+                                        let _ = stx.send((
+                                            source,
+                                            gen,
+                                            false,
+                                            source_url,
+                                            Some(progress),
+                                        ));
                                     }
                                     Err(e) => {
                                         eprintln!(
@@ -658,13 +673,17 @@ pub fn start_audio_thread(
                             seek_offset = t;
                             let gen = play_gen;
                             let stx = source_tx.clone();
+                            // Seeking rebuilds the decoder, but it must not restart the download:
+                            // read the already-buffered bytes through a second reader over the
+                            // same stream. A backwards seek then costs nothing, and the buffer
+                            // indicator keeps what it had reached instead of dropping to zero.
+                            let existing = dl_progress.clone();
                             std::thread::spawn(move || {
                                 let source_url = url.clone();
-                                let built = build_streaming_source(&url, t);
-                                // A seek re-opens the stream, so the buffer starts filling from
-                                // the new position — the handle has to be replaced with it.
+                                let built = build_streaming_source(&url, t, existing);
                                 if let Ok((source, progress)) = built {
-                                    let _ = stx.send((source, gen, was_paused, source_url, progress));
+                                    let _ =
+                                        stx.send((source, gen, was_paused, source_url, progress));
                                 }
                             });
                         } else if let Some(ref data) = audio_data {
@@ -720,17 +739,23 @@ pub fn start_audio_thread(
             if xfade_start.is_none() && sink2.is_none() {
                 if let Some(current_sink) = sink.as_ref().filter(|sink| !sink.is_paused()) {
                     let position = current_sink.get_pos().as_secs_f64() + seek_offset;
-                    if let Ok(Some(request)) = engine.prepare_crossfade(position, duration) {
-                        spawn_automatic_transition(
-                            request,
-                            source_url.clone(),
-                            position,
-                            play_gen,
-                            pcm_tx.clone(),
-                            xsource_tx.clone(),
-                            app.clone(),
-                            engine.clone(),
-                        );
+                    // Cheap arithmetic gate before even asking the engine: a crossfade can only
+                    // become due once fewer than MAX_CROSSFADE_SECONDS remain, so this skips the
+                    // engine call entirely (no lock, no queue lookup) for the rest of every track.
+                    let maybe_due = duration > 0.0 && duration - position <= MAX_CROSSFADE_SECONDS;
+                    if maybe_due {
+                        if let Ok(Some(request)) = engine.prepare_crossfade(position, duration) {
+                            spawn_automatic_transition(
+                                request,
+                                source_url.clone(),
+                                position,
+                                play_gen,
+                                pcm_tx.clone(),
+                                xsource_tx.clone(),
+                                app.clone(),
+                                engine.clone(),
+                            );
+                        }
                     }
                 }
             }
@@ -771,42 +796,48 @@ pub fn start_audio_thread(
             if let Some(s) = sink2.as_ref().filter(|_| xfade_start.is_some()) {
                 let position = s.get_pos().as_secs_f64();
                 let paused = s.is_paused();
-                let _ = engine.update_runtime_transport(
-                    if paused {
-                        PlaybackStatus::Paused
-                    } else {
-                        PlaybackStatus::Playing
-                    },
-                    position,
-                    duration2,
-                );
-                if engine.is_ui_visible() {
-                    // `buffered` stays null unless this really is a network stream, so the UI
-                    // can hide the indicator rather than draw a permanently-full bar for local
-                    // files and classic downloads.
-                    let _ = app.emit(
-                        "audio-progress",
-                        serde_json::json!({ "position": position, "duration": duration2, "paused": paused, "buffered": dl_progress2.as_ref().and_then(|p| p.fraction()) }),
-                    );
+                let status = if paused {
+                    PlaybackStatus::Paused
+                } else {
+                    PlaybackStatus::Playing
+                };
+                let due = last_transport_status != Some(status)
+                    || last_progress_emit.elapsed() >= PROGRESS_EMIT_INTERVAL;
+                if due {
+                    let _ = engine.update_runtime_transport(status, position, duration2);
+                    last_transport_status = Some(status);
+                    if engine.is_ui_visible() {
+                        last_progress_emit = std::time::Instant::now();
+                        // `buffered` stays null unless this really is a network stream, so the UI
+                        // can hide the indicator rather than draw a permanently-full bar for local
+                        // files and classic downloads.
+                        let _ = app.emit(
+                            "audio-progress",
+                            serde_json::json!({ "position": position, "duration": duration2, "paused": paused, "buffered": dl_progress2.as_ref().and_then(|p| p.fraction()) }),
+                        );
+                    }
                 }
             } else if let Some(s) = &sink {
                 let pos = s.get_pos().as_secs_f64() + seek_offset;
                 let paused = s.is_paused();
                 let ended = s.empty();
-                let _ = engine.update_runtime_transport(
-                    if paused {
-                        PlaybackStatus::Paused
-                    } else {
-                        PlaybackStatus::Playing
-                    },
-                    pos,
-                    duration,
-                );
-                if engine.is_ui_visible() {
-                    let _ = app.emit(
-                        "audio-progress",
-                        serde_json::json!({ "position": pos, "duration": duration, "paused": paused, "buffered": dl_progress.as_ref().and_then(|p| p.fraction()) }),
-                    );
+                let status = if paused {
+                    PlaybackStatus::Paused
+                } else {
+                    PlaybackStatus::Playing
+                };
+                let due = last_transport_status != Some(status)
+                    || last_progress_emit.elapsed() >= PROGRESS_EMIT_INTERVAL;
+                if due {
+                    let _ = engine.update_runtime_transport(status, pos, duration);
+                    last_transport_status = Some(status);
+                    if engine.is_ui_visible() {
+                        last_progress_emit = std::time::Instant::now();
+                        let _ = app.emit(
+                            "audio-progress",
+                            serde_json::json!({ "position": pos, "duration": duration, "paused": paused, "buffered": dl_progress.as_ref().and_then(|p| p.fraction()) }),
+                        );
+                    }
                 }
                 if ended {
                     sink = None;

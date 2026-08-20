@@ -10,6 +10,17 @@ All notable changes to Kodama (formerly Kiyoshi Music) are documented here.
 
 ## [Unreleased]
 
+## [1.0.0-alpha.34] — 2026-08-20
+
+Changes:
+- Playback now uses Opus instead of AAC — better quality at the same bitrate and file size
+- Seeking no longer restarts the download from scratch, so jumping backward is instant
+- French is now selectable; translation updates for Spanish (Mexico), Italian, and Lithuanian
+
+Fixes:
+- An expired YouTube session was never announced — things just quietly stopped loading
+- The library view showed a blank page instead of saying it was empty or you're not signed in
+
 ## [1.0.0-alpha.33] — 2026-08-03
 
 Changes:

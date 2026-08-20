@@ -3,6 +3,9 @@ use std::sync::{Arc, Mutex};
 
 pub struct SampleRing {
     buf: Vec<std::sync::atomic::AtomicU32>,
+    // buf.len() is always a power of two, so indices wrap via `& mask` instead of `%`, avoiding
+    // an integer division on every single sample push/pop on the audio thread.
+    mask: usize,
     write_pos: AtomicUsize,
     read_pos: AtomicUsize,
     done: AtomicBool,
@@ -11,16 +14,19 @@ pub struct SampleRing {
     consumer_waiting: AtomicBool,
     producer_thread: Mutex<Option<std::thread::Thread>>,
     consumer_thread: Mutex<Option<std::thread::Thread>>,
+    underruns: AtomicUsize,
 }
 
 impl SampleRing {
     pub fn new(cap: usize) -> Self {
+        let cap = cap.max(1).next_power_of_two();
         let mut buf = Vec::with_capacity(cap);
         for _ in 0..cap {
             buf.push(std::sync::atomic::AtomicU32::new(0));
         }
         SampleRing {
             buf,
+            mask: cap - 1,
             write_pos: AtomicUsize::new(0),
             read_pos: AtomicUsize::new(0),
             done: AtomicBool::new(false),
@@ -29,6 +35,7 @@ impl SampleRing {
             consumer_waiting: AtomicBool::new(false),
             producer_thread: Mutex::new(None),
             consumer_thread: Mutex::new(None),
+            underruns: AtomicUsize::new(0),
         }
     }
 
@@ -67,7 +74,7 @@ impl SampleRing {
         if wp - rp >= self.buf.len() {
             return false;
         }
-        self.buf[wp % self.buf.len()].store(sample.to_bits(), Ordering::Relaxed);
+        self.buf[wp & self.mask].store(sample.to_bits(), Ordering::Relaxed);
         self.write_pos.store(wp + 1, Ordering::Release);
         self.wake_consumer();
         true
@@ -103,12 +110,15 @@ impl SampleRing {
         if rp >= wp {
             return None;
         }
-        let val = f32::from_bits(self.buf[rp % self.buf.len()].load(Ordering::Relaxed));
+        let val = f32::from_bits(self.buf[rp & self.mask].load(Ordering::Relaxed));
         self.read_pos.store(rp + 1, Ordering::Release);
         self.wake_producer();
         Some(val)
     }
 
+    // Blocking pop kept around for tests exercising the park/unpark handshake directly; the real
+    // audio consumer path uses `pop_or_underrun` instead (see its doc comment for why).
+    #[allow(dead_code)]
     fn pop_until_available(&self) -> Option<f32> {
         loop {
             if let Some(sample) = self.pop() {
@@ -132,6 +142,28 @@ impl SampleRing {
             std::thread::park();
             self.consumer_waiting.store(false, Ordering::Release);
         }
+    }
+
+    /// Non-blocking pop for the real-time consumer: never parks the calling thread. Used by
+    /// `StreamingSource::next()`, which runs on the audio output's pull path — parking there to
+    /// wait for a slow decoder/network would stall audio output with no timeout. Returns the next
+    /// sample when one is ready, silence (counted as an underrun) when the ring is momentarily dry
+    /// but the producer is still working, or `None` once production has finished/been cancelled
+    /// and the ring has fully drained.
+    fn pop_or_underrun(&self) -> Option<f32> {
+        if let Some(sample) = self.pop() {
+            return Some(sample);
+        }
+        if self.is_done() || self.is_cancelled() {
+            return self.pop();
+        }
+        self.underruns.fetch_add(1, Ordering::Relaxed);
+        Some(0.0)
+    }
+
+    #[allow(dead_code)]
+    pub fn underrun_count(&self) -> usize {
+        self.underruns.load(Ordering::Relaxed)
     }
 
     pub fn set_done(&self) {
@@ -194,18 +226,11 @@ pub fn probe_audio(data: &[u8]) -> Result<ProbeResult, String> {
         .default_track()
         .ok_or_else(|| "no default track".to_string())?;
 
-    let channels = track
-        .codec_params
-        .channels
-        .map(|c| c.count() as u16)
-        .unwrap_or(2);
+    let channels = channels_of(&track.codec_params);
     let sample_rate = track.codec_params.sample_rate.unwrap_or(48000);
     let track_id = track.id;
 
-    let total_duration = track
-        .codec_params
-        .n_frames
-        .map(|frames| std::time::Duration::from_secs_f64(frames as f64 / sample_rate as f64));
+    let total_duration = duration_of(&track.codec_params);
 
     Ok(ProbeResult {
         channels,
@@ -215,10 +240,156 @@ pub fn probe_audio(data: &[u8]) -> Result<ProbeResult, String> {
     })
 }
 
+/// The largest number of frames an Opus packet can carry: 120 ms at 48 kHz.
+const MAX_OPUS_FRAMES: usize = 5760;
+
+/// Channel count for a track.
+///
+/// symphonia leaves `codec_params.channels` empty for Opus in WebM/Ogg — the count lives in
+/// the OpusHead identification header instead, which arrives as extra data. Read it from
+/// there before falling back to assuming stereo, otherwise a mono track would be played at
+/// the wrong speed.
+fn channels_of(params: &symphonia::core::codecs::CodecParameters) -> u16 {
+    if let Some(c) = params.channels {
+        return c.count() as u16;
+    }
+    let head = params.extra_data.as_deref().unwrap_or(&[]);
+    if head.len() > 9 && head.starts_with(b"OpusHead") {
+        return (head[9] as u16).max(1);
+    }
+    2
+}
+
+/// Playing time of a track.
+///
+/// `n_frames` is counted in the track's own time base, and that base is not the same across
+/// containers: MP4 uses 1/sample_rate, so dividing by the sample rate happens to be right,
+/// while MKV/WebM uses milliseconds, where the same division comes out 48x too short. A
+/// 219 s track then reported 4.6 s, the player believed it and skipped to the next song.
+fn duration_of(params: &symphonia::core::codecs::CodecParameters) -> Option<std::time::Duration> {
+    let n_frames = params.n_frames?;
+    if let Some(tb) = params.time_base {
+        let t = tb.calc_time(n_frames);
+        return Some(std::time::Duration::from_secs_f64(
+            t.seconds as f64 + t.frac,
+        ));
+    }
+    let rate = params.sample_rate?;
+    Some(std::time::Duration::from_secs_f64(
+        n_frames as f64 / rate as f64,
+    ))
+}
+
+/// Decoding for one track: symphonia's own codecs, plus Opus, which symphonia does not have.
+///
+/// Opus is still absent from symphonia (checked 2026-08-19, including 0.6.1), and rodio pins
+/// symphonia to 0.5 regardless. The one crate offering Opus as a symphonia codec,
+/// moosicbox_opus 0.4.0, cannot decode a single packet: it allocates its output AudioBuffer
+/// with capacity only, clears it at the top of decode(), then writes into it without ever
+/// rendering frames, so the first sample indexes an empty slice. Since symphonia already
+/// demuxes WebM and Ogg, we only bring our own decoder and leave everything else untouched.
+enum Codec {
+    Symphonia(Box<dyn symphonia::core::codecs::Decoder>),
+    Opus {
+        dec: audiopus::coder::Decoder,
+        channels: usize,
+        pcm: Vec<i16>,
+        /// Encoder delay the OpusHead asks us to drop before the real audio starts, in frames.
+        skip: usize,
+    },
+}
+
+impl Codec {
+    fn new(params: &symphonia::core::codecs::CodecParameters) -> Result<Self, String> {
+        use symphonia::core::codecs::{DecoderOptions, CODEC_TYPE_OPUS};
+
+        if params.codec != CODEC_TYPE_OPUS {
+            return symphonia::default::get_codecs()
+                .make(params, &DecoderOptions::default())
+                .map(Codec::Symphonia)
+                .map_err(|e| format!("codec error: {e}"));
+        }
+
+        let head = params.extra_data.as_deref().unwrap_or(&[]);
+        let (channels, skip) = if head.len() > 11 && head.starts_with(b"OpusHead") {
+            (
+                head[9] as usize,
+                u16::from_le_bytes([head[10], head[11]]) as usize,
+            )
+        } else {
+            (2, 0)
+        };
+        // libopus decodes to mono or stereo here; anything wider would need a surround
+        // downmix we have no use for, so say so rather than emit interleaved nonsense.
+        let layout = match channels {
+            1 => audiopus::Channels::Mono,
+            2 => audiopus::Channels::Stereo,
+            n => return Err(format!("unsupported opus channel count: {n}")),
+        };
+        let dec = audiopus::coder::Decoder::new(audiopus::SampleRate::Hz48000, layout)
+            .map_err(|e| format!("opus decoder error: {e}"))?;
+        Ok(Codec::Opus {
+            dec,
+            channels,
+            pcm: vec![0i16; MAX_OPUS_FRAMES * channels],
+            skip,
+        })
+    }
+
+    /// After a seek the stream no longer starts at the encoder delay, so nothing must be
+    /// dropped — doing it anyway would clip audio at every seek target.
+    fn seeked(&mut self) {
+        if let Codec::Opus { skip, .. } = self {
+            *skip = 0;
+        }
+    }
+
+    /// Decode one packet into interleaved f32, reusing `out`. Returns false for a packet that
+    /// produced nothing, which the callers skip exactly as they did before.
+    fn decode_into(
+        &mut self,
+        packet: &symphonia::core::formats::Packet,
+        out: &mut Vec<f32>,
+    ) -> bool {
+        out.clear();
+        match self {
+            Codec::Symphonia(dec) => {
+                let decoded = match dec.decode(packet) {
+                    Ok(d) => d,
+                    Err(_) => return false,
+                };
+                let spec = *decoded.spec();
+                let num_frames = decoded.frames();
+                let mut sample_buf =
+                    symphonia::core::audio::SampleBuffer::<f32>::new(num_frames as u64, spec);
+                sample_buf.copy_interleaved_ref(decoded);
+                out.extend_from_slice(sample_buf.samples());
+                true
+            }
+            Codec::Opus {
+                dec,
+                channels,
+                pcm,
+                skip,
+            } => {
+                let frames = match dec.decode(Some(&packet.data[..]), &mut pcm[..], false) {
+                    Ok(n) => n,
+                    Err(_) => return false,
+                };
+                let dropped = (*skip).min(frames);
+                *skip -= dropped;
+                let from = dropped * *channels;
+                let to = frames * *channels;
+                out.extend(pcm[from..to].iter().map(|&s| f32::from(s) / 32768.0));
+                true
+            }
+        }
+    }
+}
+
 pub fn spawn_decoder(data: Vec<u8>, track_id: u32, ring: Arc<SampleRing>, seek_to_secs: f64) {
     std::thread::spawn(move || {
         ring.register_producer();
-        use symphonia::core::codecs::DecoderOptions;
         use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo};
         use symphonia::core::io::MediaSourceStream;
         use symphonia::core::meta::MetadataOptions;
@@ -251,9 +422,7 @@ pub fn spawn_decoder(data: Vec<u8>, track_id: u32, ring: Arc<SampleRing>, seek_t
             }
         };
 
-        let mut decoder = match symphonia::default::get_codecs()
-            .make(&track.codec_params, &DecoderOptions::default())
-        {
+        let mut decoder = match Codec::new(&track.codec_params) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("[Audio] decoder thread codec error: {e}");
@@ -263,6 +432,7 @@ pub fn spawn_decoder(data: Vec<u8>, track_id: u32, ring: Arc<SampleRing>, seek_t
         };
 
         if seek_to_secs > 0.05 {
+            decoder.seeked();
             let seek_to = SeekTo::Time {
                 time: Time::from(seek_to_secs),
                 track_id: None,
@@ -277,6 +447,7 @@ pub fn spawn_decoder(data: Vec<u8>, track_id: u32, ring: Arc<SampleRing>, seek_t
             }
         }
 
+        let mut pcm: Vec<f32> = Vec::new();
         'decode: loop {
             if ring.is_cancelled() {
                 break;
@@ -295,18 +466,11 @@ pub fn spawn_decoder(data: Vec<u8>, track_id: u32, ring: Arc<SampleRing>, seek_t
                 continue;
             }
 
-            let decoded = match decoder.decode(&packet) {
-                Ok(d) => d,
-                Err(_) => continue,
-            };
+            if !decoder.decode_into(&packet, &mut pcm) {
+                continue;
+            }
 
-            let spec = *decoded.spec();
-            let num_frames = decoded.frames();
-            let mut sample_buf =
-                symphonia::core::audio::SampleBuffer::<f32>::new(num_frames as u64, spec);
-            sample_buf.copy_interleaved_ref(decoded);
-
-            for &s in sample_buf.samples() {
+            for &s in pcm.iter() {
                 if !ring.push_until_available(s) {
                     break 'decode;
                 }
@@ -331,7 +495,6 @@ pub fn spawn_decoder_streaming(
 ) {
     std::thread::spawn(move || {
         ring.register_producer();
-        use symphonia::core::codecs::DecoderOptions;
         use symphonia::core::formats::{FormatOptions, SeekMode, SeekTo};
         use symphonia::core::io::MediaSourceStream;
         use symphonia::core::meta::MetadataOptions;
@@ -365,17 +528,10 @@ pub fn spawn_decoder_streaming(
             };
             let sr = track.codec_params.sample_rate.unwrap_or(48000);
             (
-                track
-                    .codec_params
-                    .channels
-                    .map(|c| c.count() as u16)
-                    .unwrap_or(2),
+                channels_of(&track.codec_params),
                 sr,
                 track.id,
-                track
-                    .codec_params
-                    .n_frames
-                    .map(|frames| std::time::Duration::from_secs_f64(frames as f64 / sr as f64)),
+                duration_of(&track.codec_params),
                 track.codec_params.clone(),
             )
         };
@@ -386,9 +542,7 @@ pub fn spawn_decoder_streaming(
             track_id,
         }));
 
-        let mut decoder = match symphonia::default::get_codecs()
-            .make(&codec_params, &DecoderOptions::default())
-        {
+        let mut decoder = match Codec::new(&codec_params) {
             Ok(d) => d,
             Err(e) => {
                 eprintln!("[Audio] streaming codec error: {e}");
@@ -398,6 +552,7 @@ pub fn spawn_decoder_streaming(
         };
 
         if seek_to_secs > 0.05 {
+            decoder.seeked();
             let _ = format.seek(
                 SeekMode::Coarse,
                 SeekTo::Time {
@@ -407,6 +562,7 @@ pub fn spawn_decoder_streaming(
             );
         }
 
+        let mut pcm: Vec<f32> = Vec::new();
         'decode: loop {
             if ring.is_cancelled() {
                 break;
@@ -424,16 +580,10 @@ pub fn spawn_decoder_streaming(
             if packet.track_id() != track_id {
                 continue;
             }
-            let decoded = match decoder.decode(&packet) {
-                Ok(d) => d,
-                Err(_) => continue,
-            };
-            let spec = *decoded.spec();
-            let num_frames = decoded.frames();
-            let mut sample_buf =
-                symphonia::core::audio::SampleBuffer::<f32>::new(num_frames as u64, spec);
-            sample_buf.copy_interleaved_ref(decoded);
-            for &s in sample_buf.samples() {
+            if !decoder.decode_into(&packet, &mut pcm) {
+                continue;
+            }
+            for &s in pcm.iter() {
                 if !ring.push_until_available(s) {
                     break 'decode;
                 }
@@ -551,7 +701,7 @@ impl Iterator for StreamingSource {
             self.ring.register_consumer();
             self.consumer_registered = true;
         }
-        let sample = self.ring.pop_until_available()?;
+        let sample = self.ring.pop_or_underrun()?;
         if let Some(a) = &self.analysis {
             // Tap left channel only → mono stream at sample_rate.
             if self.channels <= 1 || self.tap_pos % self.channels as u64 == 0 {

@@ -1,6 +1,7 @@
 {
   "home": "Startseite",
   "library": "Bibliothek",
+  "libraryEmpty": "Hier ist noch nichts.",
   "likedSongs": "Gelikte Songs",
   "statistics": "Statistik",
   "totalUsageTime": "App-Nutzungsdauer",

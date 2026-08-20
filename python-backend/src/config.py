@@ -129,6 +129,10 @@ class Config:
     ALBUM_CACHE_TTL = 7 * 24 * 3600
     BAND_MEMBER_CACHE_TTL = 24 * 3600
     AUDIO_COUNTERPART_CACHE_TTL = 30 * 24 * 3600
+    # MusicBrainz release data (tracklist, labels, catalog numbers) essentially never changes
+    # once published, and MusicBrainz enforces a 1req/sec rate limit — without caching, every
+    # open of the album-details panel costs a minimum of 1-2s even for an album just viewed.
+    MUSICBRAINZ_ALBUM_CACHE_TTL = 30 * 24 * 3600
     CACHE_DEFAULTS = {
         "playlists": True,
         "albums": True,
@@ -238,7 +242,14 @@ class ConfigYTDLP:
         "extractor_args": {"youtube": {"player_client": ["tv_embedded"], "player_skip": ["js"]}}
     }
     MWEB_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["mweb"]}}}
-    AUDIO_FORMAT = "bestaudio[ext=m4a]/bestaudio[acodec=aac]"
+    # Opus first: at equal bitrate it is the better codec and YouTube prices both the same.
+    # Measured over six tracks on a Premium account: wherever the high AAC tier (141, ~257k)
+    # exists so does the high Opus tier (774, ~247-257k), and where only the medium tier exists
+    # Opus (251) came in at or above AAC (140). File size differences ran -4% to +3%. The Rust
+    # core decodes it — see src-tauri/src/audio/decoder.rs.
+    # The abr>100 guard covers the case not observed: a track offering Opus only in a low tier
+    # (249/250 are 47-62k) while AAC has a high one. There AAC is kept instead.
+    AUDIO_FORMAT = "bestaudio[acodec=opus][abr>100]/bestaudio[ext=m4a]/bestaudio[acodec=aac]"
     BROWSER_COOKIE_TTL = 6 * 3600
     BROWSER_COOKIE_MIN_GAP = 600
 

@@ -42,12 +42,24 @@ class AuthRouteTests(RouteTestCase):
         self.music_session.state.current_profile = "headers"
         self.assertEqual(self.client.post("/auth/logout").json, {"ok": True})
 
+    def test_profiles_reports_session_expired_only_on_explicit_false(self) -> None:
+        # None means the first cookie refresh hasn't run yet — must not warn.
+        self.music_session.state.last_authenticated = None
+        listed = self.client.get("/profiles").json
+        self.assertFalse(next(p for p in listed["profiles"] if p["name"] == "default")["sessionExpired"])
+
+        self.music_session.state.last_authenticated = False
+        listed = self.client.get("/profiles").json
+        self.assertTrue(next(p for p in listed["profiles"] if p["name"] == "default")["sessionExpired"])
+
 
 class ProfileRouteTests(RouteTestCase):
     def test_profile_routes(self) -> None:
         listed = self.client.get("/profiles").json
         self.assertEqual(listed["current"], "default")
         self.assertGreaterEqual(len(listed["profiles"]), 1)
+        default_profile = next(p for p in listed["profiles"] if p["name"] == "default")
+        self.assertFalse(default_profile["sessionExpired"])
 
         self.assertEqual(self.client.post("/profiles/switch", json={}).status_code, 400)
         self.assertEqual(self.client.post("/profiles/switch", json={"name": "missing"}).status_code, 404)
