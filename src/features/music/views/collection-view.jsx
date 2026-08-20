@@ -1,5 +1,6 @@
 import { PlaylistLayout } from "@/features/music/components/track-table.jsx";
 import { useDownloadActions } from "@/features/downloads/download-context.jsx";
+import { useAlbumDetails } from "@/features/music/hooks/use-album-details.js";
 
 export function CollectionView({
   title,
@@ -31,6 +32,12 @@ export function CollectionView({
   // "Download all" needs this collection's own title/thumbnail/artists metadata, so it's built
   // here rather than sourced from DownloadContext.
   const { downloadAll, removeAll } = useDownloadActions();
+  const musicbrainzDetails = useAlbumDetails({
+    enabled: isAlbum,
+    browseId,
+    artist: albumArtists,
+    album: title,
+  });
   return (
     <PlaylistLayout
       title={title}
@@ -47,7 +54,9 @@ export function CollectionView({
       isAlbum={isAlbum}
       albumArtists={albumArtists}
       albumArtistBrowseId={albumArtistBrowseId}
+      browseId={browseId}
       year={year}
+      musicbrainzDetails={musicbrainzDetails}
       onRefresh={onRefresh}
       onTrackContextMenu={onTrackContextMenu}
       onDownloadAll={(tracks) =>

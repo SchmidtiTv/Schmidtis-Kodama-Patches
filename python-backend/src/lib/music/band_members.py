@@ -18,9 +18,8 @@ from typing import Any
 import requests
 
 from src.config import Config, config_dirs
+from src.lib.integrations.musicbrainz import MusicBrainz, MusicBrainzError
 
-
-MUSICBRAINZ_URL = "https://musicbrainz.org/ws/2"
 WIKIDATA_URL = "https://www.wikidata.org/wiki/Special:EntityData"
 WIKIMEDIA_COMMONS_URL = "https://commons.wikimedia.org/w/api.php"
 REQUEST_HEADERS = {
@@ -68,18 +67,17 @@ class BandMemberFinder:
         sleep: Callable[[float], None] = time.sleep,
         cache_ttl: float = Config.BAND_MEMBER_CACHE_TTL,
         cache_dir: Path | None = None,
+        musicbrainz: MusicBrainz | None = None,
     ) -> None:
         self._get = get
         self._monotonic = monotonic
         self._wall_time = wall_time
-        self._sleep = sleep
         self._cache_ttl = cache_ttl
         self._cache_dir = cache_dir or config_dirs.BAND_MEMBER_CACHE_DIR
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._member_cache: dict[str, tuple[float, list[dict[str, object]]]] = {}
         self._cache_lock = Lock()
-        self._musicbrainz_lock = Lock()
-        self._last_musicbrainz_request = 0.0
+        self._musicbrainz = musicbrainz or MusicBrainz(get=get, monotonic=monotonic, sleep=sleep)
 
     def find(self, artist_name: str) -> list[dict[str, object]]:
         cache_key = artist_name.strip().casefold()
@@ -87,14 +85,18 @@ class BandMemberFinder:
         if cached_members is not None:
             return cached_members
 
-        group = self._find_group(artist_name)
-        if not group:
-            return self._cache_members(cache_key, [])
+        try:
+            group = self._find_group(artist_name)
+            if not group:
+                return self._cache_members(cache_key, [])
 
-        group_id = group.get("id")
-        if not isinstance(group_id, str):
-            return self._cache_members(cache_key, [])
-        group_data = self._get_json(f"{MUSICBRAINZ_URL}/artist/{group_id}", {"inc": "artist-rels", "fmt": "json"})
+            group_id = group.get("id")
+            if not isinstance(group_id, str):
+                return self._cache_members(cache_key, [])
+            group_data = self._musicbrainz.get_artist(group_id, "artist-rels")
+        except MusicBrainzError as error:
+            raise BandMemberLookupError from error
+
         members = self._combine_relations(group_data.get("relations", []))
         self._load_member_details(members)
         return self._cache_members(cache_key, [member.as_dict() for member in members])
@@ -103,7 +105,9 @@ class BandMemberFinder:
         if not members:
             return
         worker_count = min(len(members), MAX_DETAIL_WORKERS)
-        with ThreadPoolExecutor(max_workers=worker_count, thread_name_prefix="band-member") as executor:
+        with ThreadPoolExecutor(
+            max_workers=worker_count, thread_name_prefix="band-member"
+        ) as executor:
             details = executor.map(self._find_member_details, (member.id for member in members))
             for member, (image, wikipedia_url) in zip(members, details):
                 member.image = image
@@ -124,7 +128,9 @@ class BandMemberFinder:
             self._member_cache[cache_key] = (self._monotonic(), deepcopy(members))
             return members
 
-    def _cache_members(self, cache_key: str, members: list[dict[str, object]]) -> list[dict[str, object]]:
+    def _cache_members(
+        self, cache_key: str, members: list[dict[str, object]]
+    ) -> list[dict[str, object]]:
         with self._cache_lock:
             self._member_cache[cache_key] = (self._monotonic(), deepcopy(members))
             self._save_disk_cache(cache_key, members)
@@ -170,11 +176,7 @@ class BandMemberFinder:
                 temporary_path.unlink(missing_ok=True)
 
     def _find_group(self, artist_name: str) -> dict[str, object] | None:
-        search = self._get_json(
-            f"{MUSICBRAINZ_URL}/artist/",
-            {"query": f"artist:{artist_name} AND type:group", "fmt": "json", "limit": 5},
-        )
-        artists = search.get("artists", [])
+        artists = self._musicbrainz.search_artists(f"artist:{artist_name} AND type:group", limit=5)
         return artists[0] if artists and isinstance(artists[0], dict) else None
 
     def _combine_relations(self, relations: object) -> list[BandMember]:
@@ -209,9 +211,7 @@ class BandMemberFinder:
 
     def _find_member_details(self, member_id: str) -> tuple[str | None, str | None]:
         try:
-            artist = self._get_json(
-                f"{MUSICBRAINZ_URL}/artist/{member_id}", {"inc": "url-rels", "fmt": "json"}
-            )
+            artist = self._musicbrainz.get_artist(member_id, "url-rels")
             wikidata_id = self._wikidata_id(artist.get("relations", []))
             if not wikidata_id:
                 return None, None
@@ -225,7 +225,14 @@ class BandMemberFinder:
                 return None, wikipedia_url
             image = self._find_commons_image(image_name)
             return image, wikipedia_url
-        except (AttributeError, BandMemberLookupError, IndexError, StopIteration, TypeError):
+        except (
+            AttributeError,
+            BandMemberLookupError,
+            MusicBrainzError,
+            IndexError,
+            StopIteration,
+            TypeError,
+        ):
             # A missing Wikidata link or portrait should not hide a member.
             return None, None
 
@@ -291,15 +298,19 @@ class BandMemberFinder:
         if isinstance(english, dict) and isinstance(english.get("url"), str):
             return english["url"]
         for key, sitelink in sitelinks.items():
-            if key.endswith("wiki") and isinstance(sitelink, dict) and isinstance(sitelink.get("url"), str):
+            if (
+                key.endswith("wiki")
+                and isinstance(sitelink, dict)
+                and isinstance(sitelink.get("url"), str)
+            ):
                 return sitelink["url"]
         return None
 
     def _get_json(self, url: str, params: dict[str, str] | None = None) -> dict[str, Any]:
         try:
-            if url.startswith(MUSICBRAINZ_URL):
-                self._wait_for_musicbrainz()
-            response = self._get(url, params=params, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT)
+            response = self._get(
+                url, params=params, headers=REQUEST_HEADERS, timeout=REQUEST_TIMEOUT
+            )
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError, AttributeError) as error:
@@ -307,10 +318,3 @@ class BandMemberFinder:
         if not isinstance(payload, dict):
             raise BandMemberLookupError
         return payload
-
-    def _wait_for_musicbrainz(self) -> None:
-        with self._musicbrainz_lock:
-            wait_seconds = 1 - (self._monotonic() - self._last_musicbrainz_request)
-            if wait_seconds > 0:
-                self._sleep(wait_seconds)
-            self._last_musicbrainz_request = self._monotonic()

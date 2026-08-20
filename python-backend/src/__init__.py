@@ -6,6 +6,7 @@ from flask_cors import CORS
 from src.config import Config, config_dirs
 from src.lib import (
     Album,
+    AlbumDetailsFinder,
     BandMemberFinder,
     CacheSettings,
     LastFM,
@@ -104,6 +105,7 @@ def create_app() -> Flask:
         )
         app.extensions["album_cache"] = Album(metadata_cache=metadata_cache)
         app.extensions["band_member_finder"] = BandMemberFinder()
+        app.extensions["album_details_finder"] = AlbumDetailsFinder(metadata_cache=metadata_cache)
 
         ffmpeg = FFmpeg()
         app.extensions["ffmpeg"] = ffmpeg

@@ -5,6 +5,7 @@ from typing import cast
 from flask import current_app
 
 from src.lib.music.album import Album
+from src.lib.music.album_details import AlbumDetailsFinder
 from src.lib.music.band_members import BandMemberFinder
 from src.lib.music.credits import SongCreditsCache
 from src.lib.music.playlist import Playlist
@@ -46,6 +47,10 @@ def mix_analysis_service() -> MixAnalysisService:
 
 def album_cache() -> Album:
     return cast(Album, current_app.extensions["album_cache"])
+
+
+def album_details_finder() -> AlbumDetailsFinder:
+    return cast(AlbumDetailsFinder, current_app.extensions["album_details_finder"])
 
 
 def band_member_finder() -> BandMemberFinder:

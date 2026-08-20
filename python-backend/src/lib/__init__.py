@@ -5,9 +5,11 @@ from .composer.settings import ComposerSettings
 from .integrations.feedback import load_feedback_webhook
 from .integrations.ffmpeg import FFmpeg
 from .integrations.lastfm import LastFM
+from .integrations.musicbrainz import MusicBrainz, MusicBrainzError
 from .integrations.musixmatch import MusixMatch
 from .integrations.ytdlp import YTDLP
 from .music.album import Album
+from .music.album_details import AlbumDetailsError, AlbumDetailsFinder
 from .music.band_members import BandMemberFinder, BandMemberLookupError
 from .music.download import DownloadService
 from .music.credits import SongCreditsCache
@@ -34,6 +36,8 @@ from .runtime.remote import RemoteControl
 
 __all__ = [
     "Album",
+    "AlbumDetailsError",
+    "AlbumDetailsFinder",
     "BandMemberFinder",
     "BandMemberLookupError",
     "DelayedCleanup",
@@ -49,6 +53,8 @@ __all__ = [
     "LastFM",
     "LyricsService",
     "MixAnalysisService",
+    "MusicBrainz",
+    "MusicBrainzError",
     "MusixMatch",
     "NetworkSettings",
     "NumpyTrackAnalyzer",
