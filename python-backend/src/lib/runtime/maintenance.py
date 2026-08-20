@@ -65,10 +65,25 @@ class DelayedCleanup:
 class DirectoryInspector:
     """Calculates basic storage usage for a single directory."""
 
+    # A settings UI can poll /cache/stats repeatedly, and each call was a full os.listdir plus a
+    # stat per file for every cache category — for a thumbnail directory holding thousands of
+    # images, a real walk every time. A few seconds of staleness is invisible for a background
+    # size indicator, so recent results are reused instead of rescanning on every call.
+    _CACHE_TTL_SECONDS = 5.0
+    _cache: dict[str, tuple[float, tuple[int, int]]] = {}
+    _cache_lock = threading.Lock()
+
     @staticmethod
     # Old server.py: _dir_size_and_count
     def size_and_file_count(path: str | PathLike[str]) -> tuple[int, int]:
         """Return ``(total_bytes, file_count)`` for direct child files."""
+        key = os.fspath(path)
+        now = time.monotonic()
+        with DirectoryInspector._cache_lock:
+            cached = DirectoryInspector._cache.get(key)
+            if cached is not None and now - cached[0] < DirectoryInspector._CACHE_TTL_SECONDS:
+                return cached[1]
+
         total, count = 0, 0
         try:
             for filename in os.listdir(path):
@@ -78,4 +93,8 @@ class DirectoryInspector:
                     count += 1
         except OSError:
             pass
-        return total, count
+
+        result = (total, count)
+        with DirectoryInspector._cache_lock:
+            DirectoryInspector._cache[key] = (now, result)
+        return result
