@@ -3,6 +3,7 @@ from typing import cast
 from unittest.mock import patch
 
 from route_test_support import JsonValue, RouteTestCase, TestResponse
+from src.lib import AlbumDetailsError
 
 
 class HistoryRouteTests(RouteTestCase):
@@ -64,7 +65,9 @@ class LibraryListingRouteTests(RouteTestCase):
 
         playlists = self.client.get("/library/playlists")
 
-        self.assertEqual([playlist["playlistId"] for playlist in playlists.json["playlists"]], ["pl"])
+        self.assertEqual(
+            [playlist["playlistId"] for playlist in playlists.json["playlists"]], ["pl"]
+        )
 
 
 class PlaylistRouteTests(RouteTestCase):
@@ -96,7 +99,9 @@ class PlaylistRouteTests(RouteTestCase):
 
     def test_playlist_mix_validates_its_local_config_boundary(self) -> None:
         self.assertEqual(self.client.put("/playlist/pl/mix", json={}).status_code, 400)
-        self.assertEqual(self.client.put("/playlist/pl/mix", json={"enabled": "yes"}).status_code, 400)
+        self.assertEqual(
+            self.client.put("/playlist/pl/mix", json={"enabled": "yes"}).status_code, 400
+        )
 
     def test_playlist_mix_persists_playlist_track_instances_and_transitions(self) -> None:
         updated = self.client.put(
@@ -138,22 +143,35 @@ class PlaylistRouteTests(RouteTestCase):
         self.assertEqual(self.client.post("/playlist/create", json={}).status_code, 400)
         created = self.client.post(
             "/playlist/create",
-            json={"title": "New", "description": "Desc", "privacyStatus": "PUBLIC", "videoIds": ["vid"]},
+            json={
+                "title": "New",
+                "description": "Desc",
+                "privacyStatus": "PUBLIC",
+                "videoIds": ["vid"],
+            },
         )
         self.assertEqual(created.json, {"ok": True, "playlistId": "created-pl"})
-        self.assertEqual(self.music_session.client.created_playlists, [("New", "Desc", "PUBLIC", ["vid"])])
+        self.assertEqual(
+            self.music_session.client.created_playlists, [("New", "Desc", "PUBLIC", ["vid"])]
+        )
 
         self.assertEqual(self.client.post("/playlist/pl/add", json={}).status_code, 400)
-        self.assertEqual(self.client.post("/playlist/pl/add", json={"videoIds": ["vid"]}).json, {"ok": True})
+        self.assertEqual(
+            self.client.post("/playlist/pl/add", json={"videoIds": ["vid"]}).json, {"ok": True}
+        )
         self.assertEqual(self.music_session.client.added_playlist_items, [("pl", ["vid"])])
         self.assertEqual(self.playlist_cache.purged[-1], ("pl", "default"))
 
         self.assertEqual(self.client.post("/playlist/pl/remove", json={}).status_code, 400)
         videos = [{"videoId": "vid", "setVideoId": "set"}]
-        self.assertEqual(self.client.post("/playlist/pl/remove", json={"videos": videos}).json, {"ok": True})
+        self.assertEqual(
+            self.client.post("/playlist/pl/remove", json={"videos": videos}).json, {"ok": True}
+        )
         self.assertEqual(self.music_session.client.removed_playlist_items, [("pl", videos)])
 
-        self.assertEqual(self.client.post("/playlist/pl/edit", json={"title": "Edited"}).json, {"ok": True})
+        self.assertEqual(
+            self.client.post("/playlist/pl/edit", json={"title": "Edited"}).json, {"ok": True}
+        )
         self.assertEqual(self.music_session.client.edited_playlists[-1][0], "pl")
 
         self.assertEqual(self.client.delete("/playlist/pl").json, {"ok": True})
@@ -246,9 +264,19 @@ class PlaylistRouteTests(RouteTestCase):
         self.assertEqual(created.status_code, 200)
         self.assertTrue(created.json["ok"])
 
-        self.assertEqual(self.client.post("/playlist/local-pl/add", json={"videoIds": ["vid"]}).json, {"ok": True})
-        self.assertEqual(self.client.post("/playlist/local-pl/remove", json={"videos": [{"videoId": "vid"}]}).json, {"ok": True})
-        self.assertEqual(self.client.post("/playlist/local-pl/edit", json={"title": "Edited"}).json, {"ok": True})
+        self.assertEqual(
+            self.client.post("/playlist/local-pl/add", json={"videoIds": ["vid"]}).json,
+            {"ok": True},
+        )
+        self.assertEqual(
+            self.client.post(
+                "/playlist/local-pl/remove", json={"videos": [{"videoId": "vid"}]}
+            ).json,
+            {"ok": True},
+        )
+        self.assertEqual(
+            self.client.post("/playlist/local-pl/edit", json={"title": "Edited"}).json, {"ok": True}
+        )
 
         playlist = self.client.get("/playlist/local-pl")
         self.assertEqual(playlist.status_code, 200)
@@ -297,9 +325,33 @@ class LibraryDetailRouteTests(RouteTestCase):
         members = self.client.get("/artist/UCartist/members?name=Artist")
         self.assertEqual(members.json, {"members": [{"name": "Member"}]})
 
-        self.assertEqual(self.client.post("/artist/UCartist/subscribe", json={"channelId": "UCchannel"}).json, {"ok": True})
+        missing_query = self.client.get("/album/alb/musicbrainz")
+        self.assertEqual(missing_query.status_code, 400)
+
+        self.album_details_finder.find = lambda artist, album: None
+        no_match = self.client.get("/album/alb/musicbrainz?artist=Artist&album=Album")
+        self.assertEqual(no_match.status_code, 404)
+
+        self.album_details_finder.find = lambda artist, album: {"title": album, "artists": artist}
+        matched = self.client.get("/album/alb/musicbrainz?artist=Artist&album=Album")
+        self.assertEqual(matched.json, {"title": "Album", "artists": "Artist"})
+
+        def raise_unavailable(artist: str, album: str) -> None:
+            raise AlbumDetailsError
+
+        self.album_details_finder.find = raise_unavailable
+        unavailable = self.client.get("/album/alb/musicbrainz?artist=Artist&album=Album")
+        self.assertEqual(unavailable.status_code, 502)
+
+        self.assertEqual(
+            self.client.post("/artist/UCartist/subscribe", json={"channelId": "UCchannel"}).json,
+            {"ok": True},
+        )
         self.assertEqual(self.music_session.client.subscribed_artists, [["UCchannel"]])
-        self.assertEqual(self.client.post("/artist/UCartist/unsubscribe", json={"channelId": "UCchannel"}).json, {"ok": True})
+        self.assertEqual(
+            self.client.post("/artist/UCartist/unsubscribe", json={"channelId": "UCchannel"}).json,
+            {"ok": True},
+        )
         self.assertEqual(self.music_session.client.unsubscribed_artists, [["UCchannel"]])
 
         meta = self.client.get("/song/meta/vid")
@@ -345,7 +397,11 @@ class LibraryDetailRouteTests(RouteTestCase):
                     "results": {
                         "results": {
                             "contents": [
-                                {"videoSecondaryInfoRenderer": {"attributedDescription": {"content": "Credits text"}}}
+                                {
+                                    "videoSecondaryInfoRenderer": {
+                                        "attributedDescription": {"content": "Credits text"}
+                                    }
+                                }
                             ]
                         }
                     }
