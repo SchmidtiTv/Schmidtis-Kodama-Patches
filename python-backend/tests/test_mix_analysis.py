@@ -65,6 +65,22 @@ class MixAnalysisServiceTests(unittest.TestCase):
         self._wait_for_status(second["jobId"], "complete")
         self.assertEqual(self.analyzer.max_active, 1)
 
+    def test_prunes_terminal_jobs_past_the_retention_window(self) -> None:
+        self.service._JOB_RETENTION_SECONDS = 0
+        first = self.service.start(None, "playlist", [{"instanceId": "one", "videoId": "video-one"}])
+        self.assertTrue(self.analyzer.started.wait(timeout=1))
+        self.analyzer.release.set()
+        self._wait_for_status(first["jobId"], "complete")
+
+        # A later start() call sweeps stale terminal jobs (retention window is 0 here).
+        second = self.service.start(None, "playlist", [{"instanceId": "two", "videoId": "video-two"}])
+        self.analyzer.release.set()
+        self._wait_for_status(second["jobId"], "complete")
+
+        self.assertIsNone(self.service.get_job(None, "playlist", first["jobId"]))
+        self.assertNotIn(first["jobId"], self.service._jobs)
+        self.assertNotIn(first["jobId"], self.service._cancel_events)
+
     def _wait_for_status(self, job_id: str, expected_status: str) -> None:
         deadline = time.monotonic() + 2
         while time.monotonic() < deadline:

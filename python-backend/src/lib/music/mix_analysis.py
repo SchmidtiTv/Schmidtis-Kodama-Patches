@@ -142,6 +142,12 @@ class MixAnalysisService:
     """Owns one-at-a-time playlist analysis jobs and source-level caching."""
 
     _CATEGORY = "mix_audio_analysis"
+    _TERMINAL_STATUSES = {"complete", "failed", "cancelled"}
+    # How long a finished job (and its full per-track analysis payload) stays fetchable via
+    # get_job() before being dropped. Long enough for a client to poll and see the final
+    # status; short enough that repeated playlist re-analysis over a session cannot grow
+    # `_jobs`/`_cancel_events` without bound.
+    _JOB_RETENTION_SECONDS = 15 * 60
 
     def __init__(self, stream_service: StreamService, metadata_cache: MetadataCache, playlist_mix: PlaylistMix, analyzer: TrackAnalyzer) -> None:
         self._stream_service = stream_service
@@ -173,6 +179,7 @@ class MixAnalysisService:
             "tracks": {},
         }
         with self._lock:
+            self._prune_stale_jobs_locked(time.time())
             active_job_id = self._active_jobs.get(active_key)
             active_job = self._jobs.get(active_job_id) if active_job_id else None
             if active_job and active_job["status"] in {"queued", "running"}:
@@ -180,6 +187,7 @@ class MixAnalysisService:
                     return self._public_job(active_job)
                 self._cancel_events[active_job_id].set()
                 active_job["status"] = "cancelled"
+                active_job["_finished_at"] = time.time()
                 if future := self._futures.get(active_job_id):
                     if future.cancel():
                         del self._futures[active_job_id]
@@ -251,3 +259,22 @@ class MixAnalysisService:
         with self._lock:
             if job := self._jobs.get(job_id):
                 job.update(updates)
+                if updates.get("status") in self._TERMINAL_STATUSES:
+                    job["_finished_at"] = time.time()
+
+    def _prune_stale_jobs_locked(self, now: float) -> None:
+        """Drop terminal jobs past their retention window. Caller must hold ``_lock``.
+
+        ``_run``'s ``finally`` already clears ``_futures``/``_active_jobs``, but nothing
+        previously cleared ``_jobs``/``_cancel_events`` — every job leaked its entry (including
+        the full per-track analysis payload) for the life of the process.
+        """
+        stale = [
+            job_id
+            for job_id, job in self._jobs.items()
+            if isinstance(job.get("_finished_at"), (int, float))
+            and now - job["_finished_at"] > self._JOB_RETENTION_SECONDS
+        ]
+        for job_id in stale:
+            del self._jobs[job_id]
+            self._cancel_events.pop(job_id, None)
