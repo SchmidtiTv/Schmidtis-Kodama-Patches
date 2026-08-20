@@ -64,7 +64,8 @@ pub fn kill_existing_server(child: &mut Option<Child>) {
                 // is orphaned and keeps a lock on node.exe — which then makes the NSIS updater
                 // fail with "Error opening file for writing: ...\node.exe". Kill whatever still
                 // listens on either port, targeted (won't touch the user's own node processes).
-                if (line.contains(":9847") || line.contains(":4416")) && line.contains("LISTENING") {
+                if (line.contains(":9847") || line.contains(":4416")) && line.contains("LISTENING")
+                {
                     let parts: Vec<&str> = line.split_whitespace().collect();
                     if let Some(pid) = parts.last() {
                         let _ = std::process::Command::new("taskkill")
@@ -77,21 +78,22 @@ pub fn kill_existing_server(child: &mut Option<Child>) {
         }
         std::thread::sleep(std::time::Duration::from_millis(200));
     }
-
 }
 
 #[allow(dead_code)]
 pub fn start_server(app: &tauri::AppHandle) {
-    let server_bin = if cfg!(windows) { "kodama-server.exe" } else { "kodama-server" };
+    let server_bin = if cfg!(windows) {
+        "kodama-server.exe"
+    } else {
+        "kodama-server"
+    };
 
     let exe_dir = std::env::current_exe()
         .ok()
         .and_then(|e| e.parent().map(|p| p.to_path_buf()))
         .unwrap_or_else(|| std::path::PathBuf::from("."));
 
-    let candidates: Vec<std::path::PathBuf> = vec![
-        exe_dir.join(server_bin),
-    ];
+    let candidates: Vec<std::path::PathBuf> = vec![exe_dir.join(server_bin)];
 
     let server_exe = match candidates.iter().find(|p| p.exists()) {
         Some(p) => {
@@ -114,8 +116,13 @@ pub fn start_server(app: &tauri::AppHandle) {
         cmd.creation_flags(0x08000000); // CREATE_NO_WINDOW
     }
     match cmd.spawn() {
-        Ok(child) => { *app.state::<ServerProcess>().0.lock().unwrap() = Some(child); }
-        Err(e) => { eprintln!("[server] Failed to spawn {}: {}", server_exe.display(), e); return; }
+        Ok(child) => {
+            *app.state::<ServerProcess>().0.lock().unwrap() = Some(child);
+        }
+        Err(e) => {
+            eprintln!("[server] Failed to spawn {}: {}", server_exe.display(), e);
+            return;
+        }
     }
 
     // Wait for the server to accept connections (runs on a background thread,

@@ -126,5 +126,4 @@ unsafe fn set_macos_icon(png_path: &str) {
     // Dock icon of the running instance.
     let nsapp: id = msg_send![class!(NSApplication), sharedApplication];
     let _: () = msg_send![nsapp, setApplicationIconImage: image];
-
 }

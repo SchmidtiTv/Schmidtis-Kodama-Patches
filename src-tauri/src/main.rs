@@ -1,33 +1,40 @@
-#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
+#![cfg_attr(
+    all(not(debug_assertions), target_os = "windows"),
+    windows_subsystem = "windows"
+)]
 
+mod appicon;
 mod audio;
 mod discord;
-mod window;
-mod server;
-mod obs;
 mod media;
-mod appicon;
+mod obs;
+mod server;
+mod window;
 
-use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::Manager;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
-use tauri_plugin_opener::OpenerExt;
 use audio::{
     audio_pause, audio_play, audio_resume, audio_seek, audio_set_analysis_enabled,
-    audio_set_volume, audio_stop,
-    player_get_snapshot, player_next, player_pause, player_play, player_preload, player_previous, player_restart,
-    player_seek, player_set_liked, player_set_queue, player_set_repeat, player_set_shuffle,
-    player_set_ui_visible, player_set_volume, player_update_integrations,
-    playback_engine_replace_queue, playback_engine_set_current_track, playback_engine_snapshot,
-    playback_engine_update_transition_policy, playback_engine_update_transport, start_audio_thread,
-    start_integration_worker, AudioPlayer, PlaybackEngine,
+    audio_set_volume, audio_stop, playback_engine_replace_queue, playback_engine_set_current_track,
+    playback_engine_snapshot, playback_engine_update_transition_policy,
+    playback_engine_update_transport, player_get_snapshot, player_next, player_pause, player_play,
+    player_preload, player_previous, player_restart, player_seek, player_set_liked,
+    player_set_queue, player_set_repeat, player_set_shuffle, player_set_ui_visible,
+    player_set_volume, player_update_integrations, start_audio_thread, start_integration_worker,
+    AudioPlayer, PlaybackEngine,
 };
-use discord::{DiscordRpc, clear_discord_rpc, disconnect_rpc};
-use window::{WasMaximized, set_fullscreen, open_login_window, close_login_window, open_composer_window, remove_window_border_for, lock_square_for, ensure_session_keeper, rotate_session_cookies, stop_session_keeper};
-use server::{ServerProcess, stop_server};
+use discord::{clear_discord_rpc, disconnect_rpc, DiscordRpc};
 #[cfg(windows)]
 use obs::start_audio_session_tagger;
+use server::{stop_server, ServerProcess};
+use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::tray::{MouseButton, TrayIconBuilder, TrayIconEvent};
+use tauri::Manager;
+use tauri_plugin_opener::OpenerExt;
+use window::{
+    close_login_window, ensure_session_keeper, lock_square_for, open_composer_window,
+    open_login_window, remove_window_border_for, rotate_session_cookies, set_fullscreen,
+    stop_session_keeper, WasMaximized,
+};
 
 struct AppTray(tauri::tray::TrayIcon<tauri::Wry>);
 struct CloseTray(AtomicBool);
@@ -108,7 +115,9 @@ fn open_cache_directory(app: tauri::AppHandle) -> Result<(), String> {
 fn capture_screenshot(app: tauri::AppHandle) -> Result<String, String> {
     use base64::Engine;
     use std::io::Cursor;
-    let win = app.get_webview_window("main").ok_or_else(|| "no main window".to_string())?;
+    let win = app
+        .get_webview_window("main")
+        .ok_or_else(|| "no main window".to_string())?;
     let pos = win.outer_position().map_err(|e| e.to_string())?;
     let size = win.outer_size().map_err(|e| e.to_string())?;
     let monitors = xcap::Monitor::all().map_err(|e| e.to_string())?;
@@ -116,7 +125,12 @@ fn capture_screenshot(app: tauri::AppHandle) -> Result<String, String> {
     let cy = pos.y + size.height as i32 / 2;
     let mon = monitors
         .iter()
-        .find(|m| cx >= m.x() && cx < m.x() + m.width() as i32 && cy >= m.y() && cy < m.y() + m.height() as i32)
+        .find(|m| {
+            cx >= m.x()
+                && cx < m.x() + m.width() as i32
+                && cy >= m.y()
+                && cy < m.y() + m.height() as i32
+        })
         .or_else(|| monitors.first())
         .ok_or_else(|| "no monitor".to_string())?;
     let full = mon.capture_image().map_err(|e| e.to_string())?;
@@ -147,10 +161,18 @@ fn stop_server_cmd(app: tauri::AppHandle) {
 /// Called from the frontend whenever the language changes.
 #[tauri::command]
 fn update_tray_labels(app: tauri::AppHandle, show_label: String, quit_label: String) {
-    let Some(tray) = app.try_state::<AppTray>() else { return };
-    let Ok(show) = MenuItem::with_id(&app, "show", show_label, true, None::<&str>) else { return };
-    let Ok(quit) = MenuItem::with_id(&app, "quit", quit_label, true, None::<&str>) else { return };
-    let Ok(sep)  = PredefinedMenuItem::separator(&app) else { return };
+    let Some(tray) = app.try_state::<AppTray>() else {
+        return;
+    };
+    let Ok(show) = MenuItem::with_id(&app, "show", show_label, true, None::<&str>) else {
+        return;
+    };
+    let Ok(quit) = MenuItem::with_id(&app, "quit", quit_label, true, None::<&str>) else {
+        return;
+    };
+    let Ok(sep) = PredefinedMenuItem::separator(&app) else {
+        return;
+    };
     if let Ok(menu) = Menu::with_items(&app, &[&show, &sep, &quit]) {
         let _ = tray.0.set_menu(Some(menu));
     }
@@ -164,12 +186,22 @@ fn update_tray_labels(app: tauri::AppHandle, show_label: String, quit_label: Str
 fn migrate_legacy_data_dir() {
     let roots: Vec<std::path::PathBuf> = {
         #[cfg(windows)]
-        { std::env::var("LOCALAPPDATA").ok().map(std::path::PathBuf::from).into_iter().collect() }
+        {
+            std::env::var("LOCALAPPDATA")
+                .ok()
+                .map(std::path::PathBuf::from)
+                .into_iter()
+                .collect()
+        }
         #[cfg(not(windows))]
         {
             let mut v = Vec::new();
-            if let Ok(x) = std::env::var("XDG_DATA_HOME") { v.push(std::path::PathBuf::from(x)); }
-            if let Ok(h) = std::env::var("HOME") { v.push(std::path::PathBuf::from(h).join(".local/share")); }
+            if let Ok(x) = std::env::var("XDG_DATA_HOME") {
+                v.push(std::path::PathBuf::from(x));
+            }
+            if let Ok(h) = std::env::var("HOME") {
+                v.push(std::path::PathBuf::from(h).join(".local/share"));
+            }
             v
         }
     };
@@ -178,7 +210,7 @@ fn migrate_legacy_data_dir() {
         let new = root.join("dev.kodama.music");
         if old.is_dir() && !new.exists() {
             match std::fs::rename(&old, &new) {
-                Ok(_)  => eprintln!("[migrate] moved {} -> {}", old.display(), new.display()),
+                Ok(_) => eprintln!("[migrate] moved {} -> {}", old.display(), new.display()),
                 Err(e) => eprintln!("[migrate] failed to move data dir: {e}"),
             }
         }
@@ -233,9 +265,8 @@ fn configure_e2e_webview_storage(context: &mut tauri::Context<tauri::Wry>) {
         {
             // Tauri resolves this safe relative path under the platform's local
             // data directory, separately from Kodama's production application ID.
-            window.data_directory = Some(
-                std::path::PathBuf::from("kodama-e2e-workers").join(&worker_id),
-            );
+            window.data_directory =
+                Some(std::path::PathBuf::from("kodama-e2e-workers").join(&worker_id));
         }
     }
 }
@@ -328,7 +359,7 @@ fn main() {
             // ── System Tray ────────────────────────────────────────────────────
             let show = MenuItem::with_id(app, "show", "Show Kodama", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
-            let sep  = PredefinedMenuItem::separator(app)?;
+            let sep = PredefinedMenuItem::separator(app)?;
             let menu = Menu::with_items(app, &[&show, &sep, &quit])?;
 
             let tray = TrayIconBuilder::with_id("main")
@@ -348,7 +379,11 @@ fn main() {
                 })
                 .on_tray_icon_event(|tray, event| {
                     // Links-Klick auf Tray-Icon → Fenster zeigen/fokussieren
-                    if let TrayIconEvent::Click { button: MouseButton::Left, .. } = event {
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        ..
+                    } = event
+                    {
                         let app = tray.app_handle();
                         if let Some(win) = app.get_webview_window("main") {
                             app.state::<PlaybackEngine>().set_ui_visible(true);
@@ -377,40 +412,66 @@ fn main() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            set_fullscreen, open_login_window, close_login_window, open_composer_window,
+            set_fullscreen,
+            open_login_window,
+            close_login_window,
+            open_composer_window,
             remove_window_border_for,
             lock_square_for,
             clear_discord_rpc,
             appicon::app_icon_customization_available,
             appicon::set_app_icon,
-            audio_play, audio_pause, audio_resume,
-            audio_stop, audio_seek, audio_set_analysis_enabled, audio_set_volume,
-            player_set_queue, player_play, player_restart, player_preload, player_pause, player_next, player_previous,
-            player_seek, player_set_volume, player_set_shuffle, player_set_repeat,
-            player_get_snapshot, player_set_ui_visible, player_set_liked,
+            audio_play,
+            audio_pause,
+            audio_resume,
+            audio_stop,
+            audio_seek,
+            audio_set_analysis_enabled,
+            audio_set_volume,
+            player_set_queue,
+            player_play,
+            player_restart,
+            player_preload,
+            player_pause,
+            player_next,
+            player_previous,
+            player_seek,
+            player_set_volume,
+            player_set_shuffle,
+            player_set_repeat,
+            player_get_snapshot,
+            player_set_ui_visible,
+            player_set_liked,
             player_update_integrations,
-            playback_engine_snapshot, playback_engine_replace_queue,
-            playback_engine_set_current_track, playback_engine_update_transport,
+            playback_engine_snapshot,
+            playback_engine_replace_queue,
+            playback_engine_set_current_track,
+            playback_engine_update_transport,
             playback_engine_update_transition_policy,
-            relaunch_app, quit_app, stop_server_cmd,
-            update_tray_labels, set_close_to_tray,
+            relaunch_app,
+            quit_app,
+            stop_server_cmd,
+            update_tray_labels,
+            set_close_to_tray,
             capture_screenshot,
             open_cache_directory,
-            ensure_session_keeper, rotate_session_cookies, stop_session_keeper,
+            ensure_session_keeper,
+            rotate_session_cookies,
+            stop_session_keeper,
         ])
         .build(context)
         .expect("error while building tauri application")
         .run(|app_handle, event| {
             match event {
                 // X-Button → Fenster verstecken statt schließen
-                tauri::RunEvent::WindowEvent { ref label, event: tauri::WindowEvent::CloseRequested { api, .. }, .. }
-                    if label == "main" =>
-                {
+                tauri::RunEvent::WindowEvent {
+                    ref label,
+                    event: tauri::WindowEvent::CloseRequested { api, .. },
+                    ..
+                } if label == "main" => {
                     if app_handle.state::<CloseTray>().0.load(Ordering::Relaxed) {
                         api.prevent_close();
-                        app_handle
-                            .state::<PlaybackEngine>()
-                            .set_ui_visible(false);
+                        app_handle.state::<PlaybackEngine>().set_ui_visible(false);
                         if let Some(win) = app_handle.get_webview_window("main") {
                             let _ = win.hide();
                         }

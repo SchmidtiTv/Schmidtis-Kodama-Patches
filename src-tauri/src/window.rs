@@ -1,5 +1,5 @@
 use std::sync::Mutex;
-use tauri::{Manager, Emitter};
+use tauri::{Emitter, Manager};
 
 /// Subclass proc that reclaims the residual 1px top frame line Windows draws on borderless
 /// windows. On WM_NCCALCSIZE we let the default (and Tauri's) handler compute the client
@@ -88,7 +88,9 @@ pub fn lock_square(window: &tauri::WebviewWindow) {
         use windows::Win32::UI::Shell::SetWindowSubclass;
         if let Ok(h) = window.hwnd() {
             // Subclass id 2 — id 1 belongs to the borderless-frame fix above.
-            unsafe { let _ = SetWindowSubclass(HWND(h.0 as _), Some(square_subclass), 2, 0); }
+            unsafe {
+                let _ = SetWindowSubclass(HWND(h.0 as _), Some(square_subclass), 2, 0);
+            }
         }
     }
     #[cfg(target_os = "macos")]
@@ -176,7 +178,11 @@ impl WasMaximized {
 }
 
 #[tauri::command]
-pub fn set_fullscreen(window: tauri::WebviewWindow, fullscreen: bool, state: tauri::State<WasMaximized>) {
+pub fn set_fullscreen(
+    window: tauri::WebviewWindow,
+    fullscreen: bool,
+    state: tauri::State<WasMaximized>,
+) {
     if fullscreen {
         let maximized = window.is_maximized().unwrap_or(false);
         *state.0.lock().unwrap() = maximized;
@@ -204,7 +210,13 @@ pub fn set_fullscreen(window: tauri::WebviewWindow, fullscreen: bool, state: tau
 fn auth_data_dir(profile: &str) -> std::path::PathBuf {
     let safe: String = profile
         .chars()
-        .map(|c| if c.is_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+        .map(|c| {
+            if c.is_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '_'
+            }
+        })
         .collect();
     #[cfg(feature = "e2e")]
     {
@@ -382,14 +394,20 @@ pub async fn open_login_window(
                         if let Ok(all) = cwin.cookies() {
                             let yt: Vec<_> = all
                                 .into_iter()
-                                .filter(|c| c.domain().map(|d| d.contains("youtube.com")).unwrap_or(false))
+                                .filter(|c| {
+                                    c.domain()
+                                        .map(|d| d.contains("youtube.com"))
+                                        .unwrap_or(false)
+                                })
                                 .collect();
                             if yt.iter().any(|c| c.name() == "SAPISID") {
                                 cs = yt;
                             }
                         }
                     }
-                    cs.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect::<Vec<_>>()
+                    cs.iter()
+                        .map(|c| (c.name().to_string(), c.value().to_string()))
+                        .collect::<Vec<_>>()
                 }))
                 .unwrap_or_default();
                 let _ = ctx.send(pairs);
@@ -403,7 +421,13 @@ pub async fn open_login_window(
             // completing on the first authenticated load — this is what lets brand-account
             // users switch account first. The bar only appears once has_auth is true anyway.
             let done = found.iter().any(|(n, v)| n == "KODAMA_DONE" && v == "1");
-            eprintln!("[login] url={} has_auth={} done={} cookies={}", current_url, has_auth, done, found.len());
+            eprintln!(
+                "[login] url={} has_auth={} done={} cookies={}",
+                current_url,
+                has_auth,
+                done,
+                found.len()
+            );
             {
                 if has_auth && done {
                     // Brand-account context (empty for the default account), kept out of the
@@ -443,11 +467,15 @@ pub async fn open_login_window(
                                 Err(body
                                     .get("error")
                                     .and_then(serde_json::Value::as_str)
-                                    .unwrap_or("Kodama could not verify this YouTube Music session.")
+                                    .unwrap_or(
+                                        "Kodama could not verify this YouTube Music session.",
+                                    )
                                     .to_string())
                             }
                         }
-                        Err(error) => Err(format!("Could not contact Kodama's local service: {error}")),
+                        Err(error) => {
+                            Err(format!("Could not contact Kodama's local service: {error}"))
+                        }
                     };
 
                     let _ = win.destroy();
@@ -485,7 +513,10 @@ pub fn close_login_window(app: tauri::AppHandle) {
 // data directory. As a real browser engine it auto-authenticates from the stored session and
 // keeps the rotating *SIDTS cookies fresh — which plain HTTP requests cannot do.
 #[tauri::command]
-pub async fn ensure_session_keeper(app: tauri::AppHandle, profile_name: String) -> Result<(), String> {
+pub async fn ensure_session_keeper(
+    app: tauri::AppHandle,
+    profile_name: String,
+) -> Result<(), String> {
     if app.get_webview_window("session-keeper").is_some() {
         return Ok(());
     }
@@ -520,7 +551,10 @@ pub fn stop_session_keeper(app: tauri::AppHandle) {
 // cookie set from the WebView store, and push it to the backend so the live ytmusicapi session
 // gets the freshly rotated tokens. Returns true if the captured set includes a *SIDTS token.
 #[tauri::command]
-pub async fn rotate_session_cookies(app: tauri::AppHandle, profile_name: String) -> Result<bool, String> {
+pub async fn rotate_session_cookies(
+    app: tauri::AppHandle,
+    profile_name: String,
+) -> Result<bool, String> {
     if app.get_webview_window("session-keeper").is_none() {
         ensure_session_keeper(app.clone(), profile_name.clone()).await?;
         tokio::time::sleep(std::time::Duration::from_secs(7)).await;
@@ -547,7 +581,9 @@ pub async fn rotate_session_cookies(app: tauri::AppHandle, profile_name: String)
         }
         let pairs = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             let cs = cwin.cookies_for_url(yt_url).unwrap_or_default();
-            cs.iter().map(|c| (c.name().to_string(), c.value().to_string())).collect::<Vec<_>>()
+            cs.iter()
+                .map(|c| (c.name().to_string(), c.value().to_string()))
+                .collect::<Vec<_>>()
         }))
         .unwrap_or_default();
         let _ = ctx.send(pairs);

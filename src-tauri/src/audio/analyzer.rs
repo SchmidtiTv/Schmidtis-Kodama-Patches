@@ -3,16 +3,16 @@
 // latest window, runs an FFT, buckets the spectrum into log-spaced bands, and emits them to
 // the UI as `audio-levels` events. Single-producer (audio thread) / single-consumer (analysis
 // thread), so relaxed atomics + a monotonic write counter are enough.
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use rustfft::{num_complex::Complex, Fft, FftPlanner};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 
 pub const FFT_SIZE: usize = 2048;
 pub const NUM_BANDS: usize = 48;
 
 pub struct AnalysisBuffer {
-    buf: Vec<AtomicU32>,    // ring of mono f32 samples (bit-cast)
-    pos: AtomicUsize,       // total samples written (monotonic, wraps harmlessly)
+    buf: Vec<AtomicU32>, // ring of mono f32 samples (bit-cast)
+    pos: AtomicUsize,    // total samples written (monotonic, wraps harmlessly)
     sample_rate: u32,
     enabled: Arc<AtomicBool>,
 }
