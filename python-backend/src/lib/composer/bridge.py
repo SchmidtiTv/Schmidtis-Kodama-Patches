@@ -10,8 +10,9 @@ from typing import Dict, Optional, Protocol, Tuple, cast
 
 import requests
 
-from src.config import BACKEND_PORT, PROJECT_ROOT, config_composer, config_dirs
+from src.config import PROJECT_ROOT, config_composer, config_dirs
 from src.lib.composer.settings import ComposerSettings
+from src.lib.music.stream import StreamService
 from src.lib.music.youtube_music import YoutubeMusicSession
 from src.lib.runtime.cache import CacheSettings
 
@@ -35,7 +36,6 @@ class ComposerBridge:
     composer_bridge_thumb, _composer_dist_dir, and composer_app.
     """
 
-    STREAM_ENDPOINT = f"http://127.0.0.1:{BACKEND_PORT}/stream"
     EXPOSED_HEADERS = "Content-Type, x-track-title, x-track-artist, x-track-album"
     _AUDIO_MIME_TYPES = {
         ".opus": "audio/opus",
@@ -49,11 +49,16 @@ class ComposerBridge:
     }
 
     def __init__(
-        self, settings: ComposerSettings, cache_settings: CacheSettings, music_session: YoutubeMusicSession
+        self,
+        settings: ComposerSettings,
+        cache_settings: CacheSettings,
+        music_session: YoutubeMusicSession,
+        stream_service: StreamService,
     ) -> None:
         self._settings = settings
         self._cache_settings = cache_settings
         self._music_session = music_session
+        self._stream_service = stream_service
 
     @property
     def autocache_enabled(self) -> bool:
@@ -95,10 +100,9 @@ class ComposerBridge:
         return self._AUDIO_MIME_TYPES.get(path.suffix.lower(), "audio/mp4")
 
     def open_audio_stream(self, video_id: str) -> UpstreamResponse:
-        """Resolve the current stream through the existing local stream endpoint."""
+        """Resolve the current stream through the shared stream-resolution service."""
         try:
-            resolution = requests.get(f"{self.STREAM_ENDPOINT}/{video_id}", timeout=60)
-            data = resolution.json()
+            data, _status = self._stream_service.resolve_stream(video_id)
         except Exception as error:
             raise ComposerBridgeError(str(error)) from error
 

@@ -37,12 +37,11 @@ from src.lib import (
 )
 from src.routes import register_blueprints
 
-
 CORS_ORIGINS = [
-    "http://localhost:1421",     # Tauri dev server
-    "tauri://localhost",         # Tauri production (Windows/Linux)
-    "https://tauri.localhost",   # Tauri production (Tauri 2.x, WebView2)
-    "http://tauri.localhost",    # fallback
+    "http://localhost:1421",  # Tauri dev server
+    "tauri://localhost",  # Tauri production (Windows/Linux)
+    "https://tauri.localhost",  # Tauri production (Tauri 2.x, WebView2)
+    "http://tauri.localhost",  # fallback
     "http://localhost",
     "http://127.0.0.1",
 ]
@@ -84,10 +83,19 @@ def create_app() -> Flask:
         app.extensions["youtube_music_session"] = music_session
         app.extensions["lastfm_client"] = LastFM()
         app.extensions["cache_settings"] = CacheSettings(metadata_cache=metadata_cache)
+
+        ytdlp = YTDLP(
+            profiles=profile_repository,
+            music_state=app.extensions["youtube_music_session"].state,
+        )
+        app.extensions["ytdlp"] = ytdlp
+        app.extensions["stream_service"] = StreamService(ytdlp=ytdlp)
+
         app.extensions["composer_bridge"] = ComposerBridge(
             settings=ComposerSettings(),
             cache_settings=app.extensions["cache_settings"],
             music_session=app.extensions["youtube_music_session"],
+            stream_service=app.extensions["stream_service"],
         )
         app.extensions["lyrics_service"] = LyricsService(
             cache_settings=app.extensions["cache_settings"],
@@ -96,13 +104,6 @@ def create_app() -> Flask:
         )
         app.extensions["album_cache"] = Album(metadata_cache=metadata_cache)
         app.extensions["band_member_finder"] = BandMemberFinder()
-
-        ytdlp = YTDLP(
-            profiles=profile_repository,
-            music_state=app.extensions["youtube_music_session"].state,
-        )
-        app.extensions["ytdlp"] = ytdlp
-        app.extensions["stream_service"] = StreamService(ytdlp=ytdlp)
 
         ffmpeg = FFmpeg()
         app.extensions["ffmpeg"] = ffmpeg
