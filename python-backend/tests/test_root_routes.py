@@ -1,7 +1,48 @@
+from unittest.mock import patch
+
 from route_test_support import RouteTestCase
 
 
 class RootMusicRouteTests(RouteTestCase):
+    def test_home_resolves_audio_versions_once_across_all_sections(self) -> None:
+        self.music_session.client.get_home = lambda limit=15: [
+            {
+                "title": "Section A",
+                "contents": [
+                    {"videoId": "a1", "title": "A1", "artists": [], "thumbnails": []},
+                    {"videoId": "a2", "title": "A2", "artists": [], "thumbnails": []},
+                ],
+            },
+            {
+                "title": "Section B",
+                "contents": [
+                    {"videoId": "b1", "title": "B1", "artists": [], "thumbnails": []},
+                ],
+            },
+        ]
+
+        def fake_prefer_audio_versions(
+            client: object,
+            playlist_id: object,
+            tracks: list[dict[str, object]],
+            counterpart_cache: object = None,
+        ) -> list[dict[str, object]]:
+            return [{**track, "title": f"{track['title']}-resolved"} for track in tracks]
+
+        with patch(
+            "src.routes.root.home.prefer_audio_versions", side_effect=fake_prefer_audio_versions
+        ) as mock_prefer:
+            response = self.client.get("/home")
+
+        # One call over the combined feed, not one per section.
+        self.assertEqual(mock_prefer.call_count, 1)
+        self.assertEqual(len(mock_prefer.call_args.args[2]), 3)
+
+        sections = response.json["sections"]
+        self.assertEqual(
+            [item["title"] for item in sections[0]["items"]], ["A1-resolved", "A2-resolved"]
+        )
+        self.assertEqual([item["title"] for item in sections[1]["items"]], ["B1-resolved"])
     def test_root_music_routes(self) -> None:
         self.assertEqual(self.client.get("/status").json["ok"], True)
         self.assertEqual(self.client.get("/search").json, {"results": []})

@@ -17,19 +17,32 @@ def get_home() -> RouteResponse:
         client = music_session().get_active_client()
         resolver = music_session().get_system_client()
         home = client.get_home(limit=15)
+
+        # Resolve every section's video-variant songs to their audio counterparts in a single
+        # pass over the whole feed, instead of once per section (each call spins up its own
+        # thread pool): up to 15 sequential thread-pool bursts otherwise, on a cache-miss.
+        section_raw_songs = [
+            [
+                item
+                for item in section.get("contents", [])
+                if item.get("videoId") and not is_podcast_section(section.get("title", ""))
+            ]
+            for section in home
+        ]
+        combined_songs = [song for songs in section_raw_songs for song in songs]
+        resolved_combined = iter(
+            prefer_audio_versions(resolver, None, combined_songs, metadata_cache())
+        )
+        section_resolved_songs = [
+            [next(resolved_combined) for _ in songs] for songs in section_raw_songs
+        ]
+
         sections = []
-        for section in home:
+        for section, resolved_songs_list in zip(home, section_resolved_songs, strict=True):
             title = section.get("title", "")
             is_podcast = is_podcast_section(title)
             items = []
-            raw_songs = [
-                item
-                for item in section.get("contents", [])
-                if item.get("videoId") and not is_podcast
-            ]
-            resolved_songs = iter(
-                prefer_audio_versions(resolver, None, raw_songs, metadata_cache())
-            )
+            resolved_songs = iter(resolved_songs_list)
             for item in section.get("contents", []):
                 if item.get("videoId") and not is_podcast:
                     items.append(song_result(next(resolved_songs)))
