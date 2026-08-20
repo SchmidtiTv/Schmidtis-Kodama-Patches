@@ -15,6 +15,9 @@ from src.config import PROJECT_ROOT, config_dirs
 
 FFMPEG_MAC_REPOSITORY = "eugeneware/ffmpeg-static"
 MIN_FFMPEG_DOWNLOAD_BYTES = 1_000_000
+# Sentinel distinguishing "not yet resolved" from find()'s legitimate `None` return (found on
+# PATH), since `str | None | bool` already uses every other value.
+_UNRESOLVED = object()
 
 
 class LatestVersion(TypedDict):
@@ -28,11 +31,26 @@ class FFmpeg:
     def __init__(self) -> None:
         # Old server.py: _FFMPEG_LATEST
         self._latest: LatestVersion = {"ts": 0.0, "ver": None}
+        self._cached_find: str | None | bool = _UNRESOLVED
 
     # Old server.py: _find_ffmpeg
     def find(self) -> str | None | bool:
         """Return the directory holding ffmpeg, ``None`` if it is on PATH, or
-        ``False`` if it cannot be found."""
+        ``False`` if it cannot be found.
+
+        This rescans a handful of filesystem candidates plus (on a PATH miss) shells out to
+        ``shutil.which`` — called per-track by mix analysis and video-sync, so a successful
+        resolution is cached: ffmpeg's location can't move once found. A miss is never cached,
+        so this keeps re-scanning after an auto-install (``download_stream``) places the binary.
+        """
+        if self._cached_find is not _UNRESOLVED:
+            return self._cached_find
+        result = self._locate()
+        if result is not False:
+            self._cached_find = result
+        return result
+
+    def _locate(self) -> str | None | bool:
         bin_name = "ffmpeg.exe" if sys.platform == "win32" else "ffmpeg"
         candidates = []
         if sys.platform != "win32":

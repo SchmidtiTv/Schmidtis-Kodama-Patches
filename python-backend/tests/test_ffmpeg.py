@@ -20,6 +20,39 @@ class FFmpegTests(unittest.TestCase):
             ):
                 self.assertEqual(FFmpeg().find(), str(managed_dir))
 
+    def test_a_found_result_is_cached_across_calls(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            managed_dir = Path(directory)
+            (managed_dir / "ffmpeg").touch()
+
+            with (
+                patch.object(config_dirs, "BIN_DIR", managed_dir),
+                patch("src.lib.integrations.ffmpeg.sys.platform", "darwin"),
+            ):
+                ffmpeg = FFmpeg()
+                first = ffmpeg.find()
+                (managed_dir / "ffmpeg").unlink()  # a rescan would now miss
+                second = ffmpeg.find()
+
+        self.assertEqual(first, str(managed_dir))
+        self.assertEqual(second, first)
+
+    def test_a_miss_is_not_cached_so_a_later_install_is_found(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            managed_dir = Path(directory)  # empty: ffmpeg not present yet
+
+            with (
+                patch.object(config_dirs, "BIN_DIR", managed_dir),
+                # Avoid the darwin-only Homebrew fallback paths, which may genuinely exist on
+                # the machine running this test.
+                patch("src.lib.integrations.ffmpeg.sys.platform", "linux"),
+                patch("shutil.which", return_value=None),
+            ):
+                ffmpeg = FFmpeg()
+                self.assertFalse(ffmpeg.find())
+                (managed_dir / "ffmpeg").touch()  # simulate download_stream() installing it
+                self.assertEqual(ffmpeg.find(), str(managed_dir))
+
     def test_macos_latest_version_uses_static_build_release(self) -> None:
         response = MagicMock()
         response.json.return_value = {"tag_name": "b6.1.1"}
