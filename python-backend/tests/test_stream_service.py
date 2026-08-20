@@ -58,7 +58,55 @@ class StreamServiceTests(unittest.TestCase):
             ],
         )
 
-    def test_stream_resolution_is_serialized_across_video_ids(self) -> None:
+    def test_stream_resolution_serializes_the_same_video_id(self) -> None:
+        first_started = threading.Event()
+        release_first = threading.Event()
+        second_started = threading.Event()
+        call_count = 0
+        count_lock = threading.Lock()
+        responses = []
+
+        def extract(video_id: str, *_args: object, **_kwargs: object) -> dict[str, str]:
+            nonlocal call_count
+            with count_lock:
+                call_count += 1
+                current_call = call_count
+            if current_call == 1:
+                first_started.set()
+                self.assertTrue(release_first.wait(timeout=2))
+            else:
+                second_started.set()
+            return {"url": f"https://stream/{video_id}"}
+
+        with (
+            patch.object(self.service, "_extract_url", side_effect=extract),
+            patch.object(self.service, "_probe_audio_url", return_value=True),
+        ):
+            first = threading.Thread(
+                target=lambda: responses.append(self.service.resolve_stream("same"))
+            )
+            second = threading.Thread(
+                target=lambda: responses.append(self.service.resolve_stream("same"))
+            )
+            first.start()
+            self.assertTrue(first_started.wait(timeout=2))
+            second.start()
+            # Duplicate requests for the SAME video must not run yt-dlp concurrently.
+            self.assertFalse(second_started.wait(timeout=0.1))
+            release_first.set()
+            first.join(timeout=2)
+            second.join(timeout=2)
+
+        self.assertTrue(second_started.is_set())
+        self.assertEqual(
+            responses,
+            [
+                ({"url": "https://stream/same"}, 200),
+                ({"url": "https://stream/same"}, 200),
+            ],
+        )
+
+    def test_stream_resolution_does_not_serialize_across_different_video_ids(self) -> None:
         first_started = threading.Event()
         release_first = threading.Event()
         second_started = threading.Event()
@@ -91,12 +139,12 @@ class StreamServiceTests(unittest.TestCase):
             first.start()
             self.assertTrue(first_started.wait(timeout=2))
             second.start()
-            self.assertFalse(second_started.wait(timeout=0.1))
+            # A different video_id must resolve immediately, not wait behind "first".
+            self.assertTrue(second_started.wait(timeout=2))
             release_first.set()
             first.join(timeout=2)
             second.join(timeout=2)
 
-        self.assertTrue(second_started.is_set())
         self.assertEqual(
             sorted(responses, key=lambda response: str(response[0]["url"])),
             [
@@ -105,22 +153,37 @@ class StreamServiceTests(unittest.TestCase):
             ],
         )
 
+    def test_resolve_audio_url_prunes_expired_cache_entries(self) -> None:
+        self.service._audio_url_cache["stale"] = ("https://stream/stale", 0.0)  # already expired
+
+        with (
+            patch.object(self.service, "_extract_url", return_value={"url": "https://stream/x"}),
+            patch.object(self.service, "_probe_audio_url", return_value=True),
+        ):
+            self.service.resolve_audio_url("fresh")
+
+        self.assertNotIn("stale", self.service._audio_url_cache)
+        self.assertIn("fresh", self.service._audio_url_cache)
+
     def test_concurrent_audio_resolution_runs_one_stream_request(self) -> None:
         started = threading.Event()
         release = threading.Event()
         responses = []
+        call_count = 0
+        count_lock = threading.Lock()
 
-        class Response:
-            @staticmethod
-            def json() -> dict[str, str]:
-                return {"url": "https://stream/audio"}
-
-        def get(*_args: object, **_kwargs: object) -> Response:
+        def extract(video_id: str, *_args: object, **_kwargs: object) -> dict[str, str]:
+            nonlocal call_count
+            with count_lock:
+                call_count += 1
             started.set()
             self.assertTrue(release.wait(timeout=2))
-            return Response()
+            return {"url": f"https://stream/{video_id}"}
 
-        with patch("src.lib.music.stream.requests.get", side_effect=get) as request_get:
+        with (
+            patch.object(self.service, "_extract_url", side_effect=extract),
+            patch.object(self.service, "_probe_audio_url", return_value=True),
+        ):
             first = threading.Thread(
                 target=lambda: responses.append(self.service.resolve_audio_url("video"))
             )
@@ -134,5 +197,7 @@ class StreamServiceTests(unittest.TestCase):
             first.join(timeout=2)
             second.join(timeout=2)
 
-        self.assertEqual(responses, ["https://stream/audio", "https://stream/audio"])
-        request_get.assert_called_once()
+        self.assertEqual(responses, ["https://stream/video", "https://stream/video"])
+        # The in-flight de-dup means only the resolver thread actually calls yt-dlp — this now
+        # runs fully in-process (no loopback HTTP request to the local /stream endpoint).
+        self.assertEqual(call_count, 1)
