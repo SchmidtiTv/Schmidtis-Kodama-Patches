@@ -7,6 +7,7 @@ import html
 import json
 import re
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from typing import Dict, List, Optional, Protocol, TypeVar, cast
 
@@ -88,11 +89,12 @@ class LyricsService:
             except (OSError, sqlite3.Error, ValueError, TypeError):
                 pass
 
-        result = self._lookup_lrclib(title, artist, source)
-        if not result:
-            result = self._lookup_better_lyrics(title, artist, album, duration, source)
-        if not result:
-            result = self._lookup_portato(title, artist, album, duration, source)
+        # LRCLIB, Better Lyrics, and Portato are the fastest and most-likely-to-succeed
+        # providers, so they run concurrently instead of one after another; the result honors
+        # their original priority order regardless of which finishes first. This bounds the
+        # common-case latency to ~1 provider timeout instead of a sum of up to 3, without
+        # firing every remaining (slower, less-likely) provider on every request.
+        result = self._lookup_fast_tier(title, artist, album, duration, source)
         if not result:
             result = self._lookup_paxsenix_netease(title, artist, duration, source)
         if not result:
@@ -116,6 +118,26 @@ class LyricsService:
             except (OSError, sqlite3.Error, ValueError, TypeError):
                 pass
         return result
+
+    def _lookup_fast_tier(
+        self, title: str, artist: str, album: str, duration: str, source: str
+    ) -> Optional[Dict[str, object]]:
+        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="lyrics-fast") as executor:
+            lrclib = executor.submit(self._lookup_lrclib, title, artist, source)
+            better = executor.submit(
+                self._lookup_better_lyrics, title, artist, album, duration, source
+            )
+            portato = executor.submit(
+                self._lookup_portato, title, artist, album, duration, source
+            )
+            # .result() on an already-running future just waits for it; since all three were
+            # submitted together they run concurrently, so this costs ~max(their durations),
+            # not the sum, while still preferring lrclib > better > portato when several hit.
+            for future in (lrclib, better, portato):
+                result = future.result()
+                if result:
+                    return result
+        return None
 
     @staticmethod
     def _lookup_lrclib(title: str, artist: str, source: str) -> Optional[Dict[str, object]]:
@@ -458,37 +480,68 @@ class LyricsService:
         except Exception as error:
             print(f"[lyrics] Unison versions error: {error}", flush=True)
 
-        versions: List[Dict[str, object]] = []
-        name_cache: Dict[object, Optional[str]] = {}
-        for item in candidates[:8]:
-            lyrics = item.get("lyrics")
-            lyric_format = item.get("format")
-            sync_type = item.get("syncType")
+        top_candidates = candidates[:8]
+
+        def fetch_full(item: Dict[str, object]) -> Dict[str, object]:
+            """Fill in a candidate missing its lyric body. Candidates that already have one
+            (or have no id to fetch by) pass through untouched — no network call."""
             candidate_id = item.get("id")
+            if item.get("lyrics") or candidate_id is None:
+                return item
+            try:
+                response = requests.get(f"{self.UNISON_BASE_URL}/lyrics/{candidate_id}", timeout=6)
+                full_data = (response.json() or {}).get("data") or {} if response.ok else {}
+            except Exception:
+                return item
+            merged = dict(item)
+            merged["lyrics"] = full_data.get("lyrics") or item.get("lyrics")
+            merged["format"] = full_data.get("format") or item.get("format")
+            merged["syncType"] = full_data.get("syncType") or item.get("syncType")
+            merged["submitter"] = full_data.get("submitter") or item.get("submitter")
+            return merged
+
+        if top_candidates:
+            # These were previously fetched one at a time (N sequential HTTP round trips);
+            # they're independent requests, so run them concurrently instead.
+            with ThreadPoolExecutor(
+                max_workers=len(top_candidates), thread_name_prefix="unison-lyrics"
+            ) as executor:
+                top_candidates = list(executor.map(fetch_full, top_candidates))
+
+        key_ids: List[str] = []
+        for item in top_candidates:
+            if not item.get("lyrics"):
+                continue
             submitter = cast(Dict[str, object], item.get("submitter") or {})
-            if not lyrics and candidate_id is not None:
-                try:
-                    response = requests.get(f"{self.UNISON_BASE_URL}/lyrics/{candidate_id}", timeout=6)
-                    full_data = (response.json() or {}).get("data") or {} if response.ok else {}
-                    lyrics = full_data.get("lyrics")
-                    lyric_format = full_data.get("format") or lyric_format
-                    sync_type = full_data.get("syncType") or sync_type
-                    submitter = full_data.get("submitter") or submitter
-                except Exception:
-                    pass
+            key_value = submitter.get("keyId")
+            if isinstance(key_value, str) and key_value not in key_ids:
+                key_ids.append(key_value)
+
+        name_cache: Dict[object, Optional[str]] = {}
+        if key_ids:
+            with ThreadPoolExecutor(
+                max_workers=len(key_ids), thread_name_prefix="unison-names"
+            ) as executor:
+                for key_id, name in zip(
+                    key_ids, executor.map(self.display_name, key_ids), strict=True
+                ):
+                    name_cache[key_id] = name
+
+        versions: List[Dict[str, object]] = []
+        for item in top_candidates:
+            lyrics = item.get("lyrics")
             if not lyrics:
                 continue
+            submitter = cast(Dict[str, object], item.get("submitter") or {})
             key_value = submitter.get("keyId")
             key_id = key_value if isinstance(key_value, str) else None
-            if key_id not in name_cache:
-                name_cache[key_id] = self.display_name(key_id)
             versions.append(
                 {
-                    "id": candidate_id,
-                    "format": lyric_format,
-                    "syncType": sync_type,
+                    "id": item.get("id"),
+                    "format": item.get("format"),
+                    "syncType": item.get("syncType"),
                     "lyrics": lyrics,
-                    "submitterName": name_cache[key_id],
+                    "submitterName": name_cache.get(key_id),
                     "voteCount": item.get("voteCount"),
                 }
             )
