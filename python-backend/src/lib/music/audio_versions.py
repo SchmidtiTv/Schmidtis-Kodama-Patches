@@ -367,13 +367,15 @@ def iter_preferred_audio_versions(
     if not tracks:
         return
 
-    if not any(is_video_variant(track) for track in tracks):
+    # Computed once and reused below instead of scanning `tracks` twice for the same boolean.
+    variant_flags = [is_video_variant(track) for track in tracks]
+    if not any(variant_flags):
         for index in range(0, len(tracks), batch_size):
             yield tracks[index:index + batch_size]
         return
 
     candidates = _watch_playlist_candidates(client, playlist_id, len(tracks)) if playlist_id else []
-    candidate_count = sum(1 for track in tracks if is_video_variant(track))
+    candidate_count = sum(variant_flags)
     replacement_count = 0
     for index in range(0, len(tracks), batch_size):
         batch, replacements = _resolve_audio_batch(
@@ -401,10 +403,14 @@ def prefer_audio_versions(
     counterpart_cache: MetadataCache | None = None,
 ) -> list[dict[str, object]]:
     """Replace OMV/UGC playlist entries with their audio versions when available."""
-    if not tracks or not any(is_video_variant(track) for track in tracks):
+    if not tracks:
+        return tracks
+    # Computed once and reused below instead of scanning `tracks` twice for the same boolean.
+    variant_flags = [is_video_variant(track) for track in tracks]
+    if not any(variant_flags):
         return tracks
 
-    candidate_count = sum(1 for track in tracks if is_video_variant(track))
+    candidate_count = sum(variant_flags)
     candidates = _watch_playlist_candidates(client, playlist_id, len(tracks)) if playlist_id else []
     resolved, replacement_count = _resolve_audio_batch(
         client, candidates, tracks, 0, counterpart_cache
