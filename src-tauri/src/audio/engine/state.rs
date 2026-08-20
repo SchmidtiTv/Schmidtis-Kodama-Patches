@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, RwLock, RwLockWriteGuard};
+use std::sync::{Arc, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use super::model::{
     CrossfadeRequest, MixTransition, PlaybackIntegrationSettings, PlaybackSnapshot, PlaybackStatus,
@@ -277,6 +277,12 @@ impl PlaybackEngine {
     pub(super) fn write_state(&self) -> Result<RwLockWriteGuard<'_, EngineState>, String> {
         self.state
             .write()
+            .map_err(|error| format!("playback state lock poisoned: {error}"))
+    }
+
+    pub(super) fn read_state(&self) -> Result<RwLockReadGuard<'_, EngineState>, String> {
+        self.state
+            .read()
             .map_err(|error| format!("playback state lock poisoned: {error}"))
     }
 }

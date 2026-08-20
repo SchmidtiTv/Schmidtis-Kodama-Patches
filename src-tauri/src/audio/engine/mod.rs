@@ -20,3 +20,4 @@ pub use model::{
     PlaybackSnapshot, PlaybackSourceRequest, PlaybackStatus, PlaybackTrack, TransportUpdate,
 };
 pub use state::PlaybackEngine;
+pub(crate) use transitions::MAX_CROSSFADE_SECONDS;

@@ -6,7 +6,7 @@ use super::model::{
 };
 use super::state::{bump_revision, set_native_current_track, EngineState, PlaybackEngine};
 
-const MAX_CROSSFADE_SECONDS: f64 = 60.0;
+pub(crate) const MAX_CROSSFADE_SECONDS: f64 = 60.0;
 
 impl PlaybackEngine {
     pub fn update_transition_policy(
@@ -59,25 +59,27 @@ impl PlaybackEngine {
     ) -> Result<Option<CrossfadeRequest>, String> {
         super::model::validate_seconds("positionSeconds", Some(position_seconds))?;
         super::model::validate_seconds("durationSeconds", Some(duration_seconds))?;
-        let mut state = self.write_state()?;
-        if transition_is_blocked(&state, duration_seconds) {
-            return Ok(None);
+
+        // This is polled every ~20ms for the whole track, so try it under a read lock first: the
+        // common case (not yet near the end of the track) bails out here without ever taking the
+        // write lock, which would otherwise block every other reader/writer of engine state. The
+        // guard is scoped so it's released before a possible write-lock acquisition below.
+        {
+            let state = self.read_state()?;
+            if evaluate_pending_crossfade(&state, position_seconds, duration_seconds).is_none() {
+                return Ok(None);
+            }
         }
 
-        let Some(current) = state.snapshot.current_track.clone() else {
+        // It looked due under the read lock; re-validate under the write lock since state may
+        // have changed in between (a concurrent seek, track change, or another crossfade already
+        // committed) before actually committing to it.
+        let mut state = self.write_state()?;
+        let Some((current, next, seconds)) =
+            evaluate_pending_crossfade(&state, position_seconds, duration_seconds)
+        else {
             return Ok(None);
         };
-        if state.failed_crossfade_from.as_deref() == Some(current.video_id.as_str()) {
-            return Ok(None);
-        }
-        let Some(next) = peek_next_track(&state) else {
-            return Ok(None);
-        };
-        let seconds = transition_seconds(&state, &current, &next);
-        let remaining = duration_seconds - position_seconds;
-        if seconds <= 0.0 || remaining > seconds || remaining <= 0.05 {
-            return Ok(None);
-        }
         let mix_transition = state
             .policy
             .mix_enabled
@@ -246,6 +248,29 @@ impl PlaybackEngine {
 enum ManualDirection {
     Next,
     Previous,
+}
+
+// Shared by the read-locked fast path and the write-locked commit path in `prepare_crossfade` so
+// eligibility is computed identically (and only once) by each.
+fn evaluate_pending_crossfade(
+    state: &EngineState,
+    position_seconds: f64,
+    duration_seconds: f64,
+) -> Option<(PlaybackTrack, PlaybackTrack, f64)> {
+    if transition_is_blocked(state, duration_seconds) {
+        return None;
+    }
+    let current = state.snapshot.current_track.clone()?;
+    if state.failed_crossfade_from.as_deref() == Some(current.video_id.as_str()) {
+        return None;
+    }
+    let next = peek_next_track(state)?;
+    let seconds = transition_seconds(state, &current, &next);
+    let remaining = duration_seconds - position_seconds;
+    if seconds <= 0.0 || remaining > seconds || remaining <= 0.05 {
+        return None;
+    }
+    Some((current, next, seconds))
 }
 
 fn transition_is_blocked(state: &EngineState, duration_seconds: f64) -> bool {
