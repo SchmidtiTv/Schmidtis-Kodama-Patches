@@ -1,4 +1,5 @@
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
@@ -78,6 +79,24 @@ class MetadataCacheTests(unittest.TestCase):
             destination.get("mix_audio_analysis", "v1:video-1"),
             {"bpm": 128, "camelotKey": "8A"},
         )
+
+    def test_reuses_one_connection_per_thread(self) -> None:
+        first = self.cache._connect()
+        second = self.cache._connect()
+        self.assertIs(first, second)
+
+        other_thread_connection = []
+        thread = threading.Thread(
+            target=lambda: other_thread_connection.append(self.cache._connect())
+        )
+        thread.start()
+        thread.join(timeout=2)
+
+        self.assertEqual(len(other_thread_connection), 1)
+        self.assertIsNot(other_thread_connection[0], first)
+        # Both connections still see the same underlying database.
+        self.cache.put("albums", "shared", {"title": "Shared"})
+        self.assertEqual(self.cache.get("albums", "shared"), {"title": "Shared"})
 
     def test_category_migration_keeps_a_newer_destination_value(self) -> None:
         destination = MetadataCache(Path(self.temporary_directory.name) / "mix.sqlite3")

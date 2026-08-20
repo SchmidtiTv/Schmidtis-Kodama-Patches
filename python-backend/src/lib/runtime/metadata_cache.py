@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 from pathlib import Path
 from typing import cast
@@ -20,12 +21,22 @@ class MetadataCache:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        # One connection per thread, opened once and reused for that thread's lifetime, instead
+        # of a fresh connect() + two PRAGMAs on every call. This cache is read on the hottest
+        # path in the app (every video-variant track in every playlist/home/liked-songs load), so
+        # a 200-track load previously meant 200+ fresh connections; now it's one per request
+        # thread. A single shared connection isn't an option — SQLite connections may only be
+        # used from the thread that created them.
+        self._local = threading.local()
         self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
-        connection = sqlite3.connect(self.path, timeout=5)
-        connection.execute("PRAGMA journal_mode=WAL")
-        connection.execute("PRAGMA synchronous=NORMAL")
+        connection = getattr(self._local, "connection", None)
+        if connection is None:
+            connection = sqlite3.connect(self.path, timeout=5)
+            connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA synchronous=NORMAL")
+            self._local.connection = connection
         return connection
 
     def _initialize(self) -> None:
