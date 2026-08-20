@@ -1,9 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { Button } from "@heroui/react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { API } from "@/shared/api/client.js";
 import { thumb, hiResThumb } from "@/shared/api/thumbnails.js";
 import { RetryingImage } from "@/shared/ui/retrying-image.jsx";
+import { AmbientBackdrop } from "@/shared/ui/ambient-backdrop.jsx";
 import { useAnimations, useTrackNumbers } from "@/features/settings/display-context.jsx";
 import { useLang } from "@/shared/i18n/context.jsx";
 import { useAccentColor } from "@/features/music/hooks/use-accent-color.js";
@@ -33,11 +35,14 @@ import {
   MusicNote,
   Pause,
   Play,
+  Queue,
   Shuffle,
   Sort,
   SortDown,
   SortUp,
+  Tag,
   Trash,
+  VinylRecord,
 } from "@/shared/icons/icons.jsx";
 
 function formatTotalDuration(tracks) {
@@ -54,7 +59,10 @@ function formatTotalDuration(tracks) {
 function findScrollParent(element) {
   for (let parent = element.parentElement; parent; parent = parent.parentElement) {
     const overflowY = getComputedStyle(parent).overflowY;
-    if ((overflowY === "auto" || overflowY === "scroll") && parent.scrollHeight > parent.clientHeight) {
+    if (
+      (overflowY === "auto" || overflowY === "scroll") &&
+      parent.scrollHeight > parent.clientHeight
+    ) {
       return parent;
     }
   }
@@ -206,19 +214,20 @@ export function TableRow({
           </div>
           <div className="text-t12 text-secondary mt-0.5 truncate">
             <ArtistLinks track={track} onOpenArtist={onOpenArtist} />
-            {(!track.artists || (Array.isArray(track.artists) && track.artists.length === 0)) && "—"}
+            {(!track.artists || (Array.isArray(track.artists) && track.artists.length === 0)) &&
+              "—"}
           </div>
         </div>
       </div>
       {showBpmColumn && (
-          <div className="text-t12 text-secondary text-center tabular-nums truncate">
-            {mixAnalysis?.status === "complete" ? mixAnalysis.bpm : mixAnalysis ? "…" : "—"}
-          </div>
+        <div className="text-t12 text-secondary text-center tabular-nums truncate">
+          {mixAnalysis?.status === "complete" ? mixAnalysis.bpm : mixAnalysis ? "…" : "—"}
+        </div>
       )}
       {showKeyColumn && (
-          <div className="text-t12 text-secondary text-center truncate">
-            {mixAnalysis?.status === "complete" ? mixAnalysis.camelotKey : "—"}
-          </div>
+        <div className="text-t12 text-secondary text-center truncate">
+          {mixAnalysis?.status === "complete" ? mixAnalysis.camelotKey : "—"}
+        </div>
       )}
       {/* Album */}
       {showAlbumColumn && (
@@ -280,7 +289,9 @@ export function PlaylistLayout({
   isAlbum,
   albumArtists,
   albumArtistBrowseId,
+  browseId,
   year,
+  musicbrainzDetails,
   onRefresh,
   onTrackContextMenu,
   onDownloadAll,
@@ -297,7 +308,7 @@ export function PlaylistLayout({
   onCollectionActions,
 }) {
   const { track: currentTrack, isPlaying } = usePlaybackStatus();
-  const { handlePlay } = usePlayerActions();
+  const { handlePlay, enqueue } = usePlayerActions();
   // Cached/downloading/premium id sets + the single-track download action come from
   // DownloadContext; onDownloadAll/onRemoveAll stay props since only collection/album
   // views offer a "download all" action.
@@ -319,13 +330,26 @@ export function PlaylistLayout({
     () => resolveMixCollectionId({ playlistId, isAlbum, mixCollectionId }),
     [isAlbum, mixCollectionId, playlistId]
   );
-  const mixOrigin = useMemo(
-    () =>
-      resolvedMixCollectionId
-        ? { kind: "mixCollection", mixCollectionId: resolvedMixCollectionId }
-        : null,
-    [resolvedMixCollectionId]
-  );
+  // What the player should remember this queue "came from". Mix-collection playlists/albums take
+  // priority (their origin drives mix-transition polling in player.jsx); a plain album play still
+  // records enough to show "Playing from X — track N of M" in the player and queue panel. The
+  // track id list is captured now, not read live off the queue later, so that info survives a
+  // later shuffle.
+  const playOrigin = useMemo(() => {
+    if (resolvedMixCollectionId) {
+      return { kind: "mixCollection", mixCollectionId: resolvedMixCollectionId };
+    }
+    if (isAlbum && browseId) {
+      return {
+        kind: "album",
+        title,
+        thumbnail,
+        browseId,
+        trackIds: tracks.map((track) => track.videoId).filter(Boolean),
+      };
+    }
+    return null;
+  }, [resolvedMixCollectionId, isAlbum, browseId, title, thumbnail, tracks]);
   const mixTrackOrder = useMemo(() => buildMixTrackOrder(tracks), [tracks]);
   const analysisJobRef = useRef(null);
 
@@ -380,13 +404,17 @@ export function PlaylistLayout({
 
   useEffect(() => {
     if (!resolvedMixCollectionId || !mixEnabled || loading || !mixTrackOrder.length) return;
-    const signature = mixTrackOrder.map(({ instanceId, videoId }) => `${instanceId}:${videoId}`).join("|");
+    const signature = mixTrackOrder
+      .map(({ instanceId, videoId }) => `${instanceId}:${videoId}`)
+      .join("|");
     if (analysisJobRef.current?.signature === signature) return;
     let cancelled = false;
     let timeoutId;
     const poll = async (jobId) => {
       try {
-        const response = await fetch(`${API}/playlist/${encodeURIComponent(resolvedMixCollectionId)}/mix/analysis/${jobId}`);
+        const response = await fetch(
+          `${API}/playlist/${encodeURIComponent(resolvedMixCollectionId)}/mix/analysis/${jobId}`
+        );
         if (!response.ok || cancelled) return;
         const job = await response.json();
         setMixConfig((config) => ({ ...config, trackAnalysis: job.tracks || {} }));
@@ -400,13 +428,18 @@ export function PlaylistLayout({
     const start = async () => {
       try {
         await fetch(`${API}/playlist/${encodeURIComponent(resolvedMixCollectionId)}/mix`, {
-          method: "PUT", headers: { "Content-Type": "application/json" },
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ trackOrder: mixTrackOrder }),
         });
-        const response = await fetch(`${API}/playlist/${encodeURIComponent(resolvedMixCollectionId)}/mix/analysis`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ tracks: mixTrackOrder }),
-        });
+        const response = await fetch(
+          `${API}/playlist/${encodeURIComponent(resolvedMixCollectionId)}/mix/analysis`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tracks: mixTrackOrder }),
+          }
+        );
         if (!response.ok || cancelled) return;
         const job = await response.json();
         analysisJobRef.current = { signature, jobId: job.jobId };
@@ -416,7 +449,10 @@ export function PlaylistLayout({
       }
     };
     start();
-    return () => { cancelled = true; window.clearTimeout(timeoutId); };
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timeoutId);
+    };
   }, [loading, mixEnabled, mixTrackOrder, resolvedMixCollectionId]);
 
   useEffect(() => {
@@ -457,7 +493,11 @@ export function PlaylistLayout({
     const query = trackSearch.trim().toLowerCase();
     const filtered = collectedTracks.filter((track) => {
       if (hideExplicit && track.isExplicit) return false;
-      return !query || (track.title || "").toLowerCase().includes(query) || (track.artists || "").toLowerCase().includes(query);
+      return (
+        !query ||
+        (track.title || "").toLowerCase().includes(query) ||
+        (track.artists || "").toLowerCase().includes(query)
+      );
     });
     if (!sort.key) return filtered;
 
@@ -465,7 +505,10 @@ export function PlaylistLayout({
     const valueFor = (track) => {
       const value = track[sort.key];
       return Array.isArray(value)
-        ? value.map((artist) => artist?.name || artist).filter(Boolean).join(", ")
+        ? value
+            .map((artist) => artist?.name || artist)
+            .filter(Boolean)
+            .join(", ")
         : String(value || "");
     };
     return [...filtered].sort((left, right) => {
@@ -486,13 +529,30 @@ export function PlaylistLayout({
       <div
         className="group flex min-w-0 items-center gap-1.5 overflow-hidden cursor-default select-none transition-colors"
         style={{
-          justifyContent: align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start",
+          justifyContent:
+            align === "right" ? "flex-end" : align === "center" ? "center" : "flex-start",
           color: active ? "var(--accent)" : undefined,
         }}
-        onClick={() => setSort((current) => current.key !== key ? { key, dir: "asc" } : current.dir === "asc" ? { key, dir: "desc" } : { key: null, dir: "asc" })}
+        onClick={() =>
+          setSort((current) =>
+            current.key !== key
+              ? { key, dir: "asc" }
+              : current.dir === "asc"
+                ? { key, dir: "desc" }
+                : { key: null, dir: "asc" }
+          )
+        }
       >
         <span className="flex min-w-0 items-center truncate">{label}</span>
-        {active ? sort.dir === "asc" ? <SortUp size={11} /> : <SortDown size={11} /> : <Sort size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />}
+        {active ? (
+          sort.dir === "asc" ? (
+            <SortUp size={11} />
+          ) : (
+            <SortDown size={11} />
+          )
+        ) : (
+          <Sort size={11} className="opacity-0 group-hover:opacity-100 transition-opacity" />
+        )}
       </div>
     );
     return tooltip ? <Tooltip text={tooltip}>{header}</Tooltip> : header;
@@ -545,7 +605,8 @@ export function PlaylistLayout({
   useLayoutEffect(() => {
     const inner = listInnerRef.current;
     if (!inner) return;
-    const sc = scrollEl?.isConnected && scrollEl.contains(inner) ? scrollEl : findScrollParent(inner);
+    const sc =
+      scrollEl?.isConnected && scrollEl.contains(inner) ? scrollEl : findScrollParent(inner);
     if (sc !== scrollEl) setScrollEl(sc);
     if (!sc) return;
     const top = Math.max(
@@ -571,7 +632,8 @@ export function PlaylistLayout({
     const loadWhenNearEnd = () => {
       const list = listInnerRef.current;
       if (!list || requested) return;
-      const distanceToEnd = list.getBoundingClientRect().bottom - scrollEl.getBoundingClientRect().bottom;
+      const distanceToEnd =
+        list.getBoundingClientRect().bottom - scrollEl.getBoundingClientRect().bottom;
       if (distanceToEnd > 400) return;
       requested = true;
       onLoadMore();
@@ -609,6 +671,10 @@ export function PlaylistLayout({
           position: "relative",
         }}
       >
+        {/* Blurred, crossfading cover backdrop — album pages only, playlists/history/liked keep
+            their flat background. */}
+        {isAlbum && thumbnail && <AmbientBackdrop thumbnail={thumbnail} />}
+
         {/* Keep the shared hero offset even when this top-level view has no back action. */}
         <div style={{ padding: "48px 22px 18px", display: "flex", gap: 8 }}>
           {onBack && (
@@ -643,530 +709,455 @@ export function PlaylistLayout({
             className="playlist-hero-content"
             style={{ display: "flex", gap: 26, alignItems: "flex-end", padding: "0 28px 28px" }}
           >
-          {/* Cover */}
-          <div
-            className="playlist-hero-cover"
-            style={{
-              width: 190,
-              height: 190,
-              borderRadius: "var(--r-xl)",
-              flexShrink: 0,
-              overflow: "hidden",
-              background: "var(--bg-elevated)",
-              boxShadow: `0 18px 52px rgba(${accentColor},0.38)`,
-            }}
-          >
-            {thumbnail ? (
-              <RetryingImage
-                src={thumb(thumbnail)}
-                alt=""
-                loading="eager"
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            ) : (
-              <div
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  background: `linear-gradient(135deg, rgba(${accentColor},0.8), rgba(${accentColor},0.3))`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {isLiked ? (
-                  <Heart size={72} weight="fill" style={{ color: "rgba(255,255,255,0.9)" }} />
-                ) : typeLabel ? (
-                  <ClockCounterClockwise size={72} style={{ color: "rgba(255,255,255,0.9)" }} />
-                ) : null}
-              </div>
-            )}
-          </div>
-
-          {/* Info */}
-          <div className="playlist-hero-details" style={{ minWidth: 0, flex: 1 }}>
-            {/* Type label */}
+            {/* Cover */}
             <div
+              className="playlist-hero-cover"
               style={{
-                fontSize: "var(--t11)",
-                fontWeight: 600,
-                color: "rgba(255,255,255,0.5)",
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                marginBottom: 8,
+                width: 190,
+                height: 190,
+                borderRadius: "var(--r-xl)",
+                flexShrink: 0,
+                overflow: "hidden",
+                background: "var(--bg-elevated)",
+                boxShadow: `0 18px 52px rgba(${accentColor},0.38)`,
               }}
             >
-              {typeLabel ?? (isAlbum ? t("album") : t("playlist"))}
-            </div>
-
-            {/* Title */}
-            <div
-              className="playlist-hero-title"
-              style={{
-                fontSize: 38,
-                fontWeight: 800,
-                lineHeight: 1.1,
-                marginBottom: 14,
-                color: "#fff",
-                textShadow: "0 2px 20px rgba(0,0,0,0.55)",
-              }}
-            >
-              {title}
-            </div>
-
-            {/* Metadata row with pipe separators */}
-            <div
-              style={{
-                fontSize: "var(--t13)",
-                color: "rgba(255,255,255,0.65)",
-                marginBottom: 20,
-                display: "flex",
-                alignItems: "center",
-                gap: 0,
-                flexWrap: "wrap",
-              }}
-            >
-              {isAlbum && albumArtists && (
-                <>
-                  <span
-                    onClick={() =>
-                      albumArtistBrowseId &&
-                      onOpenArtist?.({ browseId: albumArtistBrowseId, artist: albumArtists })
-                    }
-                    style={{
-                      cursor: "default",
-                      display: "inline-flex",
-                      alignItems: "center",
-                      background: `rgba(${accentColor},0.25)`,
-                      border: `1px solid rgba(${accentColor},0.42)`,
-                      borderRadius: "var(--r-full)",
-                      padding: "3px 12px",
-                      fontSize: "var(--t13)",
-                      fontWeight: 600,
-                      color: "var(--accent)",
-                      transition: "background 0.15s, border-color 0.15s",
-                      marginRight: 10,
-                    }}
-                    onMouseEnter={(e) => {
-                      if (albumArtistBrowseId) {
-                        e.currentTarget.style.background = `rgba(${accentColor},0.38)`;
-                        e.currentTarget.style.borderColor = `rgba(${accentColor},0.65)`;
-                      }
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.background = `rgba(${accentColor},0.25)`;
-                      e.currentTarget.style.borderColor = `rgba(${accentColor},0.42)`;
-                    }}
-                  >
-                    {albumArtists}
-                  </span>
-                  <span
-                    style={{
-                      color: "rgba(255,255,255,0.2)",
-                      margin: "0 10px",
-                      fontSize: "var(--t14)",
-                    }}
-                  >
-                    |
-                  </span>
-                </>
-              )}
-              {isAlbum && year && (
-                <>
-                  <span>{year}</span>
-                  <span
-                    style={{
-                      color: "rgba(255,255,255,0.2)",
-                      margin: "0 10px",
-                      fontSize: "var(--t14)",
-                    }}
-                  >
-                    |
-                  </span>
-                </>
-              )}
-              <span>
-                {total || tracks.length} {t("songs")}
-              </span>
-              {totalDuration && (
-                <>
-                  <span
-                    style={{
-                      color: "rgba(255,255,255,0.2)",
-                      margin: "0 10px",
-                      fontSize: "var(--t14)",
-                    }}
-                  >
-                    |
-                  </span>
-                  <span>{totalDuration}</span>
-                </>
-              )}
-            </div>
-
-            {/* Action buttons — play left, secondary right */}
-            <div
-              className="playlist-action-controls"
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              {/* Left: play + shuffle */}
-              <div
-                className="playlist-primary-actions"
-                style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}
-              >
-                <button
-                  className="playlist-play-action"
-                  onClick={() => tracks.length && handlePlay(tracks[0], tracks, mixOrigin)}
-                  style={{
-                    background: `rgba(${accentColor},0.18)`,
-                    border: `1px solid rgba(${accentColor},0.38)`,
-                    borderRadius: "var(--r-full)",
-                    height: 50,
-                    padding: "0 28px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 10,
-                    cursor: "default",
-                    transition: "background 0.18s, border-color 0.18s, transform 0.15s",
-                    fontSize: "var(--t15)",
-                    fontWeight: 700,
-                    color: "var(--accent)",
-                    fontFamily: "var(--font)",
-                    backdropFilter: "blur(6px)",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = `rgba(${accentColor},0.3)`;
-                    e.currentTarget.style.borderColor = `rgba(${accentColor},0.6)`;
-                    e.currentTarget.style.transform = "scale(1.03)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = `rgba(${accentColor},0.18)`;
-                    e.currentTarget.style.borderColor = `rgba(${accentColor},0.38)`;
-                    e.currentTarget.style.transform = "scale(1)";
-                  }}
-                >
-                  <Play size={14} weight="fill" style={{ color: "var(--accent)" }} />
-                  {t("playAll")}
-                </button>
-                {/* Shuffle: start the collection in a shuffled order without touching the player-bar shuffle toggle */}
-                <button
-                  className="playlist-shuffle-action"
-                  title={t("shuffle")}
-                  onClick={() => {
-                    if (!tracks.length) return;
-                    const sh = [...tracks].sort(() => Math.random() - 0.5);
-                    handlePlay(sh[0], sh, mixOrigin);
-                  }}
-                  style={{
-                    background: "rgba(255,255,255,0.06)",
-                    border: "1px solid var(--border)",
-                    borderRadius: "var(--r-full)",
-                    height: 50,
-                    padding: "0 22px",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    gap: 9,
-                    cursor: "default",
-                    transition: "background 0.18s, transform 0.15s",
-                    fontSize: "var(--t14)",
-                    fontWeight: 600,
-                    color: "var(--text-secondary)",
-                    fontFamily: "var(--font)",
-                    whiteSpace: "nowrap",
-                    flexShrink: 0,
-                  }}
-                  onMouseEnter={(e) => {
-                    e.currentTarget.style.background = "rgba(255,255,255,0.12)";
-                    e.currentTarget.style.transform = "scale(1.03)";
-                  }}
-                  onMouseLeave={(e) => {
-                    e.currentTarget.style.background = "rgba(255,255,255,0.06)";
-                    e.currentTarget.style.transform = "scale(1)";
-                  }}
-                >
-                  <Shuffle size={15} />
-                  {t("shuffle")}
-                </button>
-              </div>
-
-              {/* Right: secondary actions */}
-              <div
-                className="playlist-secondary-actions"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "flex-end",
-                  gap: 8,
-                  flexWrap: "wrap",
-                  flexShrink: 0,
-                  // Keep secondary controls visually attached to the right edge when they wrap
-                  // below Play and Shuffle in a narrow collection header.
-                  marginLeft: "auto",
-                }}
-              >
-                {resolvedMixCollectionId && (
-                  <Tooltip text={t("mixSetup")}>
-                    <button
-                      className="playlist-mix-action"
-                      type="button"
-                      data-testid="mix-toggle"
-                      aria-pressed={mixEnabled}
-                      disabled={mixLoading}
-                      onClick={toggleMix}
-                      style={{
-                        background: mixEnabled ? "var(--accent)" : "rgba(255,255,255,0.06)",
-                        border: `1px solid ${mixEnabled ? "var(--accent)" : "var(--border)"}`,
-                        borderRadius: "var(--r-full)",
-                        color: mixEnabled ? "#fff" : "var(--text-secondary)",
-                        cursor: mixLoading ? "wait" : "default",
-                        fontFamily: "var(--font)",
-                        fontSize: "var(--t12)",
-                        fontWeight: 700,
-                        height: 42,
-                        opacity: mixLoading ? 0.65 : 1,
-                        padding: "0 13px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        gap: 6,
-                        whiteSpace: "nowrap",
-                        flexShrink: 0,
-                      }}
-                    >
-                      <MusicNote size={13} weight="fill" />
-                      {t("mix")}
-                    </button>
-                  </Tooltip>
-                )}
-                {extraActions}
-                {/* Inline search input */}
+              {thumbnail ? (
+                <RetryingImage
+                  src={thumb(hiResThumb(thumbnail, 500))}
+                  alt=""
+                  loading="eager"
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              ) : (
                 <div
                   style={{
-                    width: searchVisible ? 200 : 0,
-                    overflow: "hidden",
-                    transition: "width 0.25s cubic-bezier(0.4,0,0.2,1)",
+                    width: "100%",
+                    height: "100%",
+                    background: `linear-gradient(135deg, rgba(${accentColor},0.8), rgba(${accentColor},0.3))`,
                     display: "flex",
                     alignItems: "center",
+                    justifyContent: "center",
                   }}
                 >
-                  <input
-                    ref={searchInputRef}
-                    value={trackSearch}
-                    onChange={(e) => setTrackSearch(e.target.value)}
-                    placeholder={t("searchInPlaylist")}
-                    style={{
-                      background: "rgba(0,0,0,0.35)",
-                      border: "0.5px solid rgba(255,255,255,0.18)",
-                      borderRadius: "var(--r-full)",
-                      padding: "9px 14px",
-                      fontSize: "var(--t13)",
-                      color: "#fff",
-                      outline: "none",
-                      width: 200,
-                      flexShrink: 0,
-                      fontFamily: "var(--font)",
-                    }}
-                  />
+                  {isLiked ? (
+                    <Heart size={72} weight="fill" style={{ color: "rgba(255,255,255,0.9)" }} />
+                  ) : typeLabel ? (
+                    <ClockCounterClockwise size={72} style={{ color: "rgba(255,255,255,0.9)" }} />
+                  ) : null}
                 </div>
-                {searchVisible && trackSearch && (
-                  <span
-                    style={{
-                      fontSize: "var(--t12)",
-                      color: "rgba(255,255,255,0.5)",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {visibleTracks.length} {t("xOfY")} {tracks.length}
-                  </span>
+              )}
+            </div>
+
+            {/* Info */}
+            <div className="playlist-hero-details" style={{ minWidth: 0, flex: 1 }}>
+              {/* Type label */}
+              <div
+                style={{
+                  fontSize: "var(--t11)",
+                  fontWeight: 600,
+                  color: "rgba(255,255,255,0.5)",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.1em",
+                  marginBottom: 8,
+                }}
+              >
+                {typeLabel ?? (isAlbum ? t("album") : t("playlist"))}
+              </div>
+
+              {/* Title */}
+              <div
+                className="playlist-hero-title"
+                style={{
+                  fontSize: 38,
+                  fontWeight: 800,
+                  lineHeight: 1.1,
+                  marginBottom: 14,
+                  color: "#fff",
+                  textShadow: "0 2px 20px rgba(0,0,0,0.55)",
+                }}
+              >
+                {title}
+              </div>
+
+              {/* Metadata row with pipe separators */}
+              <div
+                style={{
+                  fontSize: "var(--t13)",
+                  color: "rgba(255,255,255,0.65)",
+                  marginBottom: 20,
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 0,
+                  flexWrap: "wrap",
+                }}
+              >
+                {isAlbum && albumArtists && (
+                  <>
+                    <span
+                      onClick={() =>
+                        albumArtistBrowseId &&
+                        onOpenArtist?.({ browseId: albumArtistBrowseId, artist: albumArtists })
+                      }
+                      style={{
+                        cursor: "default",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        background: `rgba(${accentColor},0.25)`,
+                        border: `1px solid rgba(${accentColor},0.42)`,
+                        borderRadius: "var(--r-full)",
+                        padding: "3px 12px",
+                        fontSize: "var(--t13)",
+                        fontWeight: 600,
+                        color: "var(--accent)",
+                        transition: "background 0.15s, border-color 0.15s",
+                        marginRight: 10,
+                      }}
+                      onMouseEnter={(e) => {
+                        if (albumArtistBrowseId) {
+                          e.currentTarget.style.background = `rgba(${accentColor},0.38)`;
+                          e.currentTarget.style.borderColor = `rgba(${accentColor},0.65)`;
+                        }
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = `rgba(${accentColor},0.25)`;
+                        e.currentTarget.style.borderColor = `rgba(${accentColor},0.42)`;
+                      }}
+                    >
+                      {albumArtists}
+                    </span>
+                    <span
+                      style={{
+                        color: "rgba(255,255,255,0.2)",
+                        margin: "0 10px",
+                        fontSize: "var(--t14)",
+                      }}
+                    >
+                      |
+                    </span>
+                  </>
                 )}
-                {/* Search toggle */}
-                <Tooltip text={t("searchInPlaylist")}>
+                {isAlbum && year && (
+                  <>
+                    {musicbrainzDetails?.date && musicbrainzDetails.date.length > 4 ? (
+                      <Tooltip text={musicbrainzDetails.date}>
+                        <span>{year}</span>
+                      </Tooltip>
+                    ) : (
+                      <span>{year}</span>
+                    )}
+                    <span
+                      style={{
+                        color: "rgba(255,255,255,0.2)",
+                        margin: "0 10px",
+                        fontSize: "var(--t14)",
+                      }}
+                    >
+                      |
+                    </span>
+                  </>
+                )}
+                {isAlbum && musicbrainzDetails?.labels?.length > 0 && (
+                  <>
+                    <Tooltip
+                      text={
+                        musicbrainzDetails.catalogNumbers?.length
+                          ? `${t("recordLabel")} · ${t("catalogNumber")} ${musicbrainzDetails.catalogNumbers.join(", ")}`
+                          : t("recordLabel")
+                      }
+                    >
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+                        <Tag size={12} style={{ color: "rgba(255,255,255,0.45)" }} />
+                        {musicbrainzDetails.labels.join(", ")}
+                      </span>
+                    </Tooltip>
+                    <span
+                      style={{
+                        color: "rgba(255,255,255,0.2)",
+                        margin: "0 10px",
+                        fontSize: "var(--t14)",
+                      }}
+                    >
+                      |
+                    </span>
+                  </>
+                )}
+                <span>
+                  {total || tracks.length} {t("songs")}
+                </span>
+                {totalDuration && (
+                  <>
+                    <span
+                      style={{
+                        color: "rgba(255,255,255,0.2)",
+                        margin: "0 10px",
+                        fontSize: "var(--t14)",
+                      }}
+                    >
+                      |
+                    </span>
+                    <span>{totalDuration}</span>
+                  </>
+                )}
+              </div>
+
+              {/* Action buttons — play left, secondary right */}
+              <div
+                className="playlist-action-controls"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  flexWrap: "wrap",
+                }}
+              >
+                {/* Left: play + shuffle */}
+                <div
+                  className="playlist-primary-actions"
+                  style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}
+                >
                   <button
-                    onClick={() => {
-                      setSearchVisible((v) => !v);
-                      if (searchVisible) setTrackSearch("");
-                    }}
+                    className="playlist-play-action"
+                    onClick={() => tracks.length && handlePlay(tracks[0], tracks, playOrigin)}
                     style={{
-                      background: searchVisible ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.3)",
-                      border: "0.5px solid rgba(255,255,255,0.15)",
-                      borderRadius: "50%",
-                      width: 42,
-                      height: 42,
+                      background: `rgba(${accentColor},0.18)`,
+                      border: `1px solid rgba(${accentColor},0.38)`,
+                      borderRadius: "var(--r-full)",
+                      height: 50,
+                      padding: "0 28px",
                       display: "flex",
                       alignItems: "center",
                       justifyContent: "center",
+                      gap: 10,
                       cursor: "default",
-                      transition: "background 0.15s",
-                      color: "rgba(255,255,255,0.85)",
-                      padding: 0,
-                      backdropFilter: "blur(6px)",
-                    }}
-                    onMouseEnter={(e) =>
-                      (e.currentTarget.style.background = "rgba(255,255,255,0.2)")
-                    }
-                    onMouseLeave={(e) =>
-                      (e.currentTarget.style.background = searchVisible
-                        ? "rgba(255,255,255,0.16)"
-                        : "rgba(0,0,0,0.3)")
-                    }
-                  >
-                    <MagnifyingGlass size={15} />
-                  </button>
-                </Tooltip>
-
-                {/* Download / downloaded state */}
-                {onDownloadAll &&
-                  tracks.length > 0 &&
-                  (() => {
-                    const allCached =
-                      cachedSongIds && tracks.every((tr) => cachedSongIds.has(tr.videoId));
-                    const someDownloading =
-                      downloadingIds && tracks.some((tr) => downloadingIds.has(tr.videoId));
-                    const btnBase = {
-                      borderRadius: "var(--r-full)",
-                      height: 42,
-                      display: "flex",
-                      alignItems: "center",
-                      padding: "0 18px",
-                      gap: 8,
-                      fontSize: "var(--t13)",
-                      fontWeight: 600,
-                      cursor: "default",
-                      transition: "background 0.15s, border-color 0.15s",
+                      transition: "background 0.18s, border-color 0.18s, transform 0.15s",
+                      fontSize: "var(--t15)",
+                      fontWeight: 700,
+                      color: "var(--accent)",
                       fontFamily: "var(--font)",
                       backdropFilter: "blur(6px)",
-                      border: "0.5px solid rgba(255,255,255,0.15)",
                       whiteSpace: "nowrap",
                       flexShrink: 0,
-                    };
-                    return allCached ? (
-                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                        <div
-                          style={{
-                            ...btnBase,
-                            cursor: "default",
-                            color: "var(--status-success)",
-                            background: "rgba(76,175,80,0.12)",
-                            border: "0.5px solid rgba(76,175,80,0.3)",
-                          }}
-                        >
-                          <CheckCircle size={14} weight="fill" />
-                          {t("downloaded")}
-                        </div>
-                        {onRemoveAll && (
-                          <Tooltip text={t("removeDownload")}>
-                            <button
-                              onClick={() => onRemoveAll(tracks)}
-                              style={{
-                                background: "rgba(0,0,0,0.3)",
-                                border: "0.5px solid rgba(255,255,255,0.15)",
-                                borderRadius: "50%",
-                                width: 42,
-                                height: 42,
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                cursor: "default",
-                                transition: "background 0.15s",
-                                color: "rgba(255,255,255,0.7)",
-                                padding: 0,
-                                backdropFilter: "blur(6px)",
-                              }}
-                              onMouseEnter={(e) => {
-                                e.currentTarget.style.background = "rgba(224,82,82,0.25)";
-                                e.currentTarget.style.color = "var(--status-danger)";
-                              }}
-                              onMouseLeave={(e) => {
-                                e.currentTarget.style.background = "rgba(0,0,0,0.3)";
-                                e.currentTarget.style.color = "rgba(255,255,255,0.7)";
-                              }}
-                            >
-                              <Trash size={14} />
-                            </button>
-                          </Tooltip>
-                        )}
-                      </div>
-                    ) : (
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = `rgba(${accentColor},0.3)`;
+                      e.currentTarget.style.borderColor = `rgba(${accentColor},0.6)`;
+                      e.currentTarget.style.transform = "scale(1.03)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = `rgba(${accentColor},0.18)`;
+                      e.currentTarget.style.borderColor = `rgba(${accentColor},0.38)`;
+                      e.currentTarget.style.transform = "scale(1)";
+                    }}
+                  >
+                    <Play size={14} weight="fill" style={{ color: "var(--accent)" }} />
+                    {t("playAll")}
+                  </button>
+                  {/* Shuffle: start the collection in a shuffled order without touching the player-bar shuffle toggle */}
+                  <button
+                    className="playlist-shuffle-action"
+                    title={t("shuffle")}
+                    onClick={() => {
+                      if (!tracks.length) return;
+                      const sh = [...tracks].sort(() => Math.random() - 0.5);
+                      handlePlay(sh[0], sh, playOrigin);
+                    }}
+                    style={{
+                      background: "rgba(255,255,255,0.06)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--r-full)",
+                      height: 50,
+                      padding: "0 22px",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 9,
+                      cursor: "default",
+                      transition: "background 0.18s, transform 0.15s",
+                      fontSize: "var(--t14)",
+                      fontWeight: 600,
+                      color: "var(--text-secondary)",
+                      fontFamily: "var(--font)",
+                      whiteSpace: "nowrap",
+                      flexShrink: 0,
+                    }}
+                    onMouseEnter={(e) => {
+                      e.currentTarget.style.background = "rgba(255,255,255,0.12)";
+                      e.currentTarget.style.transform = "scale(1.03)";
+                    }}
+                    onMouseLeave={(e) => {
+                      e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                      e.currentTarget.style.transform = "scale(1)";
+                    }}
+                  >
+                    <Shuffle size={15} />
+                    {t("shuffle")}
+                  </button>
+                  {isAlbum && tracks.length > 0 && (
+                    <Tooltip text={t("addAlbumToQueue")}>
                       <button
-                        onClick={() => onDownloadAll(tracks)}
-                        disabled={someDownloading}
+                        onClick={() => tracks.forEach((track) => enqueue(track, "end"))}
                         style={{
-                          ...btnBase,
-                          background: "rgba(0,0,0,0.3)",
-                          color: "rgba(255,255,255,0.85)",
-                          opacity: someDownloading ? 0.65 : 1,
-                          cursor: someDownloading ? "default" : "default",
+                          background: "rgba(255,255,255,0.06)",
+                          border: "1px solid var(--border)",
+                          borderRadius: "50%",
+                          height: 50,
+                          width: 50,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "default",
+                          transition: "background 0.18s, transform 0.15s",
+                          color: "var(--text-secondary)",
+                          flexShrink: 0,
                         }}
                         onMouseEnter={(e) => {
-                          if (!someDownloading)
-                            e.currentTarget.style.background = "rgba(255,255,255,0.14)";
+                          e.currentTarget.style.background = "rgba(255,255,255,0.12)";
+                          e.currentTarget.style.transform = "scale(1.03)";
                         }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "rgba(255,255,255,0.06)";
+                          e.currentTarget.style.transform = "scale(1)";
+                        }}
+                      >
+                        <Queue size={16} />
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
+
+                {/* Right: secondary actions */}
+                <div
+                  className="playlist-secondary-actions"
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "flex-end",
+                    gap: 8,
+                    flexWrap: "wrap",
+                    flexShrink: 0,
+                    // Keep secondary controls visually attached to the right edge when they wrap
+                    // below Play and Shuffle in a narrow collection header.
+                    marginLeft: "auto",
+                  }}
+                >
+                  {resolvedMixCollectionId && (
+                    <Tooltip text={t("mixSetup")}>
+                      <button
+                        className="playlist-mix-action"
+                        type="button"
+                        data-testid="mix-toggle"
+                        aria-pressed={mixEnabled}
+                        disabled={mixLoading}
+                        onClick={toggleMix}
+                        style={{
+                          background: mixEnabled ? "var(--accent)" : "rgba(255,255,255,0.06)",
+                          border: `1px solid ${mixEnabled ? "var(--accent)" : "var(--border)"}`,
+                          borderRadius: "var(--r-full)",
+                          color: mixEnabled ? "#fff" : "var(--text-secondary)",
+                          cursor: mixLoading ? "wait" : "default",
+                          fontFamily: "var(--font)",
+                          fontSize: "var(--t12)",
+                          fontWeight: 700,
+                          height: 42,
+                          opacity: mixLoading ? 0.65 : 1,
+                          padding: "0 13px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: 6,
+                          whiteSpace: "nowrap",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <MusicNote size={13} weight="fill" />
+                        {t("mix")}
+                      </button>
+                    </Tooltip>
+                  )}
+                  {extraActions}
+                  {isAlbum && musicbrainzDetails?.id && (
+                    <Tooltip text={t("viewOnMusicBrainz")}>
+                      <button
+                        onClick={() =>
+                          openUrl(`https://musicbrainz.org/release/${musicbrainzDetails.id}`).catch(
+                            console.error
+                          )
+                        }
+                        style={{
+                          background: "rgba(0,0,0,0.3)",
+                          border: "0.5px solid rgba(255,255,255,0.15)",
+                          borderRadius: "50%",
+                          width: 42,
+                          height: 42,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "default",
+                          transition: "background 0.15s",
+                          color: "rgba(255,255,255,0.85)",
+                          padding: 0,
+                          backdropFilter: "blur(6px)",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = "rgba(255,255,255,0.2)")
+                        }
                         onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.3)")}
                       >
-                        {someDownloading ? (
-                          <DownloadSimple
-                            size={14}
-                            style={{ animation: "pulse 1s ease-in-out infinite" }}
-                          />
-                        ) : (
-                          <DownloadSimple size={14} />
-                        )}
-                        {t("downloadAll")}
+                        <VinylRecord size={16} />
                       </button>
-                    );
-                  })()}
-
-                {/* Refresh */}
-                {cached && onRefresh && (
-                  <Tooltip text={t("refresh")}>
-                    <button
-                      onClick={onRefresh}
+                    </Tooltip>
+                  )}
+                  {/* Inline search input */}
+                  <div
+                    style={{
+                      width: searchVisible ? 200 : 0,
+                      overflow: "hidden",
+                      transition: "width 0.25s cubic-bezier(0.4,0,0.2,1)",
+                      display: "flex",
+                      alignItems: "center",
+                    }}
+                  >
+                    <input
+                      ref={searchInputRef}
+                      value={trackSearch}
+                      onChange={(e) => setTrackSearch(e.target.value)}
+                      placeholder={t("searchInPlaylist")}
                       style={{
-                        background: "rgba(0,0,0,0.3)",
-                        border: "0.5px solid rgba(255,255,255,0.15)",
-                        borderRadius: "50%",
-                        width: 42,
-                        height: 42,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "default",
-                        transition: "background 0.15s, transform 0.15s",
-                        color: "rgba(255,255,255,0.85)",
-                        padding: 0,
-                        backdropFilter: "blur(6px)",
+                        background: "rgba(0,0,0,0.35)",
+                        border: "0.5px solid rgba(255,255,255,0.18)",
+                        borderRadius: "var(--r-full)",
+                        padding: "9px 14px",
+                        fontSize: "var(--t13)",
+                        color: "#fff",
+                        outline: "none",
+                        width: 200,
+                        flexShrink: 0,
+                        fontFamily: "var(--font)",
                       }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background = "rgba(255,255,255,0.14)";
-                        e.currentTarget.style.transform = "rotate(30deg)";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "rgba(0,0,0,0.3)";
-                        e.currentTarget.style.transform = "rotate(0deg)";
+                    />
+                  </div>
+                  {searchVisible && trackSearch && (
+                    <span
+                      style={{
+                        fontSize: "var(--t12)",
+                        color: "rgba(255,255,255,0.5)",
+                        whiteSpace: "nowrap",
                       }}
                     >
-                      <ArrowClockwise size={14} />
-                    </button>
-                  </Tooltip>
-                )}
-                {onCollectionActions && (
-                  <Tooltip text={t("moreActions")}>
+                      {visibleTracks.length} {t("xOfY")} {tracks.length}
+                    </span>
+                  )}
+                  {/* Search toggle */}
+                  <Tooltip text={t("searchInPlaylist")}>
                     <button
-                      type="button"
-                      aria-label={t("moreActions")}
-                      onClick={onCollectionActions}
+                      onClick={() => {
+                        setSearchVisible((v) => !v);
+                        if (searchVisible) setTrackSearch("");
+                      }}
                       style={{
-                        background: "rgba(0,0,0,0.3)",
+                        background: searchVisible ? "rgba(255,255,255,0.16)" : "rgba(0,0,0,0.3)",
                         border: "0.5px solid rgba(255,255,255,0.15)",
                         borderRadius: "50%",
                         width: 42,
@@ -1181,19 +1172,188 @@ export function PlaylistLayout({
                         backdropFilter: "blur(6px)",
                       }}
                       onMouseEnter={(e) =>
-                        (e.currentTarget.style.background = "rgba(255,255,255,0.14)")
+                        (e.currentTarget.style.background = "rgba(255,255,255,0.2)")
                       }
                       onMouseLeave={(e) =>
-                        (e.currentTarget.style.background = "rgba(0,0,0,0.3)")
+                        (e.currentTarget.style.background = searchVisible
+                          ? "rgba(255,255,255,0.16)"
+                          : "rgba(0,0,0,0.3)")
                       }
                     >
-                      <DotsThreeVertical size={16} />
+                      <MagnifyingGlass size={15} />
                     </button>
                   </Tooltip>
-                )}
+
+                  {/* Download / downloaded state */}
+                  {onDownloadAll &&
+                    tracks.length > 0 &&
+                    (() => {
+                      const allCached =
+                        cachedSongIds && tracks.every((tr) => cachedSongIds.has(tr.videoId));
+                      const someDownloading =
+                        downloadingIds && tracks.some((tr) => downloadingIds.has(tr.videoId));
+                      const btnBase = {
+                        borderRadius: "var(--r-full)",
+                        height: 42,
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "0 18px",
+                        gap: 8,
+                        fontSize: "var(--t13)",
+                        fontWeight: 600,
+                        cursor: "default",
+                        transition: "background 0.15s, border-color 0.15s",
+                        fontFamily: "var(--font)",
+                        backdropFilter: "blur(6px)",
+                        border: "0.5px solid rgba(255,255,255,0.15)",
+                        whiteSpace: "nowrap",
+                        flexShrink: 0,
+                      };
+                      return allCached ? (
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div
+                            style={{
+                              ...btnBase,
+                              cursor: "default",
+                              color: "var(--status-success)",
+                              background: "rgba(76,175,80,0.12)",
+                              border: "0.5px solid rgba(76,175,80,0.3)",
+                            }}
+                          >
+                            <CheckCircle size={14} weight="fill" />
+                            {t("downloaded")}
+                          </div>
+                          {onRemoveAll && (
+                            <Tooltip text={t("removeDownload")}>
+                              <button
+                                onClick={() => onRemoveAll(tracks)}
+                                style={{
+                                  background: "rgba(0,0,0,0.3)",
+                                  border: "0.5px solid rgba(255,255,255,0.15)",
+                                  borderRadius: "50%",
+                                  width: 42,
+                                  height: 42,
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "center",
+                                  cursor: "default",
+                                  transition: "background 0.15s",
+                                  color: "rgba(255,255,255,0.7)",
+                                  padding: 0,
+                                  backdropFilter: "blur(6px)",
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "rgba(224,82,82,0.25)";
+                                  e.currentTarget.style.color = "var(--status-danger)";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "rgba(0,0,0,0.3)";
+                                  e.currentTarget.style.color = "rgba(255,255,255,0.7)";
+                                }}
+                              >
+                                <Trash size={14} />
+                              </button>
+                            </Tooltip>
+                          )}
+                        </div>
+                      ) : (
+                        <button
+                          onClick={() => onDownloadAll(tracks)}
+                          disabled={someDownloading}
+                          style={{
+                            ...btnBase,
+                            background: "rgba(0,0,0,0.3)",
+                            color: "rgba(255,255,255,0.85)",
+                            opacity: someDownloading ? 0.65 : 1,
+                            cursor: someDownloading ? "default" : "default",
+                          }}
+                          onMouseEnter={(e) => {
+                            if (!someDownloading)
+                              e.currentTarget.style.background = "rgba(255,255,255,0.14)";
+                          }}
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = "rgba(0,0,0,0.3)")
+                          }
+                        >
+                          {someDownloading ? (
+                            <DownloadSimple
+                              size={14}
+                              style={{ animation: "pulse 1s ease-in-out infinite" }}
+                            />
+                          ) : (
+                            <DownloadSimple size={14} />
+                          )}
+                          {t("downloadAll")}
+                        </button>
+                      );
+                    })()}
+
+                  {/* Refresh */}
+                  {cached && onRefresh && (
+                    <Tooltip text={t("refresh")}>
+                      <button
+                        onClick={onRefresh}
+                        style={{
+                          background: "rgba(0,0,0,0.3)",
+                          border: "0.5px solid rgba(255,255,255,0.15)",
+                          borderRadius: "50%",
+                          width: 42,
+                          height: 42,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "default",
+                          transition: "background 0.15s, transform 0.15s",
+                          color: "rgba(255,255,255,0.85)",
+                          padding: 0,
+                          backdropFilter: "blur(6px)",
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = "rgba(255,255,255,0.14)";
+                          e.currentTarget.style.transform = "rotate(30deg)";
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = "rgba(0,0,0,0.3)";
+                          e.currentTarget.style.transform = "rotate(0deg)";
+                        }}
+                      >
+                        <ArrowClockwise size={14} />
+                      </button>
+                    </Tooltip>
+                  )}
+                  {onCollectionActions && (
+                    <Tooltip text={t("moreActions")}>
+                      <button
+                        type="button"
+                        aria-label={t("moreActions")}
+                        onClick={onCollectionActions}
+                        style={{
+                          background: "rgba(0,0,0,0.3)",
+                          border: "0.5px solid rgba(255,255,255,0.15)",
+                          borderRadius: "50%",
+                          width: 42,
+                          height: 42,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "default",
+                          transition: "background 0.15s",
+                          color: "rgba(255,255,255,0.85)",
+                          padding: 0,
+                          backdropFilter: "blur(6px)",
+                        }}
+                        onMouseEnter={(e) =>
+                          (e.currentTarget.style.background = "rgba(255,255,255,0.14)")
+                        }
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(0,0,0,0.3)")}
+                      >
+                        <DotsThreeVertical size={16} />
+                      </button>
+                    </Tooltip>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
           </div>
         </div>
       </div>
@@ -1286,12 +1446,8 @@ export function PlaylistLayout({
           })()}
         <div style={{ textAlign: "center" }}>{showNum ? "#" : ""}</div>
         {sortableHead("title", t("colTitle"))}
-        {showBpmColumn && (
-            <div style={{ textAlign: "center" }}>{t("colBpm")}</div>
-        )}
-        {showKeyColumn && (
-            <div style={{ textAlign: "center" }}>{t("colKey")}</div>
-        )}
+        {showBpmColumn && <div style={{ textAlign: "center" }}>{t("colBpm")}</div>}
+        {showKeyColumn && <div style={{ textAlign: "center" }}>{t("colKey")}</div>}
         {showAlbumColumn && sortableHead("album", t("colAlbum"))}
         <div></div>
         {sortableHead("duration", <Clock size={13} />, "right", t("colDuration"))}
@@ -1324,7 +1480,7 @@ export function PlaylistLayout({
                     track={tr}
                     index={i}
                     isPlaying={isPlaying && currentTrack?.videoId === tr.videoId}
-                    onPlay={() => handlePlay(tr, visibleTracks, mixOrigin)}
+                    onPlay={() => handlePlay(tr, visibleTracks, playOrigin)}
                     onOpenArtist={onOpenArtist}
                     onOpenAlbum={onOpenAlbum}
                     showAlbumColumn={showAlbumColumn}
@@ -1335,7 +1491,11 @@ export function PlaylistLayout({
                     onDownload={onDownloadSong}
                     selected={selectedTracks?.has(tr.videoId)}
                     onToggleSelect={onToggleSelect ? () => onToggleSelect(tr) : undefined}
-                    mixAnalysis={mixConfig?.trackAnalysis?.[mixTrackOrder.find((item) => item.videoId === tr.videoId)?.instanceId]}
+                    mixAnalysis={
+                      mixConfig?.trackAnalysis?.[
+                        mixTrackOrder.find((item) => item.videoId === tr.videoId)?.instanceId
+                      ]
+                    }
                     showBpmColumn={showBpmColumn}
                     showKeyColumn={showKeyColumn}
                   />

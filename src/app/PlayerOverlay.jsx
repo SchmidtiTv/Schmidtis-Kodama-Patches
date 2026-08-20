@@ -15,6 +15,7 @@ export const PlayerOverlay = memo(function PlayerOverlay({
   queueResizing,
   animations,
   currentTrack,
+  playbackOrigin,
   ambientBackground,
   splitView,
   splitRatio,
@@ -215,6 +216,7 @@ export const PlayerOverlay = memo(function PlayerOverlay({
                   narrow={coverSplitActive}
                   isActive={overlayOpen && coverVisible}
                   ambientBackground={ambientBackground}
+                  playbackOrigin={playbackOrigin}
                 />
               </div>
               <div

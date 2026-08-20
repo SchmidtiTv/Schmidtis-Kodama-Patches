@@ -17,6 +17,25 @@ function dedupeTracks(tracks) {
   });
 }
 
+// A queue can originate from many surfaces. Each kind is narrowed to an explicit shape so a
+// caller can't accidentally poison playbackOrigin with unrelated fields; anything else collapses
+// to null rather than being inferred from track ids.
+function normalizePlaybackOrigin(origin) {
+  if (origin?.kind === "mixCollection" && origin.mixCollectionId) {
+    return { kind: "mixCollection", mixCollectionId: origin.mixCollectionId };
+  }
+  if (origin?.kind === "album" && origin.browseId && origin.trackIds?.length) {
+    return {
+      kind: "album",
+      title: origin.title || "",
+      thumbnail: origin.thumbnail || "",
+      browseId: origin.browseId,
+      trackIds: origin.trackIds,
+    };
+  }
+  return null;
+}
+
 // Lyrics-session reset (clearing forced/current/failed providers on a new track) is injected as a
 // ref rather than as setters, because App's lyrics-session state is declared *after* this hook is
 // called — passing the setters directly would hit a temporal-dead-zone error in the dep arrays.
@@ -152,11 +171,7 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
       current?.videoId && current.videoId === track?.videoId ? { ...track } : track
     );
     resetLyricsSessionRef.current?.();
-    setPlaybackOrigin(
-      origin?.kind === "mixCollection" && origin.mixCollectionId
-        ? { kind: "mixCollection", mixCollectionId: origin.mixCollectionId }
-        : null
-    );
+    setPlaybackOrigin(normalizePlaybackOrigin(origin));
     if (trackList) {
       setQueue(dedupeTracks(trackList));
     }

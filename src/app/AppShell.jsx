@@ -153,7 +153,7 @@ export const AppShell = memo(function AppShell({
   const { anonStats, handleAnonStatsChange, hideUserHandle, setHideUserHandle } = privacySettings;
   const { autoCoverRef, flashbangTriggerRef, resetLyricsSessionRef } = bridges;
 
-  const { track: currentTrack, isPlaying, audioRef } = usePlaybackStatus();
+  const { track: currentTrack, isPlaying, audioRef, playbackOrigin } = usePlaybackStatus();
   const { queueRef } = useQueueState();
   const { setTrack: setCurrentTrack, setIsPlaying } = usePlayerActions();
 
@@ -1017,6 +1017,7 @@ export const AppShell = memo(function AppShell({
           queueResizing={queueResizing}
           animations={animations}
           currentTrack={currentTrack}
+          playbackOrigin={playbackOrigin}
           ambientBackground={ambientBackground}
           splitView={splitView}
           splitRatio={splitRatio}

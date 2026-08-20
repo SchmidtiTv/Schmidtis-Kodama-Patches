@@ -5,6 +5,7 @@ import { RetryingImage } from "@/shared/ui/retrying-image.jsx";
 import { ExplicitBadge } from "@/features/music/components/rows.jsx";
 import { acquireAudioAnalysis, audioLevels } from "@/features/player/audio-levels.js";
 import { hiResThumb } from "./cover-art.js";
+import { useLang } from "@/shared/i18n/context.jsx";
 
 export const VIZ_DEFAULTS = {
   shape: "frame", // "frame" | "ring" | "linear"
@@ -63,7 +64,11 @@ export function CoverView({
   narrow = false,
   isActive = true,
   ambientBackground = false,
+  playbackOrigin = null,
 }) {
+  const t = useLang();
+  const albumOrigin = playbackOrigin?.kind === "album" ? playbackOrigin : null;
+  const albumTrackNumber = albumOrigin ? albumOrigin.trackIds.indexOf(track.videoId) + 1 : 0;
   const hq = hiResThumb(track.thumbnail);
   const specRef = useRef(null);
   const coverRef = useRef(null);
@@ -583,6 +588,19 @@ export function CoverView({
           >
             {track.artists}
           </div>
+          {albumOrigin && albumTrackNumber > 0 && (
+            <div
+              style={{
+                fontSize: compact ? 11 : "var(--t12)",
+                color: "rgba(255,255,255,0.4)",
+                marginTop: 4,
+                overflowWrap: "anywhere",
+              }}
+            >
+              {albumOrigin.title} ·{" "}
+              {t("trackOfTotal", { n: albumTrackNumber, total: albumOrigin.trackIds.length })}
+            </div>
+          )}
         </div>
       </div>
     </div>
