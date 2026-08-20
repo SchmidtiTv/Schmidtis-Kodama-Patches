@@ -35,10 +35,13 @@ class LastFM:
         payload["format"] = "json"
 
         try:
+            # A track-transition (now-playing/scrobble) request handler waits on this call, so
+            # keep the worst-case stall well under the 15s a slow/unresponsive Last.fm used to
+            # allow — the surrounding routes still surface the ok/error result to the caller.
             if http == "POST":
-                response = requests.post(config_lastfm.API_ROOT, data=payload, timeout=15)
+                response = requests.post(config_lastfm.API_ROOT, data=payload, timeout=8)
             else:
-                response = requests.get(config_lastfm.API_ROOT, params=payload, timeout=15)
+                response = requests.get(config_lastfm.API_ROOT, params=payload, timeout=8)
             data: dict[str, object] = cast(dict[str, object], response.json()) if response.content else {}
             if isinstance(data, dict) and data.get("error"):
                 return False, data
