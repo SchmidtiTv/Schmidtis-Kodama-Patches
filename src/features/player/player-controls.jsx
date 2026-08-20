@@ -48,6 +48,7 @@ import { translate } from "@/shared/i18n/i18n.js";
 import { Tooltip } from "@/shared/ui/tooltip.jsx";
 import { ArtistLinks, ExplicitBadge } from "@/features/music/components/rows.jsx";
 import { hiResThumb } from "./cover-art.js";
+import { useAccentColor } from "@/features/music/hooks/use-accent-color.js";
 import { PlayerActionsMenu } from "./player-actions-menu.jsx";
 
 export function PlayerControls(props) {
@@ -125,6 +126,9 @@ export function PlayerControls(props) {
   const trackPresentationRef = useRef(null);
   const artworkRef = useRef(null);
   const trackDetailsRef = useRef(null);
+  // Same accent-extraction hook the album hero uses, so the mini-player art picks up a matching
+  // tinted shadow instead of a flat one.
+  const accentColor = useAccentColor(track?.thumbnail);
   const trackId = track?.videoId;
 
   useLayoutEffect(() => {
@@ -260,6 +264,7 @@ export function PlayerControls(props) {
                 flexShrink: 0,
                 overflow: "hidden",
                 background: "var(--bg-elevated)",
+                boxShadow: track?.thumbnail ? `0 6px 20px rgba(${accentColor},0.35)` : "none",
               }}
             >
               {track?.thumbnail ? (
