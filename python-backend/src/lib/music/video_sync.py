@@ -17,6 +17,7 @@ from src.config import config_dirs, config_ytdlp
 from src.lib.integrations.ffmpeg import FFmpeg
 from src.lib.integrations.ytdlp import YTDLP, is_hard_error, is_unavailable
 from src.lib.music.youtube_music import YoutubeMusicSession
+from src.lib.runtime.keyed_lock import KeyedLock
 
 
 class VideoSyncService:
@@ -40,7 +41,9 @@ class VideoSyncService:
         self._cache_dir.mkdir(parents=True, exist_ok=True)
         self._logger = logger or logging.getLogger(__name__)
         self._path_lock = threading.Lock()
-        self._offset_lock = threading.Lock()
+        # Keyed per video_id: resolving one video's offset (two clip downloads + cross-
+        # correlation) must not block resolving a different video's offset at the same time.
+        self._offset_lock = KeyedLock()
 
     def _cache_path(self, video_id: str) -> Path:
         key = hashlib.md5(video_id.encode(), usedforsecurity=False).hexdigest()
@@ -153,7 +156,7 @@ class VideoSyncService:
     def resolve_offset(self, video_id: str) -> dict[str, object]:
         """Resolve the linked official video and calculate its audio offset."""
         cache_path = self._cache_path(video_id)
-        with self._offset_lock:
+        with self._offset_lock.acquire(video_id):
             if cache_path.exists():
                 try:
                     return cast(dict[str, object], json.loads(cache_path.read_text(encoding="utf-8")))
