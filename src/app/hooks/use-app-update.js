@@ -1,37 +1,7 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 import { translate } from "@/shared/i18n/i18n.js";
 import { native } from "@/shared/api/tauri.js";
-
-const LEGACY_UPDATE_MANIFEST_URL =
-  "https://raw.githubusercontent.com/KiyoshiTheDevil/Kodama/master/updates/latest.json";
-const UPDATE_MANIFEST_URL = __UPDATE_MANIFEST_URL__;
-
-function stableJson(value) {
-  if (Array.isArray(value)) return value.map(stableJson);
-  if (value && typeof value === "object") {
-    return Object.fromEntries(
-      Object.keys(value)
-        .sort()
-        .map((key) => [key, stableJson(value[key])])
-    );
-  }
-  return value;
-}
-
-async function manifestsMatch() {
-  const [legacyResponse, currentResponse] = await Promise.all([
-    fetch(LEGACY_UPDATE_MANIFEST_URL, { cache: "no-store" }),
-    fetch(UPDATE_MANIFEST_URL, { cache: "no-store" }),
-  ]);
-  if (!legacyResponse.ok || !currentResponse.ok) return true;
-
-  const [legacyManifest, currentManifest] = await Promise.all([
-    legacyResponse.json(),
-    currentResponse.json(),
-  ]);
-  return JSON.stringify(stableJson(legacyManifest)) === JSON.stringify(stableJson(currentManifest));
-}
 
 /**
  * Tauri plugin-updater lifecycle: silent startup check, manual re-check with
@@ -46,21 +16,12 @@ export function useAppUpdate({ addToast, getInitialLang }) {
   const [updateDownloading, setUpdateDownloading] = useState(false);
   const [updateDownloadProgress, setUpdateDownloadProgress] = useState(null);
   const [updateDownloaded, setUpdateDownloaded] = useState(false);
-  const manifestMismatchShownRef = useRef(false);
 
   // showFeedback=true: show toasts on "up to date" and on error (manual check)
   // showFeedback=false (default): silent — only sets updateInfo if update is found (startup)
   const checkForUpdates = useCallback(
     async (showFeedback = false) => {
       const lang = localStorage.getItem("kiyoshi-lang") || "de";
-      manifestsMatch()
-        .then((matches) => {
-          if (!matches && !manifestMismatchShownRef.current) {
-            manifestMismatchShownRef.current = true;
-            addToast(translate(lang, "updateManifestMismatch"), "info");
-          }
-        })
-        .catch(() => {});
       try {
         const { check } = await import("@tauri-apps/plugin-updater");
         const update = await check();

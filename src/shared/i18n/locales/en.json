@@ -862,7 +862,6 @@
   "trayShow": "Show Kodama",
   "trayQuit": "Quit",
   "updateCheckFailed": "Update check failed.",
-  "updateManifestMismatch": "The legacy and current update sources do not match.",
   "updateInstallFailed": "Update installation failed",
   "artists": "Artists",
   "select": "Select",

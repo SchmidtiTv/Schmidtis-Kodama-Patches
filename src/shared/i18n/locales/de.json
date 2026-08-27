@@ -833,7 +833,6 @@
   "trayShow": "Kodama anzeigen",
   "trayQuit": "Beenden",
   "updateCheckFailed": "Update-Prüfung fehlgeschlagen.",
-  "updateManifestMismatch": "Die bisherigen und aktuellen Update-Quellen stimmen nicht überein.",
   "updateInstallFailed": "Update-Installation fehlgeschlagen",
   "artists": "Künstler",
   "select": "Auswählen",

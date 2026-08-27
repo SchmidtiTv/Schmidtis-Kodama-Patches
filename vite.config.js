@@ -11,7 +11,6 @@ const tauriConfig = JSON.parse(
   readFileSync(new URL("./src-tauri/tauri.conf.json", import.meta.url), "utf-8")
 );
 const appVersion = tauriConfig.version;
-const updateManifestUrl = tauriConfig.plugins.updater.endpoints[0];
 const e2eNetworkGuard =
   process.env.VITE_E2E === "true" || process.env.VITE_E2E_NETWORK_GUARD === "true";
 const e2eBrowserMode = process.env.VITE_E2E_BROWSER === "true";
@@ -58,7 +57,6 @@ export default defineConfig({
   },
   define: {
     __APP_VERSION__: JSON.stringify(appVersion),
-    __UPDATE_MANIFEST_URL__: JSON.stringify(updateManifestUrl),
   },
   clearScreen: false,
   server: {
