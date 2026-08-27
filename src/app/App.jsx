@@ -27,6 +27,8 @@ import {
   CODE_DISPLAY_FALLBACK,
 } from "@/shared/lib/shortcuts.js";
 import { IS_MAC } from "@/shared/lib/platform.js";
+import { applyFontScale } from "@/shared/lib/font-scale.js";
+import { I18nProvider } from "@react-aria/i18n";
 import { useNetworkStatus } from "./hooks/use-network-status.js";
 import { useObsOverlay } from "@/features/overlay/hooks/use-obs-overlay.js";
 import { useRemoteControl } from "@/features/remote/hooks/use-remote-control.js";
@@ -61,8 +63,6 @@ import {
   loadPlayerBarControls,
   togglePlayerBarControl,
 } from "@/features/player/player-bar-preferences.js";
-
-const CSS_FONT_SIZES = [10, 11, 12, 13, 14, 15, 16, 18, 20, 22];
 
 const ZOOM_STEPS = [0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5];
 const FONT_STEPS = [0.85, 0.93, 1.0, 1.1, 1.2, 1.35, 1.5];
@@ -155,6 +155,16 @@ export default function App() {
     if (hc) document.documentElement.setAttribute("data-highcontrast", "true");
     return hc;
   });
+  const [rtlLayout, setRtlLayout] = useState(() => {
+    const enabled = localStorage.getItem("kiyoshi-rtl-layout") === "true";
+    document.documentElement.dir = enabled ? "rtl" : "ltr";
+    return enabled;
+  });
+  const handleRtlLayoutChange = useCallback((enabled) => {
+    setRtlLayout(enabled);
+    localStorage.setItem("kiyoshi-rtl-layout", String(enabled));
+    document.documentElement.dir = enabled ? "rtl" : "ltr";
+  }, []);
   const [appFont, setAppFont] = useState(() => {
     const saved = localStorage.getItem("kiyoshi-app-font") || "default";
     if (saved === "dyslexic")
@@ -602,9 +612,7 @@ export default function App() {
   );
 
   useLayoutEffect(() => {
-    CSS_FONT_SIZES.forEach((s) => {
-      document.documentElement.style.setProperty(`--t${s}`, `${Math.round(s * appFontScale)}px`);
-    });
+    applyFontScale(appFontScale);
   }, [appFontScale]);
 
   const [lyricsProviders, setLyricsProviders] = useState(() => {
@@ -649,9 +657,7 @@ export default function App() {
   const [appIcon, setAppIcon] = useState(
     () => localStorage.getItem("kodama-app-icon") || APP_ICON_DEFAULT
   );
-  const [appIconCustomizationAvailable, setAppIconCustomizationAvailable] = useState(
-    () => !IS_MAC
-  );
+  const [appIconCustomizationAvailable, setAppIconCustomizationAvailable] = useState(() => !IS_MAC);
   useEffect(() => {
     let active = true;
     native
@@ -666,14 +672,17 @@ export default function App() {
       active = false;
     };
   }, []);
-  const applyAppIcon = useCallback(async (file) => {
-    if (!appIconCustomizationAvailable) return;
-    try {
-      await native.setAppIcon(file);
-    } catch (e) {
-      console.error("[AppIcon] set failed:", e);
-    }
-  }, [appIconCustomizationAvailable]);
+  const applyAppIcon = useCallback(
+    async (file) => {
+      if (!appIconCustomizationAvailable) return;
+      try {
+        await native.setAppIcon(file);
+      } catch (e) {
+        console.error("[AppIcon] set failed:", e);
+      }
+    },
+    [appIconCustomizationAvailable]
+  );
   const handleAppIconChange = useCallback(
     (file) => {
       if (!appIconCustomizationAvailable) return;
@@ -793,6 +802,8 @@ export default function App() {
         document.documentElement.setAttribute("data-highcontrast", String(next));
         localStorage.setItem("kiyoshi-high-contrast", String(next));
       },
+      rtlLayout,
+      onToggleRtlLayout: () => handleRtlLayoutChange(!rtlLayout),
       appFont,
       onAppFontChange: handleAppFontChange,
       appFontScale,
@@ -852,6 +863,8 @@ export default function App() {
       handleThemeChange,
       animations,
       highContrast,
+      rtlLayout,
+      handleRtlLayoutChange,
       appFont,
       handleAppFontChange,
       appFontScale,
@@ -1080,223 +1093,302 @@ export default function App() {
     ]
   );
 
-  const appShellNav = useMemo(() => ({
-    view,
-    setView,
-    appKey,
-    viewRefreshKey,
-    setViewRefreshKey,
-    collection,
-    setCollection,
-    artistView,
-    searchQuery,
-    handleSearch,
-    removeRecentPlaylist,
-    openPlaylist,
-    openAlbum,
-    openArtist,
-    navigateTo,
-    goBack,
-    pinnedIds,
-    togglePin,
-  }), [
-    view, setView, appKey, viewRefreshKey, setViewRefreshKey, collection, setCollection,
-    artistView, searchQuery, handleSearch,
-    removeRecentPlaylist, openPlaylist, openAlbum, openArtist, navigateTo, goBack,
-    pinnedIds, togglePin,
-  ]);
-  const appShellUi = useMemo(() => ({
-    overlayOpen,
-    setOverlayOpen,
-    queueOpen,
-    setQueueOpen,
-    showLyrics,
-    setShowLyrics,
-    uiZoom,
-    setUiZoom,
-    videoSync,
-    showVideoView,
-    setShowVideoView,
-    videoLyricsStyle,
-  }), [
-    overlayOpen, queueOpen, showLyrics, uiZoom, setUiZoom, videoSync, showVideoView,
-    setShowVideoView, videoLyricsStyle,
-  ]);
-  const appShellShortcuts = useMemo(() => ({
-    customShortcutsRef,
-    recordingShortcutRef,
-    shortcutsEnabled,
-    searchShortcutParts: shortcutsEnabled ? getShortcutParts(customShortcuts.openSearch) : [],
-    assignShortcut,
-    setShortcutLabels,
-    setRecordingShortcut,
-  }), [
-    shortcutsEnabled, customShortcuts, getShortcutParts, assignShortcut,
-    setShortcutLabels, setRecordingShortcut,
-  ]);
-  const appShellAppearancePrefs = useMemo(() => ({
-    animations,
-    appIconCustomizationAvailable,
-    hideExplicit,
-    ambientBackground,
-    ambientVisualizer,
-    vizConfig,
-    instrumentalViz,
-  }), [
-    animations, appIconCustomizationAvailable, hideExplicit, ambientBackground,
-    ambientVisualizer, vizConfig, instrumentalViz,
-  ]);
-  const appShellLyricsPrefs = useMemo(() => ({
-    lyricsFontSize,
-    lyricsProviders,
-    showLyricsTranslation,
-    setShowLyricsTranslation,
-    lyricsTranslationLang,
-    setLyricsTranslationLang,
-    lyricsTranslationFontSize,
-    showRomaji,
-    lyricsRomajiFontSize,
-    showAgentTags,
-    syllableZoom,
-    fluidLyrics,
-  }), [
-    lyricsFontSize, lyricsProviders, showLyricsTranslation, lyricsTranslationLang,
-    lyricsTranslationFontSize, showRomaji, lyricsRomajiFontSize, showAgentTags,
-    syllableZoom, fluidLyrics,
-  ]);
-  const appShellAuthGate = useMemo(() => ({
-    showLogin,
-    setShowLogin,
-    addingProfile,
-    setAddingProfile,
-    reauthName,
-    setReauthName,
-    showProfileSwitcher,
-    setShowProfileSwitcher,
-    switchingTo,
-  }), [
-    showLogin, setShowLogin, addingProfile, setAddingProfile, reauthName, setReauthName,
-    showProfileSwitcher, setShowProfileSwitcher, switchingTo,
-  ]);
-  const appShellRemote = useMemo(() => ({
-    remoteEnabled,
-    remoteInfo,
-    remoteDevices,
-    pairModalOpen,
-    setPairModalOpen,
-    remoteDeviceAction,
-    remoteRememberDevice,
-  }), [
-    remoteEnabled, remoteInfo, remoteDevices, pairModalOpen, setPairModalOpen,
-    remoteDeviceAction, remoteRememberDevice,
-  ]);
+  const appShellNav = useMemo(
+    () => ({
+      view,
+      setView,
+      appKey,
+      viewRefreshKey,
+      setViewRefreshKey,
+      collection,
+      setCollection,
+      artistView,
+      searchQuery,
+      handleSearch,
+      removeRecentPlaylist,
+      openPlaylist,
+      openAlbum,
+      openArtist,
+      navigateTo,
+      goBack,
+      pinnedIds,
+      togglePin,
+    }),
+    [
+      view,
+      setView,
+      appKey,
+      viewRefreshKey,
+      setViewRefreshKey,
+      collection,
+      setCollection,
+      artistView,
+      searchQuery,
+      handleSearch,
+      removeRecentPlaylist,
+      openPlaylist,
+      openAlbum,
+      openArtist,
+      navigateTo,
+      goBack,
+      pinnedIds,
+      togglePin,
+    ]
+  );
+  const appShellUi = useMemo(
+    () => ({
+      overlayOpen,
+      setOverlayOpen,
+      queueOpen,
+      setQueueOpen,
+      showLyrics,
+      setShowLyrics,
+      uiZoom,
+      setUiZoom,
+      videoSync,
+      showVideoView,
+      setShowVideoView,
+      videoLyricsStyle,
+    }),
+    [
+      overlayOpen,
+      queueOpen,
+      showLyrics,
+      uiZoom,
+      setUiZoom,
+      videoSync,
+      showVideoView,
+      setShowVideoView,
+      videoLyricsStyle,
+    ]
+  );
+  const appShellShortcuts = useMemo(
+    () => ({
+      customShortcutsRef,
+      recordingShortcutRef,
+      shortcutsEnabled,
+      searchShortcutParts: shortcutsEnabled ? getShortcutParts(customShortcuts.openSearch) : [],
+      assignShortcut,
+      setShortcutLabels,
+      setRecordingShortcut,
+    }),
+    [
+      shortcutsEnabled,
+      customShortcuts,
+      getShortcutParts,
+      assignShortcut,
+      setShortcutLabels,
+      setRecordingShortcut,
+    ]
+  );
+  const appShellAppearancePrefs = useMemo(
+    () => ({
+      animations,
+      appIconCustomizationAvailable,
+      hideExplicit,
+      ambientBackground,
+      ambientVisualizer,
+      vizConfig,
+      instrumentalViz,
+    }),
+    [
+      animations,
+      appIconCustomizationAvailable,
+      hideExplicit,
+      ambientBackground,
+      ambientVisualizer,
+      vizConfig,
+      instrumentalViz,
+    ]
+  );
+  const appShellLyricsPrefs = useMemo(
+    () => ({
+      lyricsFontSize,
+      lyricsProviders,
+      showLyricsTranslation,
+      setShowLyricsTranslation,
+      lyricsTranslationLang,
+      setLyricsTranslationLang,
+      lyricsTranslationFontSize,
+      showRomaji,
+      lyricsRomajiFontSize,
+      showAgentTags,
+      syllableZoom,
+      fluidLyrics,
+    }),
+    [
+      lyricsFontSize,
+      lyricsProviders,
+      showLyricsTranslation,
+      lyricsTranslationLang,
+      lyricsTranslationFontSize,
+      showRomaji,
+      lyricsRomajiFontSize,
+      showAgentTags,
+      syllableZoom,
+      fluidLyrics,
+    ]
+  );
+  const appShellAuthGate = useMemo(
+    () => ({
+      showLogin,
+      setShowLogin,
+      addingProfile,
+      setAddingProfile,
+      reauthName,
+      setReauthName,
+      showProfileSwitcher,
+      setShowProfileSwitcher,
+      switchingTo,
+    }),
+    [
+      showLogin,
+      setShowLogin,
+      addingProfile,
+      setAddingProfile,
+      reauthName,
+      setReauthName,
+      showProfileSwitcher,
+      setShowProfileSwitcher,
+      switchingTo,
+    ]
+  );
+  const appShellRemote = useMemo(
+    () => ({
+      remoteEnabled,
+      remoteInfo,
+      remoteDevices,
+      pairModalOpen,
+      setPairModalOpen,
+      remoteDeviceAction,
+      remoteRememberDevice,
+    }),
+    [
+      remoteEnabled,
+      remoteInfo,
+      remoteDevices,
+      pairModalOpen,
+      setPairModalOpen,
+      remoteDeviceAction,
+      remoteRememberDevice,
+    ]
+  );
   const appShellNetwork = useMemo(
     () => ({ offlineMode, isActuallyOffline, isOffline }),
     [offlineMode, isActuallyOffline, isOffline]
   );
-  const appShellDownloadQueue = useMemo(() => ({
-    downloadBatches,
-    downloadQueueMin,
-    setDownloadQueueMin,
-    handleCancelBatch,
-  }), [downloadBatches, downloadQueueMin, setDownloadQueueMin, handleCancelBatch]);
-  const appShellPrivacySettings = useMemo(() => ({
-    anonStats,
-    handleAnonStatsChange,
-    hideUserHandle,
-    setHideUserHandle,
-  }), [anonStats, handleAnonStatsChange, hideUserHandle]);
+  const appShellDownloadQueue = useMemo(
+    () => ({
+      downloadBatches,
+      downloadQueueMin,
+      setDownloadQueueMin,
+      handleCancelBatch,
+    }),
+    [downloadBatches, downloadQueueMin, setDownloadQueueMin, handleCancelBatch]
+  );
+  const appShellPrivacySettings = useMemo(
+    () => ({
+      anonStats,
+      handleAnonStatsChange,
+      hideUserHandle,
+      setHideUserHandle,
+    }),
+    [anonStats, handleAnonStatsChange, hideUserHandle]
+  );
   const appShellBridges = useMemo(
     () => ({ autoCoverRef, flashbangTriggerRef, resetLyricsSessionRef }),
     []
   );
 
   return (
-    <IconContext.Provider value={ICON_CONTEXT_VALUE}>
-      <LangContext.Provider value={language}>
-        <TrackNumberContext.Provider value={showTrackNumbers}>
-          <AnimationContext.Provider value={animations}>
-            <FontScaleContext.Provider value={appFontScale}>
-              <ZoomContext.Provider value={uiZoom}>
-                <ProfileProvider controller={profile}>
-                  <DownloadProvider controller={downloads}>
-                    <PlayerProvider controller={player}>
-                      <SettingsProviders
-                        appearance={appearanceSettings}
-                        playback={playbackSettings}
-                        playbackPreview={playbackPreviewSettings}
-                        lyrics={lyricsSettings}
-                        integrations={integrationSettings}
-                        shortcuts={shortcutSettings}
-                      >
-                        <style>{GLOBAL_KEYFRAMES}</style>
-                        {!animations && (
-                          <style>{`*, *::before, *::after { transition: none !important; animation: none !important; }`}</style>
-                        )}
-                        {showSplash && (
-                          <SplashScreen animations={animations} onComplete={finishSplash} />
-                        )}
-                        {/* Language picker first on very first launch, before FFmpeg setup */}
-                        {showLangPicker && !showLogin && (
-                          <LanguagePickerScreen
-                            currentLanguage={language}
-                            onConfirm={(lang) => {
-                              localStorage.setItem("kiyoshi-lang", lang);
-                              setLanguage(lang);
-                              setShowLangPicker(false);
-                              if (!profiles.length) setShowLogin(true);
-                            }}
+    <I18nProvider locale={rtlLayout ? "he-IL" : navigator.language || "en-US"}>
+      <IconContext.Provider value={ICON_CONTEXT_VALUE}>
+        <LangContext.Provider value={language}>
+          <TrackNumberContext.Provider value={showTrackNumbers}>
+            <AnimationContext.Provider value={animations}>
+              <FontScaleContext.Provider value={appFontScale}>
+                <ZoomContext.Provider value={uiZoom}>
+                  <ProfileProvider controller={profile}>
+                    <DownloadProvider controller={downloads}>
+                      <PlayerProvider controller={player}>
+                        <SettingsProviders
+                          appearance={appearanceSettings}
+                          playback={playbackSettings}
+                          playbackPreview={playbackPreviewSettings}
+                          lyrics={lyricsSettings}
+                          integrations={integrationSettings}
+                          shortcuts={shortcutSettings}
+                        >
+                          <style>{GLOBAL_KEYFRAMES}</style>
+                          {!animations && (
+                            <style>{`*, *::before, *::after { transition: none !important; animation: none !important; }`}</style>
+                          )}
+                          {showSplash && (
+                            <SplashScreen animations={animations} onComplete={finishSplash} />
+                          )}
+                          {/* Language picker first on very first launch, before FFmpeg setup */}
+                          {showLangPicker && !showLogin && (
+                            <LanguagePickerScreen
+                              currentLanguage={language}
+                              onConfirm={(lang) => {
+                                localStorage.setItem("kiyoshi-lang", lang);
+                                setLanguage(lang);
+                                setShowLangPicker(false);
+                                if (!profiles.length) setShowLogin(true);
+                              }}
+                            />
+                          )}
+                          {!ffmpegSetupDone && !showLangPicker && (
+                            <FfmpegSetupScreen onDone={() => setFfmpegSetupDone(true)} />
+                          )}
+                          {ffmpegUpdate && (
+                            <FfmpegUpdateBanner
+                              installed={ffmpegUpdate.installed}
+                              latest={ffmpegUpdate.latest}
+                              onClose={() => setFfmpegUpdate(null)}
+                            />
+                          )}
+
+                          {/* Toast Notifications */}
+                          <ToastProvider
+                            placement="bottom end"
+                            className="bottom-[120px]! z-[100000]!"
                           />
-                        )}
-                        {!ffmpegSetupDone && !showLangPicker && (
-                          <FfmpegSetupScreen onDone={() => setFfmpegSetupDone(true)} />
-                        )}
-                        {ffmpegUpdate && (
-                          <FfmpegUpdateBanner
-                            installed={ffmpegUpdate.installed}
-                            latest={ffmpegUpdate.latest}
-                            onClose={() => setFfmpegUpdate(null)}
+
+                          <Suspense fallback={null}>
+                            {DevMenu && <DevMenu player={player} addToast={addToast} />}
+                          </Suspense>
+
+                          <AppShell
+                            language={language}
+                            addToast={addToast}
+                            handleLanguageChange={handleLanguageChange}
+                            obsEnabled={obsEnabled}
+                            rtlLayout={rtlLayout}
+                            likedIds={likedIds}
+                            handleToggleLike={handleToggleLike}
+                            nav={appShellNav}
+                            shellUi={appShellUi}
+                            shortcuts={appShellShortcuts}
+                            appearancePrefs={appShellAppearancePrefs}
+                            lyricsPrefs={appShellLyricsPrefs}
+                            authGate={appShellAuthGate}
+                            remote={appShellRemote}
+                            network={appShellNetwork}
+                            downloadQueue={appShellDownloadQueue}
+                            privacySettings={appShellPrivacySettings}
+                            bridges={appShellBridges}
                           />
-                        )}
-
-                        {/* Toast Notifications */}
-                        <ToastProvider
-                          placement="bottom end"
-                          className="bottom-[120px]! z-[100000]!"
-                        />
-
-                        <Suspense fallback={null}>
-                          {DevMenu && <DevMenu player={player} addToast={addToast} />}
-                        </Suspense>
-
-                        <AppShell
-                          language={language}
-                          addToast={addToast}
-                          handleLanguageChange={handleLanguageChange}
-                          obsEnabled={obsEnabled}
-                          likedIds={likedIds}
-                          handleToggleLike={handleToggleLike}
-                          nav={appShellNav}
-                          shellUi={appShellUi}
-                          shortcuts={appShellShortcuts}
-                          appearancePrefs={appShellAppearancePrefs}
-                          lyricsPrefs={appShellLyricsPrefs}
-                          authGate={appShellAuthGate}
-                          remote={appShellRemote}
-                          network={appShellNetwork}
-                          downloadQueue={appShellDownloadQueue}
-                          privacySettings={appShellPrivacySettings}
-                          bridges={appShellBridges}
-                        />
-                      </SettingsProviders>
-                    </PlayerProvider>
-                  </DownloadProvider>
-                </ProfileProvider>
-              </ZoomContext.Provider>
-            </FontScaleContext.Provider>
-          </AnimationContext.Provider>
-        </TrackNumberContext.Provider>
-      </LangContext.Provider>
-    </IconContext.Provider>
+                        </SettingsProviders>
+                      </PlayerProvider>
+                    </DownloadProvider>
+                  </ProfileProvider>
+                </ZoomContext.Provider>
+              </FontScaleContext.Provider>
+            </AnimationContext.Provider>
+          </TrackNumberContext.Provider>
+        </LangContext.Provider>
+      </IconContext.Provider>
+    </I18nProvider>
   );
 }

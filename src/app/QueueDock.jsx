@@ -13,13 +13,14 @@ export function QueueDock({
   handleToggleLike,
   nowPlayingContextTitle,
   onOpenArtist,
+  rtlLayout,
 }) {
   return (
     <div
       style={{
         position: "absolute",
         top: fullscreen ? 0 : 8,
-        right: fullscreen ? 0 : 8,
+        insetInlineEnd: fullscreen ? 0 : 8,
         width: fullscreen ? 360 : queueWidth,
         bottom: fullscreen ? 0 : 112,
         zIndex: fullscreen ? 104 : 101,
@@ -27,7 +28,9 @@ export function QueueDock({
           ? queueSettled
             ? "none"
             : "translateX(0)"
-          : "translateX(calc(100% + 16px))",
+          : rtlLayout
+            ? "translateX(calc(-100% - 16px))"
+            : "translateX(calc(100% + 16px))",
         willChange: queueOpen && queueSettled ? "auto" : "transform",
         background: ambientBackground
           ? queueSettled
@@ -57,7 +60,7 @@ export function QueueDock({
           style={{
             position: "absolute",
             top: 0,
-            left: 0,
+            insetInlineStart: 0,
             bottom: 0,
             width: 8,
             cursor: "ew-resize",
@@ -76,7 +79,7 @@ export function QueueDock({
             style={{
               position: "absolute",
               top: "50%",
-              left: 1,
+              insetInlineStart: 1,
               transform: "translateY(-50%)",
               width: 3,
               height: 44,

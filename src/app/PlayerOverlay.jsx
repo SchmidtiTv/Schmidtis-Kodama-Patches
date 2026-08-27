@@ -57,22 +57,22 @@ export const PlayerOverlay = memo(function PlayerOverlay({
 }) {
   return (
     <div
-      data-sidebar-resize-offset={
-        overlayOpen && !fullscreen && !sidebarCollapsed ? "" : undefined
-      }
+      data-sidebar-resize-offset={overlayOpen && !fullscreen && !sidebarCollapsed ? "" : undefined}
       style={{
         position: "absolute",
         top: overlayOpen ? (fullscreen ? 0 : 8) : "100%",
-        left: fullscreen ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED : sidebarWidth) + 4,
-        right: fullscreen ? 0 : queueOpen ? queueWidth + 16 : 8,
+        insetInlineStart: fullscreen
+          ? 0
+          : (sidebarCollapsed ? SIDEBAR_COLLAPSED : sidebarWidth) + 4,
+        insetInlineEnd: fullscreen ? 0 : queueOpen ? queueWidth + 16 : 8,
         bottom: fullscreen ? 0 : 112,
         zIndex: fullscreen ? 102 : 100,
         overflow: "hidden",
         borderRadius: fullscreen ? 0 : "var(--r-xl)",
         transition: queueResizing
-          ? "top 0.42s cubic-bezier(0.4,0,0.2,1), left 0.3s ease"
+          ? "top 0.42s cubic-bezier(0.4,0,0.2,1), inset-inline-start 0.3s ease"
           : animations
-            ? "top 0.42s cubic-bezier(0.4,0,0.2,1), right 0.3s ease, left 0.3s ease"
+            ? "top 0.42s cubic-bezier(0.4,0,0.2,1), inset-inline-start 0.3s ease, inset-inline-end 0.3s ease"
             : "top 0.1s ease",
         pointerEvents: overlayOpen ? "all" : "none",
       }}

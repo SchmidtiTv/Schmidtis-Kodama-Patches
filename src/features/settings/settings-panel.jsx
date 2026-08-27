@@ -88,6 +88,8 @@ export function SettingsPanel({
     onAnimationsChange,
     highContrast,
     onToggleHighContrast,
+    rtlLayout,
+    onToggleRtlLayout,
     appFont,
     onAppFontChange,
     appFontScale,
@@ -685,9 +687,11 @@ export function SettingsPanel({
           {tab === "experimental" && (
             <ExperimentalSettingsTab
               onToggleVideoSync={onToggleVideoSync}
+              onToggleRtlLayout={onToggleRtlLayout}
               onVideoLyricsStyleChange={onVideoLyricsStyleChange}
               onVideoSyncQualityChange={onVideoSyncQualityChange}
               t={t}
+              rtlLayout={rtlLayout}
               videoLyricsStyle={videoLyricsStyle}
               videoSyncEnabled={videoSyncEnabled}
               videoSyncQuality={videoSyncQuality}

@@ -55,6 +55,18 @@
   --color-field-placeholder: var(--text-muted);
 }
 
+[dir="rtl"] .fa-arrow-left,
+[dir="rtl"] .fa-arrow-right,
+[dir="rtl"] .fa-caret-left,
+[dir="rtl"] .fa-caret-right,
+[dir="rtl"] .fa-angles-left,
+[dir="rtl"] .fa-angles-right,
+[dir="rtl"] .fa-right-from-bracket,
+[dir="rtl"] .fa-arrow-up-right-from-square,
+[dir="rtl"] .fa-share-nodes {
+  transform: scaleX(-1);
+}
+
 /* Design token bridge: Tailwind utilities → existing CSS variables.
    "inline" means utilities like bg-surface resolve to var(--color-surface) at
    runtime, so they automatically follow dark/light/amoled theme switches. */

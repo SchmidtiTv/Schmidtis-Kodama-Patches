@@ -40,7 +40,6 @@ import {
   ArrowsOut,
   ArrowClockwise,
   CaretDown,
-  DotsSixVertical,
   CursorArrow,
   X,
   Minus,
@@ -1163,24 +1162,22 @@ function LayerEffectsSection({ t, layer, setStyle }) {
   );
 }
 
-export default function OverlayEditor({
-  t,
-  apiBase,
-  obsPort,
-  obsEnabled,
-  toggleObs,
-  obsPortInput,
-  setObsPortInput,
-  onPortSave,
-  standalone = false,
-}) {
+export default function OverlayEditor({ t, apiBase, standalone = false }) {
   const [doc, setDoc] = useState(loadInitialDoc);
   const [selectedIds, setSelectedIds] = useState([]);
   // `selectedId` (compat) is the single selection — non-null only when exactly one layer is
   // selected, so the detailed inspector + resize/rotate handles show for single selection.
   const selectedId = selectedIds.length === 1 ? selectedIds[0] : null;
   const setSelectedId = (id) => setSelectedIds(id == null ? [] : [id]);
-  const [copied, setCopied] = useState(false);
+  const [nudgeDialogOpen, setNudgeDialogOpen] = useState(false);
+  const [nudgeStep, setNudgeStep] = useState(() => {
+    const value = Number.parseInt(localStorage.getItem("kiyoshi-ovl-nudge") || "1", 10);
+    return Number.isFinite(value) && value > 0 ? value : 1;
+  });
+  const [largeNudgeStep, setLargeNudgeStep] = useState(() => {
+    const value = Number.parseInt(localStorage.getItem("kiyoshi-ovl-nudgeBig") || "10", 10);
+    return Number.isFinite(value) && value > 0 ? value : 10;
+  });
   const [iframeKey, setIframeKey] = useState(0);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 0, y: 0 });
@@ -1223,9 +1220,10 @@ export default function OverlayEditor({
   const [canvasCornersInd, setCanvasCornersInd] = useState(false); // uniform ↔ per-corner radius (canvas)
   const [layerCornersInd, setLayerCornersInd] = useState(false); // uniform ↔ per-corner radius (layer)
   const [dragId, setDragId] = useState(null);
-  const [dragOverId, setDragOverId] = useState(null);
+  const [dropIndex, setDropIndex] = useState(null);
   const dragIdRef = useRef(null); // stable refs for pointer event closures
-  const dragOverIdRef = useRef(null);
+  const dropIndexRef = useRef(null);
+  const suppressLayerClickRef = useRef(false);
   const [profiles, setProfiles] = useState(() => {
     try {
       return JSON.parse(localStorage.getItem("kiyoshi-overlay-profiles") || "[]");
@@ -1253,7 +1251,6 @@ export default function OverlayEditor({
   const nudgeActive = useRef(false);
   const liveDocRef = useRef(null); // accumulates the doc across a keyboard-nudge burst
 
-  const overlayUrl = `http://localhost:${obsPort}/overlay`;
   const previewSrc = `${apiBase}/overlay?bg=checkered&editor=1`;
 
   const pushDoc = useCallback(
@@ -1352,17 +1349,17 @@ export default function OverlayEditor({
   const orderedAsc = [...doc.layers].sort((a, b) => (a.z || 0) - (b.z || 0)); // paint order (hit-test top = last)
   const orderedDesc = [...doc.layers].sort((a, b) => (b.z || 0) - (a.z || 0)); // list (top first)
 
-  // Drag-and-drop layer reorder: reassigns z values to reflect new visual order.
-  const reorderLayers = useCallback(
-    (fromId, toId) => {
-      if (fromId === toId) return;
+  // Reorder layers by their insertion gap, so a drop above or below a row is unambiguous.
+  const moveLayerTo = useCallback(
+    (fromId, insertIndex) => {
       const ordered = [...doc.layers].sort((a, b) => (b.z || 0) - (a.z || 0));
       const fromIdx = ordered.findIndex((l) => l.id === fromId);
-      const toIdx = ordered.findIndex((l) => l.id === toId);
-      if (fromIdx === -1 || toIdx === -1) return;
+      if (fromIdx === -1) return;
+      const target = insertIndex > fromIdx ? insertIndex - 1 : insertIndex;
+      if (target === fromIdx) return;
       const reordered = [...ordered];
       const [moved] = reordered.splice(fromIdx, 1);
-      reordered.splice(toIdx, 0, moved);
+      reordered.splice(target, 0, moved);
       const n = reordered.length;
       const updatedLayers = doc.layers.map((l) => ({
         ...l,
@@ -1373,41 +1370,54 @@ export default function OverlayEditor({
     [doc, commit]
   );
 
-  // Stable ref so pointer-event closures always call the latest reorderLayers.
-  const reorderLayersRef = useRef(null);
+  // Pointer handlers outlive a render, so they call the latest reorder callback through a ref.
+  const moveLayerToRef = useRef(null);
   useLayoutEffect(() => {
-    reorderLayersRef.current = reorderLayers;
-  }, [reorderLayers]);
+    moveLayerToRef.current = moveLayerTo;
+  }, [moveLayerTo]);
 
-  // Pointer-based drag sort (HTML5 drag-and-drop is unreliable in WebView2/WebKit).
-  const onGripDown = useCallback((e, id) => {
-    e.stopPropagation();
-    e.preventDefault();
-    dragIdRef.current = id;
-    dragOverIdRef.current = null;
-    setDragId(id);
-    setDragOverId(null);
+  // Pointer sorting works reliably in Tauri WebViews and keeps a normal click as selection.
+  const onRowPointerDown = useCallback((e, id) => {
+    if (e.button !== 0) return;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let dragging = false;
+    dragIdRef.current = null;
+    dropIndexRef.current = null;
 
     const onMove = (ev) => {
-      const els = document.elementsFromPoint(ev.clientX, ev.clientY);
-      const rowEl = els.find((el) => el.dataset?.layerId);
-      if (rowEl) {
-        const overId = rowEl.dataset.layerId;
-        if (overId !== dragIdRef.current) {
-          dragOverIdRef.current = overId;
-          setDragOverId(overId);
+      if (!dragging) {
+        if (Math.abs(ev.clientX - startX) < 4 && Math.abs(ev.clientY - startY) < 4) return;
+        dragging = true;
+        dragIdRef.current = id;
+        setDragId(id);
+      }
+      const rows = Array.from(document.querySelectorAll("[data-layer-index]"));
+      let index = rows.length;
+      for (const row of rows) {
+        const rect = row.getBoundingClientRect();
+        if (ev.clientY < rect.top + rect.height / 2) {
+          index = Number(row.dataset.layerIndex);
+          break;
         }
+      }
+      if (index !== dropIndexRef.current) {
+        dropIndexRef.current = index;
+        setDropIndex(index);
       }
     };
 
     const onUp = () => {
       const fromId = dragIdRef.current;
-      const toId = dragOverIdRef.current;
-      if (fromId && toId && fromId !== toId) reorderLayersRef.current?.(fromId, toId);
+      const index = dropIndexRef.current;
+      if (fromId && index != null) {
+        moveLayerToRef.current?.(fromId, index);
+        suppressLayerClickRef.current = true;
+      }
       dragIdRef.current = null;
-      dragOverIdRef.current = null;
+      dropIndexRef.current = null;
       setDragId(null);
-      setDragOverId(null);
+      setDropIndex(null);
       window.removeEventListener("pointermove", onMove);
     };
 
@@ -1604,7 +1614,7 @@ export default function OverlayEditor({
           e.key === "ArrowLeft" ||
           e.key === "ArrowRight")
       ) {
-        const step = e.shiftKey ? 10 : 1;
+        const step = e.shiftKey ? largeNudgeStep : nudgeStep;
         const dx = e.key === "ArrowLeft" ? -step : e.key === "ArrowRight" ? step : 0;
         const dy = e.key === "ArrowUp" ? -step : e.key === "ArrowDown" ? step : 0;
         e.preventDefault();
@@ -1613,7 +1623,7 @@ export default function OverlayEditor({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }); // re-bind each render to capture latest state — cheap
+  }); // Rebind to the latest editor state after each render.
 
   // ── Pan / zoom ───────────────────────────────────────────────────────────────
   const onWheel = (e) => {
@@ -1995,12 +2005,6 @@ export default function OverlayEditor({
     window.addEventListener("pointerup", up, { once: true });
   };
 
-  const copyUrl = () => {
-    navigator.clipboard.writeText(overlayUrl);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1800);
-  };
-
   // ── Profile management ───────────────────────────────────────────────────────
   const importFileRef = useRef(null);
 
@@ -2122,6 +2126,8 @@ export default function OverlayEditor({
                   });
                 } else if (key === "reload") {
                   setIframeKey((k) => k + 1);
+                } else if (key === "nudge") {
+                  setNudgeDialogOpen(true);
                 }
               }}
             >
@@ -2152,6 +2158,10 @@ export default function OverlayEditor({
                 </DropdownItem>
               </DropdownSection>
               <DropdownSection className="border-t border-border mt-1 pt-1">
+                <DropdownItem id="nudge" textValue={t("ovlPrefNudge")}>
+                  <ArrowsOut size={13} />
+                  {t("ovlPrefNudge")}
+                </DropdownItem>
                 <DropdownItem id="reload" textValue={t("ovlReloadPreview")}>
                   <ArrowsClockwise size={13} />
                   {t("ovlReloadPreview")}
@@ -2160,18 +2170,6 @@ export default function OverlayEditor({
             </DropdownMenu>
           </DropdownPopover>
         </Dropdown>
-        <TextFieldRoot
-          value={doc.canvas.name ?? ""}
-          onChange={(v) => updateCanvas({ name: v })}
-          aria-label={t("ovlProfileName")}
-          className="w-[184px]"
-        >
-          <InputRoot
-            data-testid="overlay-canvas-name"
-            className="text-t12! h-8! bg-[var(--surface-2)]! border-border!"
-            placeholder={t("ovlProfileDefaultName")}
-          />
-        </TextFieldRoot>
         <div className="flex-1" {...(standalone ? { "data-tauri-drag-region": true } : {})} />
         <Button
           color="accent"
@@ -2244,43 +2242,66 @@ export default function OverlayEditor({
             onPointerDown={(e) => startPanelResize("left", e)}
             className="absolute top-0 right-0 h-full w-1.5 translate-x-1/2 z-20 cursor-col-resize hover:bg-[var(--accent)]/40"
           />
-          <div className="flex items-center justify-between pl-3 pr-1.5 h-10 shrink-0 border-b border-border relative">
-            <span className="text-t12 font-medium text-secondary">{t("ovlLayers")}</span>
+          <div className="flex items-center px-2 h-[52px] shrink-0">
+            <TextFieldRoot
+              value={doc.canvas.name ?? ""}
+              onChange={(value) => updateCanvas({ name: value })}
+              aria-label={t("ovlProfileName")}
+              className="w-full"
+            >
+              <InputRoot
+                data-testid="overlay-canvas-name"
+                style={{ fontSize: "var(--t18)" }}
+                className="font-semibold h-[36px]! px-2! bg-transparent! border-transparent! hover:bg-[var(--surface-2)]! focus:bg-[var(--surface-2)]! focus:border-border!"
+                placeholder={t("ovlProfileDefaultName")}
+              />
+            </TextFieldRoot>
           </div>
-          <div className="flex flex-col gap-0.5 p-1.5 overflow-y-auto min-h-0">
+          <div className="mx-4 h-px bg-border shrink-0" />
+          <div className="flex items-center justify-between pl-4 pr-1.5 pt-3 pb-1 shrink-0 relative">
+            <span className="text-t15 font-semibold text-primary">{t("ovlLayers")}</span>
+          </div>
+          <div className="flex flex-col gap-0.5 px-[10px] py-1.5 overflow-y-auto min-h-0">
             {orderedDesc.length === 0 && (
               <div className="text-t11 text-muted px-1.5 py-2">{t("ovlEmptyLayers")}</div>
             )}
-            {orderedDesc.map((l) => {
+            {orderedDesc.map((l, rowIndex) => {
               const M = TYPE_META[l.type] || TYPE_META.shape;
               const Icon = M.icon;
               const active = selectedIds.includes(l.id);
               const isDragging = dragId === l.id;
-              const isDropTarget = dragOverId === l.id && dragId !== l.id;
               return (
                 <div
                   key={l.id}
-                  data-layer-id={l.id}
-                  onClick={() => setSelectedId(l.id)}
+                  data-layer-index={rowIndex}
                   className={[
-                    "group flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-default select-none transition-opacity",
-                    active
-                      ? "bg-accent-dim text-accent"
-                      : "text-primary hover:bg-[var(--bg-hover)]",
+                    "group relative flex items-center gap-2 rounded-lg px-2 py-1.5 cursor-default select-none transition-opacity",
                     isDragging ? "opacity-40" : "",
-                    isDropTarget ? "ring-1 ring-inset ring-accent" : "",
                   ]
                     .filter(Boolean)
                     .join(" ")}
                 >
-                  <DotsSixVertical
-                    size={12}
+                  {dropIndex === rowIndex && (
+                    <div className="absolute -top-[3px] inset-x-0 h-[2px] rounded-full bg-accent pointer-events-none" />
+                  )}
+                  {dropIndex === rowIndex + 1 && rowIndex === orderedDesc.length - 1 && (
+                    <div className="absolute -bottom-[3px] inset-x-0 h-[2px] rounded-full bg-accent pointer-events-none" />
+                  )}
+                  <div
                     data-layer-id={l.id}
-                    onPointerDown={(e) => onGripDown(e, l.id)}
-                    className="shrink-0 text-muted opacity-0 group-hover:opacity-60 cursor-grab"
-                  />
-                  <Icon size={15} className="shrink-0" />
-                  <span className="flex-1 truncate text-t12">{l.name || M.label}</span>
+                    onPointerDown={(event) => onRowPointerDown(event, l.id)}
+                    onClick={() => {
+                      if (suppressLayerClickRef.current) {
+                        suppressLayerClickRef.current = false;
+                        return;
+                      }
+                      setSelectedId(l.id);
+                    }}
+                    className={`flex-1 min-w-0 flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors ${active ? "bg-accent-dim text-accent" : "text-primary hover:bg-[var(--bg-hover)]"}`}
+                  >
+                    <Icon size={15} className="shrink-0" />
+                    <span className="flex-1 truncate text-t12">{l.name || M.label}</span>
+                  </div>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -3202,48 +3223,6 @@ export default function OverlayEditor({
                 );
               })()
             )}
-
-            {/* Output (always visible) */}
-            <div className="mt-3 pt-3 border-t border-border">
-              <div className="text-t11 font-semibold text-muted uppercase tracking-wide mb-1.5 px-0.5">
-                OBS
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <SwitchField label={t("overlayEnable")} checked={obsEnabled} onChange={toggleObs} />
-                <label className="flex items-center justify-between gap-2">
-                  <span className="text-t12 text-muted shrink-0">{t("overlayPort")}</span>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="text"
-                      value={obsPortInput}
-                      onChange={(e) => setObsPortInput(e.target.value.replace(/[^0-9]/g, ""))}
-                      className="w-[64px] rounded-md px-2 py-1 text-t12 text-primary outline-none border border-border focus:border-accent"
-                      style={{ background: "var(--surface-2)" }}
-                    />
-                    <Button variant="secondary" size="sm" onPress={() => onPortSave?.()}>
-                      {t("save")}
-                    </Button>
-                  </div>
-                </label>
-                <div className="flex items-center gap-1.5 mt-0.5">
-                  <code
-                    className="flex-1 min-w-0 text-t11 text-muted truncate"
-                    style={{ fontFamily: "var(--font)" }}
-                  >
-                    {overlayUrl}
-                  </code>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    isIconOnly
-                    onPress={copyUrl}
-                    aria-label={t("overlayUrl")}
-                  >
-                    {copied ? <Check size={14} weight="bold" /> : <Copy size={14} />}
-                  </Button>
-                </div>
-              </div>
-            </div>
           </div>
         </div>
 
@@ -3287,6 +3266,95 @@ export default function OverlayEditor({
               >
                 <X size={13} />
               </Button>
+            </div>
+          </div>
+        )}
+
+        {nudgeDialogOpen && (
+          <div
+            className="fixed inset-0 z-50 flex items-center justify-center"
+            style={{ background: "rgba(0,0,0,0.55)", backdropFilter: "blur(6px)" }}
+            onClick={(event) => {
+              if (event.target === event.currentTarget) setNudgeDialogOpen(false);
+            }}
+          >
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-label={t("ovlPrefNudge")}
+              className="w-80 rounded-xl border border-border p-4 shadow-2xl"
+              style={{ background: "var(--bg-elevated)" }}
+            >
+              <div className="flex items-center justify-between gap-3 mb-4">
+                <span className="text-t14 font-semibold text-primary">{t("ovlPrefNudge")}</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  isIconOnly
+                  aria-label={t("close")}
+                  onPress={() => setNudgeDialogOpen(false)}
+                >
+                  <X size={14} />
+                </Button>
+              </div>
+              <label className="flex items-center justify-between gap-3 mb-3">
+                <span className="text-t12 text-secondary">{t("ovlPrefNudgeStep")}</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={nudgeStep}
+                  onChange={(event) => {
+                    const value = Math.min(
+                      100,
+                      Math.max(1, Number.parseInt(event.target.value, 10) || 1)
+                    );
+                    setNudgeStep(value);
+                    localStorage.setItem("kiyoshi-ovl-nudge", String(value));
+                  }}
+                  className="w-20 rounded-md border border-border bg-[var(--surface-2)] px-2 py-1 text-t12 text-primary outline-none focus:border-accent"
+                />
+              </label>
+              <label className="flex items-center justify-between gap-3">
+                <span className="text-t12 text-secondary">{t("ovlPrefNudgeBig")}</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="100"
+                  value={largeNudgeStep}
+                  onChange={(event) => {
+                    const value = Math.min(
+                      100,
+                      Math.max(1, Number.parseInt(event.target.value, 10) || 1)
+                    );
+                    setLargeNudgeStep(value);
+                    localStorage.setItem("kiyoshi-ovl-nudgeBig", String(value));
+                  }}
+                  className="w-20 rounded-md border border-border bg-[var(--surface-2)] px-2 py-1 text-t12 text-primary outline-none focus:border-accent"
+                />
+              </label>
+              <div className="flex justify-end gap-2 mt-5">
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onPress={() => {
+                    setNudgeStep(1);
+                    setLargeNudgeStep(10);
+                    localStorage.setItem("kiyoshi-ovl-nudge", "1");
+                    localStorage.setItem("kiyoshi-ovl-nudgeBig", "10");
+                  }}
+                >
+                  {t("ovlReset")}
+                </Button>
+                <Button
+                  variant="solid"
+                  color="accent"
+                  size="sm"
+                  onPress={() => setNudgeDialogOpen(false)}
+                >
+                  {t("ovlDone")}
+                </Button>
+              </div>
             </div>
           </div>
         )}

@@ -3,7 +3,9 @@ import time
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import Mock, patch
+
+import requests
 
 from src.lib.music.lyrics import LyricsService
 from src.lib.runtime.metadata_cache import MetadataCache
@@ -20,6 +22,26 @@ class _Response:
 
 
 class LyricsProviderTests(unittest.TestCase):
+    def test_translation_uses_the_legacy_endpoint_when_the_primary_endpoint_fails(self) -> None:
+        failed_response = Mock()
+        failed_response.raise_for_status.side_effect = requests.ConnectionError("unavailable")
+        fallback_response = Mock()
+        fallback_response.json.return_value = [[["Hallo"]]]
+
+        with patch(
+            "src.lib.music.lyrics.requests.get", side_effect=[failed_response, fallback_response]
+        ) as get:
+            translated = LyricsService._google_translate_batch(["Hello"], "DE")
+
+        self.assertEqual(translated, ["Hallo"])
+        self.assertEqual(
+            [call.args[0] for call in get.call_args_list],
+            [
+                "https://clients5.google.com/translate_a/single",
+                "https://translate.googleapis.com/translate_a/single",
+            ],
+        )
+
     def test_paxsenix_picker_requires_matching_title_and_artist(self) -> None:
         songs = [
             {

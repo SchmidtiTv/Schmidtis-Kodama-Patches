@@ -627,8 +627,10 @@ export const AppOverlays = memo(function AppOverlays({
           style={{
             position: "absolute",
             top: fullscreen ? 0 : 8,
-            left: fullscreen ? 0 : (sidebarCollapsed ? SIDEBAR_COLLAPSED : sidebarWidth) + 4,
-            right: fullscreen ? 0 : 8,
+            insetInlineStart: fullscreen
+              ? 0
+              : (sidebarCollapsed ? SIDEBAR_COLLAPSED : sidebarWidth) + 4,
+            insetInlineEnd: fullscreen ? 0 : 8,
             bottom: fullscreen ? 0 : 8,
             zIndex: 150,
             borderRadius: fullscreen ? 0 : "var(--r-xl)",

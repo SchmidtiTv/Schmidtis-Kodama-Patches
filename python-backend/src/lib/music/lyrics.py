@@ -5,6 +5,7 @@ import collections
 import hashlib
 import html
 import json
+import logging
 import re
 import sqlite3
 from concurrent.futures import ThreadPoolExecutor
@@ -20,6 +21,7 @@ from src.lib.runtime.metadata_cache import MetadataCache
 
 
 CacheValue = TypeVar("CacheValue")
+logger = logging.getLogger(__name__)
 
 
 class KakasiConverter(Protocol):
@@ -34,6 +36,10 @@ class LyricsService:
     """
 
     UNISON_BASE_URL = "https://unison.boidu.dev"
+    TRANSLATE_ENDPOINTS = (
+        ("https://clients5.google.com/translate_a/single", "dict-chrome-ex"),
+        ("https://translate.googleapis.com/translate_a/single", "gtx"),
+    )
 
     def __init__(
         self,
@@ -595,18 +601,29 @@ class LyricsService:
     @staticmethod
     def _google_translate_batch(lines: List[str], target_lang: str) -> List[str]:
         language = config_lyrics.GOOGLE_LANGUAGE_CODES.get(target_lang, target_lang.lower())
-        response = requests.get(
-            "https://translate.googleapis.com/translate_a/single",
-            params={"client": "gtx", "sl": "auto", "tl": language, "dt": "t", "q": "\n".join(lines)},
-            timeout=30,
-            headers={"User-Agent": "Mozilla/5.0"},
-        )
-        response.raise_for_status()
-        translated = "".join(chunk[0] for chunk in response.json()[0] if chunk and chunk[0])
-        translated_lines = translated.split("\n")
-        while len(translated_lines) < len(lines):
-            translated_lines.append("")
-        return translated_lines[: len(lines)]
+        params = {"sl": "auto", "tl": language, "dt": "t", "q": "\n".join(lines)}
+        last_error: Exception | None = None
+
+        for url, client in LyricsService.TRANSLATE_ENDPOINTS:
+            try:
+                response = requests.get(
+                    url,
+                    params={**params, "client": client},
+                    timeout=30,
+                    headers={"User-Agent": "Mozilla/5.0"},
+                )
+                response.raise_for_status()
+                payload = response.json()
+                translated = "".join(chunk[0] for chunk in payload[0] if chunk and chunk[0])
+                translated_lines = translated.split("\n")
+                while len(translated_lines) < len(lines):
+                    translated_lines.append("")
+                return translated_lines[: len(lines)]
+            except (requests.RequestException, IndexError, KeyError, TypeError, ValueError) as error:
+                last_error = error
+                logger.warning("Lyrics translation endpoint %s failed: %s", client, error)
+
+        raise last_error or RuntimeError("No lyrics translation endpoint succeeded")
 
     @staticmethod
     def _lru_put(cache: collections.OrderedDict[str, CacheValue], key: str, value: CacheValue) -> None:

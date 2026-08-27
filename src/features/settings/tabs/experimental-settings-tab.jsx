@@ -1,9 +1,18 @@
 import { Button, ToggleButton, ToggleButtonGroupRoot } from "@heroui/react";
-import { ClapperboardPlay, Columns, Gamepad, MiniPlayerEnter, Sliders } from "@/shared/icons/icons.jsx";
+import {
+  ArrowsLeftRight,
+  ClapperboardPlay,
+  Columns,
+  Gamepad,
+  MiniPlayerEnter,
+  Sliders,
+} from "@/shared/icons/icons.jsx";
 import { SettingRow, SettingsSectionDesc, Toggle } from "@/shared/ui/settings-controls.jsx";
 import { openMiniPlayer } from "@/features/player/miniplayer/bridge.js";
 export function ExperimentalSettingsTab({
   onToggleVideoSync,
+  onToggleRtlLayout,
+  rtlLayout,
   onVideoLyricsStyleChange,
   onVideoSyncQualityChange,
   t,
@@ -41,6 +50,13 @@ export function ExperimentalSettingsTab({
         <Button variant="secondary" size="sm" onPress={() => openMiniPlayer().catch(() => {})}>
           {t("miniPlayerTooltip")}
         </Button>
+      </SettingRow>
+      <SettingRow
+        label={t("rtlLayout")}
+        description={t("rtlLayoutDesc")}
+        icon={<ArrowsLeftRight />}
+      >
+        <Toggle value={rtlLayout} onChange={onToggleRtlLayout} />
       </SettingRow>
       <SettingRow
         label={t("videoSyncMode")}

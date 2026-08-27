@@ -378,6 +378,7 @@ export function BigPicture({ onReady }) {
     <FocusContext.Provider value={focusKey}>
       <div
         ref={ref}
+        dir="ltr"
         data-bigpicture
         style={{
           position: "fixed",

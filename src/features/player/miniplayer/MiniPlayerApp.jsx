@@ -12,6 +12,7 @@ import { Play, Pause, SkipBack, SkipForward, MiniPlayerExit, X } from "@/shared/
 import { translate } from "@/shared/i18n/i18n.js";
 import { thumbHi } from "@/shared/api/thumbnails.js";
 import { native } from "@/shared/api/tauri.js";
+import { applyFontScale } from "@/shared/lib/font-scale.js";
 import { EV_NOW_PLAYING, MINI_SIZE_KEY, sayHello, sendToMain, requestShowMain } from "./bridge.js";
 
 const fmt = (s) => {
@@ -50,6 +51,7 @@ export default function MiniPlayerApp() {
     if (localStorage.getItem("kiyoshi-high-contrast") === "true") {
       document.documentElement.setAttribute("data-highcontrast", "true");
     }
+    applyFontScale();
     document.body.style.background = "#000";
     document.body.style.overflow = "hidden";
   }, []);
@@ -267,7 +269,7 @@ export default function MiniPlayerApp() {
           {/* Seek — the player bar's slider, class for class (see .player-seek in index.css),
               so both windows share the 8px track, the interpolated fill and the hover
               gradient. The seek-band wrapper is what that gradient keys its hover off. */}
-          <div data-tauri-drag-region className="flex items-center gap-1.5">
+          <div data-tauri-drag-region dir="ltr" className="flex items-center gap-1.5">
             <span
               data-tauri-drag-region
               className="text-t10 text-white/50 tabular-nums shrink-0"

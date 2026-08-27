@@ -196,6 +196,7 @@ export function PlayerControls(props) {
     >
       {/* Seek slider — HeroUI Slider, sits between the content view and the player controls */}
       <div
+        dir="ltr"
         className={cn("seek-band", fullscreen && "seek-fullscreen")}
         style={{
           height: 10,
@@ -380,6 +381,7 @@ export function PlayerControls(props) {
         </div>
 
         <div
+          dir="ltr"
           style={{
             flex: 1,
             display: "flex",
@@ -475,7 +477,11 @@ export function PlayerControls(props) {
         >
           {/* Volume icon + slider */}
           {playerBarControls.volume && (
-            <div data-volume-area style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <div
+              data-volume-area
+              dir="ltr"
+              style={{ display: "flex", alignItems: "center", gap: 6 }}
+            >
               <Tooltip text={volume === 0 ? t("unmute") : t("mute")}>
                 <Button
                   variant="ghost"

@@ -46,6 +46,7 @@ export const AppShell = memo(function AppShell({
   addToast,
   handleLanguageChange,
   obsEnabled,
+  rtlLayout,
   likedIds,
   handleToggleLike,
   nav,
@@ -203,14 +204,15 @@ export const AppShell = memo(function AppShell({
           sidebarPaneRef.current.style.minWidth = `${width}px`;
         }
         offsetTargets.forEach((target) => {
-          target.style.left = `${width + 4}px`;
+          target.style.insetInlineStart = `${width + 4}px`;
         });
       };
       setSidebarResizing(true);
       document.body.style.cursor = "ew-resize";
       document.body.style.userSelect = "none";
       const onMove = (ev) => {
-        const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, ev.clientX - 4));
+        const x = rtlLayout ? window.innerWidth - ev.clientX : ev.clientX;
+        const w = Math.min(SIDEBAR_MAX, Math.max(SIDEBAR_MIN, x - 4));
         liveSidebarWidthRef.current = w;
         resizeFrame ??= requestAnimationFrame(applyLiveWidth);
       };
@@ -227,7 +229,7 @@ export const AppShell = memo(function AppShell({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [setSidebarWidth]
+    [rtlLayout, setSidebarWidth]
   );
 
   const [queueWidth, setQueueWidth, { setTransient: setQueueWidthTransient }] = usePersistedState(
@@ -243,7 +245,8 @@ export const AppShell = memo(function AppShell({
       document.body.style.cursor = "ew-resize";
       document.body.style.userSelect = "none";
       const onMove = (ev) => {
-        const w = Math.min(QUEUE_MAX, Math.max(QUEUE_MIN, window.innerWidth - 8 - ev.clientX));
+        const distanceFromEnd = rtlLayout ? ev.clientX : window.innerWidth - ev.clientX;
+        const w = Math.min(QUEUE_MAX, Math.max(QUEUE_MIN, distanceFromEnd - 8));
         setQueueWidthTransient(w);
       };
       const onUp = () => {
@@ -257,7 +260,7 @@ export const AppShell = memo(function AppShell({
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
     },
-    [setQueueWidth, setQueueWidthTransient]
+    [rtlLayout, setQueueWidth, setQueueWidthTransient]
   );
 
   const [globalContextMenu, setGlobalContextMenu] = useState(null); // { x, y, playlist }
@@ -428,29 +431,33 @@ export const AppShell = memo(function AppShell({
     return Number.isFinite(saved) ? Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, saved)) : 0.5;
   });
   const [splitResizing, setSplitResizing] = useState(false);
-  const startSplitResize = useCallback((e) => {
-    e.preventDefault();
-    setSplitResizing(true);
-    document.body.style.cursor = "ew-resize";
-    document.body.style.userSelect = "none";
-    const onMove = (ev) => {
-      const r = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, ev.clientX / window.innerWidth));
-      setSplitRatio(r);
-    };
-    const onUp = () => {
-      setSplitResizing(false);
-      document.body.style.cursor = "";
-      document.body.style.userSelect = "";
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mouseup", onUp);
-      setSplitRatio((r) => {
-        localStorage.setItem("kiyoshi-split-ratio", String(r));
-        return r;
-      });
-    };
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mouseup", onUp);
-  }, []);
+  const startSplitResize = useCallback(
+    (e) => {
+      e.preventDefault();
+      setSplitResizing(true);
+      document.body.style.cursor = "ew-resize";
+      document.body.style.userSelect = "none";
+      const onMove = (ev) => {
+        const x = rtlLayout ? window.innerWidth - ev.clientX : ev.clientX;
+        const r = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, x / window.innerWidth));
+        setSplitRatio(r);
+      };
+      const onUp = () => {
+        setSplitResizing(false);
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        setSplitRatio((r) => {
+          localStorage.setItem("kiyoshi-split-ratio", String(r));
+          return r;
+        });
+      };
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    },
+    [rtlLayout]
+  );
   const instrumentalVizRef = useRef(instrumentalViz);
   useLayoutEffect(() => {
     splitViewRef.current = splitView;
@@ -615,7 +622,12 @@ export const AppShell = memo(function AppShell({
       switchingTo,
     }),
     [
-      showLogin, setShowLogin, addingProfile, setAddingProfile, reauthName, setReauthName,
+      showLogin,
+      setShowLogin,
+      addingProfile,
+      setAddingProfile,
+      reauthName,
+      setReauthName,
       switchingTo,
     ]
   );
@@ -630,8 +642,13 @@ export const AppShell = memo(function AppShell({
       remoteRememberDevice,
     }),
     [
-      remoteEnabled, pairModalOpen, setPairModalOpen, remoteInfo, remoteDevices,
-      remoteDeviceAction, remoteRememberDevice,
+      remoteEnabled,
+      pairModalOpen,
+      setPairModalOpen,
+      remoteInfo,
+      remoteDevices,
+      remoteDeviceAction,
+      remoteRememberDevice,
     ]
   );
   const appOverlaySettingsPanel = useMemo(
@@ -655,9 +672,22 @@ export const AppShell = memo(function AppShell({
       cancelUpdateDownload,
     }),
     [
-      settingsOpen, settingsClosing, closeSettings, settingsTab, setSettingsTab, anonStats,
-      handleAnonStatsChange, hideUserHandle, setHideUserHandle, updateInfo, checkForUpdates,
-      updateDownloading, updateDownloadProgress, updateDownloaded, downloadUpdate, installUpdate,
+      settingsOpen,
+      settingsClosing,
+      closeSettings,
+      settingsTab,
+      setSettingsTab,
+      anonStats,
+      handleAnonStatsChange,
+      hideUserHandle,
+      setHideUserHandle,
+      updateInfo,
+      checkForUpdates,
+      updateDownloading,
+      updateDownloadProgress,
+      updateDownloaded,
+      downloadUpdate,
+      installUpdate,
       cancelUpdateDownload,
     ]
   );
@@ -693,9 +723,17 @@ export const AppShell = memo(function AppShell({
       setDeleteDialog,
     }),
     [
-      createPlaylistOpen, setCreatePlaylistOpen, createPlaylistForSelection,
-      setCreatePlaylistForSelection, createPlaylistTracks, setCreatePlaylistTracks,
-      addToPlaylistFor, setAddToPlaylistFor, renameDialog, setRenameDialog, deleteDialog,
+      createPlaylistOpen,
+      setCreatePlaylistOpen,
+      createPlaylistForSelection,
+      setCreatePlaylistForSelection,
+      createPlaylistTracks,
+      setCreatePlaylistTracks,
+      addToPlaylistFor,
+      setAddToPlaylistFor,
+      renameDialog,
+      setRenameDialog,
+      deleteDialog,
       setDeleteDialog,
     ]
   );
@@ -811,7 +849,7 @@ export const AppShell = memo(function AppShell({
               style={{
                 position: "absolute",
                 top: 0,
-                right: 0,
+                insetInlineEnd: 0,
                 bottom: 0,
                 width: 8,
                 cursor: "ew-resize",
@@ -830,7 +868,7 @@ export const AppShell = memo(function AppShell({
                 style={{
                   position: "absolute",
                   top: "50%",
-                  right: 1,
+                  insetInlineEnd: 1,
                   transform: "translateY(-50%)",
                   width: 3,
                   height: 44,
@@ -1071,6 +1109,7 @@ export const AppShell = memo(function AppShell({
           handleToggleLike={handleToggleLike}
           nowPlayingContextTitle={collection?.title}
           onOpenArtist={(item) => openArtist(item, view)}
+          rtlLayout={rtlLayout}
         />
 
         <AppOverlays
