@@ -57,3 +57,17 @@ export const PROVIDER_SYNC = {
   kugou: { label: "Line", icon: "/sync-line.svg", color: "#81c784", bg: "rgba(129,199,132,0.12)" },
   simp: { label: "Line", icon: "/sync-line.svg", color: "#81c784", bg: "rgba(129,199,132,0.12)" },
 };
+
+const SYNC_ORDER = ["syllable", "word", "line"];
+const SYNC_BY_LEVEL = {
+  syllable: PROVIDER_SYNC.better,
+  word: PROVIDER_SYNC.musixmatch,
+  line: PROVIDER_SYNC.lrclib,
+};
+
+export function providerSyncLevels(id) {
+  const best = PROVIDER_SYNC[id];
+  if (!best) return [];
+  const index = SYNC_ORDER.indexOf(best.label.toLowerCase());
+  return index === -1 ? [best] : SYNC_ORDER.slice(index).map((level) => SYNC_BY_LEVEL[level]);
+}

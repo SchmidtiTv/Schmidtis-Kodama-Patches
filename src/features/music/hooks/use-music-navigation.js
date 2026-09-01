@@ -63,6 +63,28 @@ export function useMusicNavigation({ setSearchQuery }) {
     window.dispatchEvent(new Event("kiyoshi-recent-updated"));
   }, []);
 
+  const fillInSidebarEntry = useCallback((id, title, thumbnail) => {
+    let touched = false;
+    for (const prefix of ["kiyoshi-recent", "kiyoshi-pinned"]) {
+      const key = profileKey(prefix);
+      let stored;
+      try {
+        stored = JSON.parse(localStorage.getItem(key) || "[]");
+      } catch {
+        continue;
+      }
+      let changed = false;
+      const next = stored.map((entry) => {
+        if (itemId(entry) !== id || entry.forcedTitle || (entry.title && entry.thumbnail)) return entry;
+        touched = true;
+        changed = true;
+        return { ...entry, title: entry.title || title || "", thumbnail: entry.thumbnail || thumbnail || "" };
+      });
+      if (changed) localStorage.setItem(key, JSON.stringify(next));
+    }
+    if (touched) window.dispatchEvent(new Event("kiyoshi-recent-updated"));
+  }, []);
+
   const openPlaylist = useCallback(
     (item, fromView, refresh = false) => {
       // forcedTitle: when the caller provides a custom title (e.g. "Dusqk – Top Songs"),
@@ -73,6 +95,7 @@ export function useMusicNavigation({ setSearchQuery }) {
         title: forcedTitle || item.title,
         thumbnail: item.thumbnail,
         tracks: [],
+        description: item.description || "",
         total: null,
         loading: true,
         progress: 0,
@@ -103,11 +126,13 @@ export function useMusicNavigation({ setSearchQuery }) {
       es.onmessage = (e) => {
         const msg = JSON.parse(e.data);
         if (msg.type === "header") {
+          fillInSidebarEntry(item.playlistId, msg.title, msg.thumbnail);
           setCollection((c) =>
             c
               ? {
                   ...c,
                   title: c.forcedTitle || msg.title,
+                  description: msg.description || "",
                   thumbnail: msg.thumbnail || c.thumbnail,
                   total: msg.total,
                   cached: msg.cached || false,
@@ -132,7 +157,7 @@ export function useMusicNavigation({ setSearchQuery }) {
         es.close();
       };
     },
-    [addRecentPlaylist]
+    [addRecentPlaylist, fillInSidebarEntry]
   );
 
   const openAlbum = useCallback(

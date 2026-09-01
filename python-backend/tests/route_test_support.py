@@ -94,6 +94,11 @@ class FakeLocalDb:
             return FakeCursor([(row[0],) for row in self.liked_rows])
         if normalized.startswith("select playlist_id, title, description"):
             return FakeCursor(self.playlist_rows)
+        if normalized.startswith("select title, description from playlists"):
+            row = next(
+                (playlist for playlist in self.playlist_rows if playlist[0] == params[0]), None
+            )
+            return FakeCursor(one=(row[1], row[2]) if row else None)
         if normalized.startswith("select title from playlists"):
             row = next(
                 (playlist for playlist in self.playlist_rows if playlist[0] == params[0]), None

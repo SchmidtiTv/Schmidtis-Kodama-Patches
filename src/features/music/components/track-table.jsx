@@ -274,6 +274,7 @@ export function TableRow({
 
 export function PlaylistLayout({
   title,
+  description,
   thumbnail,
   playlistId,
   mixCollectionId,
@@ -779,6 +780,27 @@ export function PlaylistLayout({
               >
                 {title}
               </div>
+
+              {description && (
+                <div
+                  title={description}
+                  style={{
+                    maxWidth: 620,
+                    marginTop: 2,
+                    marginBottom: 10,
+                    fontSize: "var(--t13)",
+                    lineHeight: 1.5,
+                    color: "rgba(255,255,255,0.68)",
+                    textShadow: "0 1px 6px rgba(0,0,0,0.5)",
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
+                  {description}
+                </div>
+              )}
 
               {/* Metadata row with pipe separators */}
               <div

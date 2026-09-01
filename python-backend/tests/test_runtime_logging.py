@@ -1,7 +1,14 @@
 import logging
+from io import StringIO
 from unittest import TestCase
 
-from src.lib.runtime.logging import _DropNoisyAccessLogs, setup_logger
+from src.lib.runtime.logging import (
+    DEBUG_LOG,
+    DEBUG_LOG_LOCK,
+    LogTee,
+    _DropNoisyAccessLogs,
+    setup_logger,
+)
 
 
 class RuntimeLoggingTests(TestCase):
@@ -37,3 +44,17 @@ class RuntimeLoggingTests(TestCase):
         )
 
         self.assertTrue(drop_filter.filter(record))
+
+    def test_log_tee_includes_printed_lines_in_the_debug_ring(self) -> None:
+        with DEBUG_LOG_LOCK:
+            DEBUG_LOG.clear()
+
+        stream = StringIO()
+        tee = LogTee(stream, "INFO")
+        tee.write("printed diagnostic\n")
+
+        self.assertEqual(stream.getvalue(), "printed diagnostic\n")
+        with DEBUG_LOG_LOCK:
+            entry = DEBUG_LOG[-1]
+        self.assertEqual(entry["level"], "INFO")
+        self.assertEqual(entry["msg"], "printed diagnostic")

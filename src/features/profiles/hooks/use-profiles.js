@@ -27,6 +27,7 @@ export function useProfiles({
   setView,
   setSearchQuery,
   setAppKey,
+  setViewRefreshKey,
   setCurrentTrack,
   setQueue,
   setCollection,
@@ -45,6 +46,7 @@ export function useProfiles({
   // Mirrors the active profile's sessionExpired flag for views that want to explain an empty
   // result instead of just showing the one-shot toast above (e.g. the library view).
   const [sessionExpired, setSessionExpired] = useState(false);
+  const sessionExpiredRef = useRef(false);
   const [showLangPicker, setShowLangPicker] = useState(() => !localStorage.getItem("kiyoshi-lang"));
   const [showProfileSwitcher, setShowProfileSwitcher] = useState(false);
   const [switchingTo, setSwitchingTo] = useState(null);
@@ -88,7 +90,9 @@ export function useProfiles({
       // ever told about it once it hits a 401 on some unrelated request. Both need the same
       // thing from the user: sign in again.
       const active = (d.profiles || []).find((p) => p.name === d.current);
-      setSessionExpired(Boolean(active && active.type !== "local" && active.sessionExpired));
+      const expired = Boolean(active && active.type !== "local" && active.sessionExpired);
+      sessionExpiredRef.current = expired;
+      setSessionExpired(expired);
       if (active && active.type !== "local" && (active.loggedOut || active.sessionExpired)) {
         if (sessionWarnedRef.current !== active.name) {
           sessionWarnedRef.current = active.name;
@@ -136,15 +140,14 @@ export function useProfiles({
       }
       if (cancelled) return;
       const rotate = () => native.rotateSessionCookies(currentProfile).catch(() => {});
-      const alreadyLoggedOut = Boolean(
-        profilesRef.current.find((profile) => profile.name === currentProfile)?.loggedOut
-      );
-      firstTimer = setTimeout(
-        () => {
-          if (!cancelled) rotate();
-        },
-        alreadyLoggedOut ? 0 : 25000
-      );
+      firstTimer = setTimeout(() => {
+        if (cancelled) return;
+        const active = profilesRef.current.find((profile) => profile.name === currentProfile);
+        const needsRefresh = Boolean(active?.loggedOut || sessionExpiredRef.current);
+        rotate().then(() => {
+          if (!cancelled && needsRefresh) setViewRefreshKey((key) => key + 1);
+        });
+      }, 2000);
       interval = setInterval(
         () => {
           if (!cancelled) rotate();
@@ -158,7 +161,7 @@ export function useProfiles({
       if (firstTimer) clearTimeout(firstTimer);
       native.stopSessionKeeper().catch(() => {});
     };
-  }, [currentProfile]);
+  }, [currentProfile, setViewRefreshKey]);
 
   // ── Account/profile actions — shared by the Sidebar quick-switcher dropdown
   //    and the Account settings tab. Single source of truth for the app-wide

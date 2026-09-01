@@ -286,6 +286,7 @@ class PlaylistRouteTests(RouteTestCase):
         events = sse_events(self.client.get("/playlist/local-pl/stream"))
         self.assertEqual(events[0]["type"], "header")
         self.assertTrue(events[0]["cached"])
+        self.assertEqual(events[0]["description"], "Local description")
         self.assertEqual(events[-1], {"type": "done"})
 
         self.assertEqual(self.client.delete("/playlist/local-pl").json, {"ok": True})

@@ -260,6 +260,7 @@ export const MainContent = memo(function MainContent({
             <Suspense fallback={loadingFallback}>
               <CollectionView
                 title={collection.title}
+                description={collection.description}
                 thumbnail={collection.thumbnail}
                 playlistId={collection.playlistId}
                 browseId={collection.browseId}

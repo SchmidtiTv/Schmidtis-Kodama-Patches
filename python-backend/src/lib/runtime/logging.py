@@ -14,10 +14,11 @@ FEEDBACK_LOG_RING = collections.deque(maxlen=300)
 
 
 class LogTee:
-    """Mirror complete stdout/stderr lines into the feedback log ring."""
+    """Mirror complete stdout/stderr lines into the diagnostic log rings."""
 
-    def __init__(self, stream: TextIO) -> None:
+    def __init__(self, stream: TextIO, level: str) -> None:
         self._stream = stream
+        self._level = level
         self._buffer = ""
 
     def write(self, data: str) -> int:
@@ -32,6 +33,13 @@ class LogTee:
             line, self._buffer = self._buffer.split("\n", 1)
             if line.strip():
                 FEEDBACK_LOG_RING.append(line)
+                with DEBUG_LOG_LOCK:
+                    DEBUG_LOG.append({
+                        "ts": time.time(),
+                        "level": self._level,
+                        "msg": line.rstrip("\r")[:2000],
+                        "source": "backend",
+                    })
         return len(data)
 
     def flush(self) -> None:
@@ -96,9 +104,9 @@ _ring_handler.addFilter(_DropNoisyAccessLogs())
 def setup_log_tee() -> None:
     """Install stdout/stderr mirrors once."""
     if not isinstance(sys.stdout, LogTee):
-        sys.stdout = LogTee(sys.stdout)
+        sys.stdout = LogTee(sys.stdout, "INFO")
     if not isinstance(sys.stderr, LogTee):
-        sys.stderr = LogTee(sys.stderr)
+        sys.stderr = LogTee(sys.stderr, "ERROR")
 
 
 def setup_logger() -> None:

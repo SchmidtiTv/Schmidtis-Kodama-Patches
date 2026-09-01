@@ -4,6 +4,7 @@ import { useAlbumDetails } from "@/features/music/hooks/use-album-details.js";
 
 export function CollectionView({
   title,
+  description,
   thumbnail,
   playlistId,
   tracks,
@@ -41,6 +42,7 @@ export function CollectionView({
   return (
     <PlaylistLayout
       title={title}
+      description={description}
       thumbnail={thumbnail}
       playlistId={playlistId}
       tracks={tracks}

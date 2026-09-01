@@ -705,6 +705,7 @@ export default function App() {
     setView,
     setSearchQuery,
     setAppKey,
+    setViewRefreshKey,
     setCurrentTrack,
     setQueue,
     setCollection,

@@ -33,7 +33,7 @@ import {
   importIdentityFile,
   exportIdentityFile,
 } from "@/features/lyrics/community/identity.js";
-import { PROVIDER_SYNC } from "@/features/lyrics/providers.js";
+import { providerSyncLevels } from "@/features/lyrics/providers.js";
 import {
   unisonSetNickname,
   unisonResetNickname,
@@ -137,11 +137,9 @@ export function LyricsProviderList({ providers, onChange }) {
             {p.label}
           </span>
           {/* Sync-type tag */}
-          {PROVIDER_SYNC[p.id] &&
-            (() => {
-              const sync = PROVIDER_SYNC[p.id];
-              return (
+          {providerSyncLevels(p.id).map((sync) => (
                 <span
+                  key={sync.label}
                   style={{
                     display: "flex",
                     alignItems: "center",
@@ -178,8 +176,7 @@ export function LyricsProviderList({ providers, onChange }) {
                   )}
                   {sync.label}
                 </span>
-              );
-            })()}
+          ))}
           <div className="flex-1" />
           {/* Enable toggle */}
           <Toggle

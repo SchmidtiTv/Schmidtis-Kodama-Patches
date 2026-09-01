@@ -183,6 +183,7 @@ def stream_playlist(playlist_id: str) -> RouteResponse:
             if profile_repo.is_local(profile_name):
                 tracks = None
                 pl_title = playlist_id
+                pl_description = ""
                 with profile_repo.local_database(profile_name or "default") as db:
                     if playlist_id == "LM":
                         rows = db.execute(
@@ -192,9 +193,10 @@ def stream_playlist(playlist_id: str) -> RouteResponse:
                                    "album": r[3], "thumbnail": r[4], "duration": r[5]} for r in rows]
                         pl_title = "Gelikte Songs"
                     else:
-                        pl_row = db.execute("SELECT title FROM playlists WHERE playlist_id=?", (playlist_id,)).fetchone()
+                        pl_row = db.execute("SELECT title, description FROM playlists WHERE playlist_id=?", (playlist_id,)).fetchone()
                         if pl_row:
                             pl_title = pl_row[0]
+                            pl_description = pl_row[1] or ""
                             rows = db.execute(
                                 "SELECT video_id, set_video_id, title, artists, album, thumbnail, duration FROM playlist_tracks WHERE playlist_id=? ORDER BY position ASC",
                                 (playlist_id,)
@@ -202,7 +204,7 @@ def stream_playlist(playlist_id: str) -> RouteResponse:
                             tracks = [{"videoId": r[0], "setVideoId": r[1], "title": r[2], "artists": r[3],
                                        "album": r[4], "thumbnail": r[5], "duration": r[6]} for r in rows]
                 if tracks is not None:
-                    yield f"data: {json.dumps({'type':'header','title':pl_title,'thumbnail':'','total':len(tracks),'cached':True})}\n\n"
+                    yield f"data: {json.dumps({'type':'header','title':pl_title,'description':pl_description,'thumbnail':'','total':len(tracks),'cached':True})}\n\n"
                     for i in range(0, len(tracks), _TRANSFER_CHUNK_SIZE):
                         yield f"data: {json.dumps({'type':'tracks','tracks':tracks[i:i+_TRANSFER_CHUNK_SIZE]})}\n\n"
                     yield f"data: {json.dumps({'type':'done'})}\n\n"
@@ -214,7 +216,7 @@ def stream_playlist(playlist_id: str) -> RouteResponse:
 
             def serve_cached(data: dict[str, object]) -> Iterator[str]:
                 tracks = cast(list[object], data["tracks"])
-                yield send({"type": "header", "title": data["title"], "thumbnail": data["thumbnail"], "total": len(tracks), "cached": True})
+                yield send({"type": "header", "title": data["title"], "description": data.get("description", ""), "thumbnail": data["thumbnail"], "total": len(tracks), "cached": True})
                 for i in range(0, len(tracks), _TRANSFER_CHUNK_SIZE):
                     yield send({"type": "tracks", "tracks": tracks[i:i+_TRANSFER_CHUNK_SIZE]})
                 yield send({"type": "done"})
@@ -276,7 +278,8 @@ def stream_playlist(playlist_id: str) -> RouteResponse:
             raw_tracks = [t for t in playlist.get("tracks", []) if t.get("videoId")]
             total = len(raw_tracks)
 
-            yield send({"type": "header", "title": playlist.get("title", ""), "thumbnail": thumbnail, "total": total})
+            description = playlist.get("description", "") or ""
+            yield send({"type": "header", "title": playlist.get("title", ""), "description": description, "thumbnail": thumbnail, "total": total})
             all_tracks: list[dict[str, object]] = []
             for raw_batch in iter_preferred_audio_versions(
                 resolver,
@@ -290,7 +293,7 @@ def stream_playlist(playlist_id: str) -> RouteResponse:
                 pct = min(100, round(len(all_tracks) / total * 100)) if total else 100
                 yield send({"type": "progress", "progress": pct})
                 yield send({"type": "tracks", "tracks": formatted_batch})
-            data: dict[str, object] = {"title": playlist.get("title", ""), "thumbnail": thumbnail, "tracks": all_tracks}
+            data: dict[str, object] = {"title": playlist.get("title", ""), "description": description, "thumbnail": thumbnail, "tracks": all_tracks}
             if cache_flags["playlists"]:
                 cache.put(playlist_id, profile_name, data)
                 cache.save_playlist_disk(playlist_id, profile_name, data)

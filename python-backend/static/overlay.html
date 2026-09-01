@@ -37,7 +37,9 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;min
 <div id="stage"><div id="border"></div><div id="bg"></div><div id="blur"></div><div id="layers"></div><div id="layers-free"></div></div>
 <script>
 const API=location.origin;
-const EDITOR=new URLSearchParams(location.search).get('editor')==='1'; // suppress entrance anims in the editor preview
+const PARAMS=new URLSearchParams(location.search);
+const EDITOR=PARAMS.get('editor')==='1'; // suppress entrance anims in the editor preview
+const STILL=PARAMS.get('still')==='1';
 let doc=null;
 const state={title:"",artist:"",album:"",cover:"",progress:0,duration:0,isPlaying:false};
 const layerEls={}; // id -> record
@@ -411,5 +413,5 @@ function connect(){
   es.onmessage=e=>{try{updateState(JSON.parse(e.data));}catch(_){}};
   es.onerror=()=>{es.close();setTimeout(connect,3000);};
 }
-fetch(API+'/overlay/config').then(r=>r.json()).then(c=>{applyDoc(c);connect();}).catch(()=>connect());
+fetch(API+'/overlay/config').then(r=>r.json()).then(c=>{applyDoc(c);if(!STILL)connect();}).catch(()=>{if(!STILL)connect();});
 </script></body></html>

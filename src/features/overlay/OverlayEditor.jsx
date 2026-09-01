@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useLayoutEffect } from "react";
+import { useState, useEffect, useRef, useCallback, useLayoutEffect, useMemo } from "react";
 import {
   Button,
   Switch,
@@ -67,6 +67,8 @@ const TYPE_META = {
   shape: { icon: PaintBrushBroad, label: "Shape" },
 };
 const PAN_SPEED = 0.5; // wheel-scroll pan damping (raw wheel deltas feel too coarse at 1:1)
+const ZOOM_MIN = 0.1;
+const ZOOM_MAX = 32;
 // Fonts preloaded by the engine HTML (must match the <link> in server.py).
 const FONT_LIST = [
   { value: "system-ui, sans-serif", label: "System", category: "system" },
@@ -1162,6 +1164,35 @@ function LayerEffectsSection({ t, layer, setStyle }) {
   );
 }
 
+function DesignPreview({ apiBase, rawDoc, box }) {
+  const ref = useRef(null);
+  const [ready, setReady] = useState(false);
+  const previewDoc = useMemo(() => normalizeOverlayDoc(rawDoc), [rawDoc]);
+  const width = previewDoc?.canvas?.width || 480;
+  const height = previewDoc?.canvas?.height || 120;
+  const scale = Math.min((box.w - 32) / width, (box.h - 32) / height, 1);
+
+  useEffect(() => {
+    if (ready) ref.current?.contentWindow?.postMessage({ __overlayDoc: previewDoc }, "*");
+  }, [previewDoc, ready]);
+
+  return (
+    <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+      <div style={{ width: width * scale, height: height * scale }}>
+        <iframe
+          ref={ref}
+          onLoad={() => setReady(true)}
+          src={`${apiBase}/overlay?editor=1&still=1`}
+          title=""
+          tabIndex={-1}
+          scrolling="no"
+          style={{ width, height, border: 0, display: "block", transform: `scale(${scale})`, transformOrigin: "top left", pointerEvents: "none" }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function OverlayEditor({ t, apiBase, standalone = false }) {
   const [doc, setDoc] = useState(loadInitialDoc);
   const [selectedIds, setSelectedIds] = useState([]);
@@ -1180,6 +1211,7 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
   });
   const [iframeKey, setIframeKey] = useState(0);
   const [zoom, setZoom] = useState(1);
+  const [showGrid, setShowGrid] = useState(() => localStorage.getItem("kiyoshi-ovl-showGrid") === "true");
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [tool, setTool] = useState(null); // null = select; { type, shape? } = draw mode
   const [drawRect, setDrawRect] = useState(null); // live preview while drawing
@@ -1250,6 +1282,12 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
   const nudgeTimer = useRef(0);
   const nudgeActive = useRef(false);
   const liveDocRef = useRef(null); // accumulates the doc across a keyboard-nudge burst
+  const clipboardRef = useRef([]);
+  const pasteCountRef = useRef(0);
+
+  useEffect(() => {
+    localStorage.setItem("kiyoshi-ovl-showGrid", String(showGrid));
+  }, [showGrid]);
 
   const previewSrc = `${apiBase}/overlay?bg=checkered&editor=1`;
 
@@ -1332,7 +1370,7 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
       const W = d.canvas.width || 1,
         H = d.canvas.height || 1,
         padPx = 96;
-      const z = clamp(Math.min((vp.w - padPx) / W, (vp.h - padPx) / H), 0.1, 3);
+      const z = clamp(Math.min((vp.w - padPx) / W, (vp.h - padPx) / H), ZOOM_MIN, 3);
       setZoom(z);
       setPan({ x: (vp.w - W * z) / 2, y: (vp.h - H * z) / 2 });
     },
@@ -1472,6 +1510,48 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
     setSelectedId(clone.id);
   }, [doc, selectedId, commit]);
 
+  const copySelected = () => {
+    const selectedLayers = doc.layers.filter((layer) => selectedIds.includes(layer.id));
+    if (!selectedLayers.length) return false;
+    clipboardRef.current = selectedLayers.map((layer) => JSON.parse(JSON.stringify(layer)));
+    pasteCountRef.current = 0;
+    return true;
+  };
+  const cutSelected = () => {
+    if (copySelected()) deleteSelected();
+  };
+  const pasteClipboard = () => {
+    if (!clipboardRef.current.length) return;
+    pasteCountRef.current += 1;
+    const offset = 20 * pasteCountRef.current;
+    const topZ = doc.layers.reduce((highest, layer) => Math.max(highest, layer.z || 0), 0);
+    const clones = clipboardRef.current.map((layer, index) => ({
+      ...layer,
+      id: crypto.randomUUID(),
+      x: (layer.x || 0) + offset,
+      y: (layer.y || 0) + offset,
+      z: topZ + index + 1,
+    }));
+    commit({ ...doc, layers: [...doc.layers, ...clones] }, doc);
+    setSelectedIds(clones.map((layer) => layer.id));
+  };
+  const zoomToSelection = () => {
+    const selectedLayers = doc.layers.filter((layer) => selectedIds.includes(layer.id));
+    if (!selectedLayers.length || !viewportSize.w || !viewportSize.h) {
+      fit();
+      return;
+    }
+    const minX = Math.min(...selectedLayers.map((layer) => layer.x || 0));
+    const minY = Math.min(...selectedLayers.map((layer) => layer.y || 0));
+    const maxX = Math.max(...selectedLayers.map((layer) => (layer.x || 0) + (layer.w || 0)));
+    const maxY = Math.max(...selectedLayers.map((layer) => (layer.y || 0) + (layer.h || 0)));
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    const nextZoom = clamp(Math.min((viewportSize.w - 120) / width, (viewportSize.h - 120) / height), ZOOM_MIN, ZOOM_MAX);
+    setZoom(nextZoom);
+    setPan({ x: (viewportSize.w - width * nextZoom) / 2 - minX * nextZoom, y: (viewportSize.h - height * nextZoom) / 2 - minY * nextZoom });
+  };
+
   // Align the selected layer to a canvas edge / center (editor-only, no engine change).
   const alignSelected = (axis, where) => {
     if (!selected) return;
@@ -1600,10 +1680,26 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
         setDrawRect(null);
         return;
       }
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "z") {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) redo();
         else undo();
+      } else if (mod && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        copySelected();
+      } else if (mod && e.key.toLowerCase() === "x") {
+        e.preventDefault();
+        cutSelected();
+      } else if (mod && e.key.toLowerCase() === "v") {
+        e.preventDefault();
+        pasteClipboard();
+      } else if (mod && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        duplicateSelected();
+      } else if (mod && e.shiftKey && e.key === "2") {
+        e.preventDefault();
+        zoomToSelection();
       } else if ((e.key === "Delete" || e.key === "Backspace") && selectedIds.length) {
         e.preventDefault();
         deleteSelected();
@@ -1636,7 +1732,7 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
       const mx = e.clientX - rect.left,
         my = e.clientY - rect.top;
       const factor = Math.exp(-d * 0.0015);
-      const nz = clamp(zoom * factor, 0.1, 5);
+      const nz = clamp(zoom * factor, ZOOM_MIN, ZOOM_MAX);
       const cx = (mx - pan.x) / zoom,
         cy = (my - pan.y) / zoom;
       setPan({ x: mx - cx * nz, y: my - cy * nz });
@@ -2128,6 +2224,16 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
                   setIframeKey((k) => k + 1);
                 } else if (key === "nudge") {
                   setNudgeDialogOpen(true);
+                } else if (key === "copy") {
+                  copySelected();
+                } else if (key === "cut") {
+                  cutSelected();
+                } else if (key === "paste") {
+                  pasteClipboard();
+                } else if (key === "zoomSelection") {
+                  zoomToSelection();
+                } else if (key === "grid") {
+                  setShowGrid((visible) => !visible);
                 }
               }}
             >
@@ -2155,6 +2261,30 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
                 <DropdownItem id="export" textValue={t("ovlMenuExportCurrent")}>
                   <DownloadSimple size={13} />
                   {t("ovlMenuExportCurrent")}
+                </DropdownItem>
+              </DropdownSection>
+              <DropdownSection className="border-t border-border mt-1 pt-1">
+                <DropdownItem id="copy" textValue={t("ovlMenuCopy")}>
+                  <Copy size={13} />
+                  {t("ovlMenuCopy")}
+                </DropdownItem>
+                <DropdownItem id="cut" textValue={t("ovlMenuCut")}>
+                  <Copy size={13} />
+                  {t("ovlMenuCut")}
+                </DropdownItem>
+                <DropdownItem id="paste" textValue={t("ovlMenuPaste")}>
+                  <Plus size={13} />
+                  {t("ovlMenuPaste")}
+                </DropdownItem>
+              </DropdownSection>
+              <DropdownSection className="border-t border-border mt-1 pt-1">
+                <DropdownItem id="zoomSelection" textValue={t("ovlZoomSelection")}>
+                  <ArrowsOut size={13} />
+                  {t("ovlZoomSelection")}
+                </DropdownItem>
+                <DropdownItem id="grid" textValue={t("ovlShowGrid")}>
+                  <Swatches size={13} />
+                  {showGrid ? "✓ " : ""}{t("ovlShowGrid")}
                 </DropdownItem>
               </DropdownSection>
               <DropdownSection className="border-t border-border mt-1 pt-1">
@@ -2373,6 +2503,21 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
               />
             </div>
 
+            {showGrid && (() => {
+              const pixelSize = zoom;
+              if (pixelSize < 5) return null;
+              const strength = clamp((pixelSize - 5) / 10, 0, 1) * 0.14;
+              return (
+                <div
+                  className="absolute inset-0 pointer-events-none"
+                  style={{
+                    backgroundImage: `linear-gradient(to right, rgba(255,255,255,${strength}) ${1 / zoom}px, transparent ${1 / zoom}px), linear-gradient(to bottom, rgba(255,255,255,${strength}) ${1 / zoom}px, transparent ${1 / zoom}px)`,
+                    backgroundSize: "1px 1px",
+                  }}
+                />
+              );
+            })()}
+
             {/* Interaction layer (over the iframe). Empty-area pointerdowns bubble up to the
             viewport handler, which covers both the canvas and the free space around it. */}
             <div
@@ -2584,7 +2729,7 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
               variant="ghost"
               size="sm"
               isIconOnly
-              onPress={() => setZoom((z) => clamp(z * 0.8, 0.1, 5))}
+              onPress={() => setZoom((z) => clamp(z * 0.8, ZOOM_MIN, ZOOM_MAX))}
               aria-label="Zoom out"
             >
               <span className="text-t13">−</span>
@@ -2601,7 +2746,7 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
               variant="ghost"
               size="sm"
               isIconOnly
-              onPress={() => setZoom((z) => clamp(z * 1.25, 0.1, 5))}
+              onPress={() => setZoom((z) => clamp(z * 1.25, ZOOM_MIN, ZOOM_MAX))}
               aria-label="Zoom in"
             >
               <span className="text-t13">+</span>
@@ -3567,15 +3712,14 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
                               "color-mix(in srgb, var(--bg-elevated) 85%, var(--bg-base))",
                           }}
                         >
-                          {/* Preview placeholder */}
                           <div
-                            className="h-24 flex flex-col items-center justify-center gap-1.5 border-b border-border"
+                            className="relative h-40 border-b border-border"
                             style={{
-                              background: "color-mix(in srgb, var(--bg-base) 80%, transparent)",
+                              background: "repeating-conic-gradient(rgba(255,255,255,0.05) 0% 25%, rgba(255,255,255,0.02) 0% 50%) 0 0/16px 16px",
                             }}
                           >
-                            <Swatches size={24} className="text-accent opacity-50" />
-                            <span className="text-t10 text-muted tabular-nums">
+                            <DesignPreview apiBase={apiBase} rawDoc={prof.doc} box={{ w: 224, h: 160 }} />
+                            <span className="absolute right-2 bottom-2 rounded bg-black/60 px-1.5 py-0.5 text-t10 text-white/75 tabular-nums">
                               {cw} × {ch}
                             </span>
                           </div>
