@@ -186,6 +186,13 @@ export default function App() {
   const [instrumentalViz, setInstrumentalViz] = useState(
     () => localStorage.getItem("kiyoshi-instrumental-viz") !== "false"
   );
+  const [canvasEnabled, setCanvasEnabled] = useState(
+    () => localStorage.getItem("kiyoshi-canvas-enabled") !== "false"
+  );
+  const [canvasSource, setCanvasSource] = useState(() => {
+    const saved = localStorage.getItem("kiyoshi-canvas-source");
+    return ["auto", "apple_music", "tidal", "vivimusic"].includes(saved) ? saved : "auto";
+  });
   const [vizConfig, setVizConfig] = useState(() => {
     try {
       return {
@@ -835,13 +842,24 @@ export default function App() {
         localStorage.setItem("kiyoshi-ambient-visualizer", String(next));
       },
       instrumentalViz,
-      onToggleInstrumentalViz: (v) => {
-        setInstrumentalViz(v);
-        localStorage.setItem("kiyoshi-instrumental-viz", v ? "true" : "false");
-        if (!v && autoCoverRef.current) {
+      onToggleInstrumentalViz: () => {
+        const next = !instrumentalViz;
+        setInstrumentalViz(next);
+        localStorage.setItem("kiyoshi-instrumental-viz", next ? "true" : "false");
+        if (!next && autoCoverRef.current) {
           autoCoverRef.current = false;
           setShowLyrics(true);
         }
+      },
+      canvasEnabled,
+      onCanvasEnabledChange: (enabled) => {
+        setCanvasEnabled(enabled);
+        localStorage.setItem("kiyoshi-canvas-enabled", enabled ? "true" : "false");
+      },
+      canvasSource,
+      onCanvasSourceChange: (source) => {
+        setCanvasSource(source);
+        localStorage.setItem("kiyoshi-canvas-source", source);
       },
       vizConfig,
       onUpdateViz: updateViz,
@@ -878,6 +896,8 @@ export default function App() {
       ambientBackground,
       ambientVisualizer,
       instrumentalViz,
+      canvasEnabled,
+      canvasSource,
       vizConfig,
       updateViz,
       playerBarControls,
@@ -1191,6 +1211,8 @@ export default function App() {
       ambientVisualizer,
       vizConfig,
       instrumentalViz,
+      canvasEnabled,
+      canvasSource,
     }),
     [
       animations,
@@ -1200,6 +1222,8 @@ export default function App() {
       ambientVisualizer,
       vizConfig,
       instrumentalViz,
+      canvasEnabled,
+      canvasSource,
     ]
   );
   const appShellLyricsPrefs = useMemo(

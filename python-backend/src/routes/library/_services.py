@@ -7,6 +7,7 @@ from flask import current_app
 from src.lib.music.album import Album
 from src.lib.music.album_details import AlbumDetailsFinder
 from src.lib.music.band_members import BandMemberFinder
+from src.lib.music.canvas_artwork import CanvasArtworkFinder
 from src.lib.music.credits import SongCreditsCache
 from src.lib.music.playlist import Playlist
 from src.lib.music.playlist_mix import PlaylistMix
@@ -59,3 +60,7 @@ def band_member_finder() -> BandMemberFinder:
 
 def song_credits_cache() -> SongCreditsCache:
     return cast(SongCreditsCache, current_app.extensions["song_credits_cache"])
+
+
+def canvas_artwork_finder() -> CanvasArtworkFinder:
+    return cast(CanvasArtworkFinder, current_app.extensions["canvas_artwork_finder"])

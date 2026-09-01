@@ -112,6 +112,8 @@ export const AppShell = memo(function AppShell({
     ambientVisualizer,
     vizConfig,
     instrumentalViz,
+    canvasEnabled,
+    canvasSource,
   } = appearancePrefs;
   const {
     lyricsFontSize,
@@ -1110,6 +1112,8 @@ export const AppShell = memo(function AppShell({
           nowPlayingContextTitle={collection?.title}
           onOpenArtist={(item) => openArtist(item, view)}
           rtlLayout={rtlLayout}
+          canvasEnabled={canvasEnabled}
+          canvasSource={canvasSource}
         />
 
         <AppOverlays

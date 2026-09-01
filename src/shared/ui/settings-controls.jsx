@@ -7,6 +7,7 @@ import {
   SliderFill,
   SliderThumb,
   SwitchRoot,
+  SwitchContent,
   SwitchControl,
   SwitchThumb,
   CardRoot,
@@ -38,9 +39,11 @@ export function Toggle({ value, onChange, ariaLabel = "toggle" }) {
   // Thin wrapper around HeroUI Switch so all existing Toggle({value,onChange}) call sites stay unchanged.
   return (
     <SwitchRoot isSelected={!!value} onChange={onChange} aria-label={ariaLabel}>
-      <SwitchControl>
-        <SwitchThumb />
-      </SwitchControl>
+      <SwitchContent>
+        <SwitchControl>
+          <SwitchThumb />
+        </SwitchControl>
+      </SwitchContent>
     </SwitchRoot>
   );
 }

@@ -106,6 +106,10 @@ export function SettingsPanel({
     onToggleAmbientVisualizer,
     instrumentalViz,
     onToggleInstrumentalViz,
+    canvasEnabled,
+    onCanvasEnabledChange,
+    canvasSource,
+    onCanvasSourceChange,
     vizConfig,
     onUpdateViz,
     playerBarControls,
@@ -504,6 +508,10 @@ export function SettingsPanel({
               instrumentalViz={instrumentalViz}
               onToggleAmbientVisualizer={onToggleAmbientVisualizer}
               onToggleInstrumentalViz={onToggleInstrumentalViz}
+              canvasEnabled={canvasEnabled}
+              onCanvasEnabledChange={onCanvasEnabledChange}
+              canvasSource={canvasSource}
+              onCanvasSourceChange={onCanvasSourceChange}
               onUpdateViz={onUpdateViz}
               saveVizPreset={saveVizPreset}
               setVizPresetName={setVizPresetName}

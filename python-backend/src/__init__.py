@@ -8,6 +8,7 @@ from src.lib import (
     Album,
     AlbumDetailsFinder,
     BandMemberFinder,
+    CanvasArtworkFinder,
     CacheSettings,
     LastFM,
     ComposerBridge,
@@ -61,6 +62,7 @@ def create_app() -> Flask:
         app.extensions["feedback_webhook_url"] = load_feedback_webhook()
         app.extensions["network_settings"] = NetworkSettings()
         app.extensions["song_credits_cache"] = SongCreditsCache()
+        app.extensions["canvas_artwork_finder"] = CanvasArtworkFinder()
 
         profile_repository = Profile()
         app.extensions["profile_repository"] = profile_repository

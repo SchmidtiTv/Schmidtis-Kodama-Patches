@@ -17,6 +17,8 @@
 - Synced lyrics with word- and syllable-level timing, plus Unison community lyrics.
 - A Lyrics Composer for creating and editing lyrics.
 - Crossfade, a built-in visualizer, remote control, and an OBS overlay.
+- Optional animated cover artwork in the **About Song** card, with automatic or per-source
+  selection for Apple Music, Tidal, and ViviMusic under **Settings → Visualizer**.
 - Offline downloads, Discord Rich Presence, and Last.fm scrobbling.
 - Search, playlists, artist pages, profiles, and a keyboard-first desktop interface.
 
@@ -132,3 +134,7 @@ AGPL-3.0.
 Kodama is an **unofficial** client and is **not affiliated with or endorsed by YouTube or Google**.
 It relies on the unofficial YouTube Music API and is provided for personal use, as-is and without
 warranty. Use at your own risk.
+
+Animated cover artwork uses Apple Music and Tidal web-player endpoints plus ViviMusic's public
+manifest. These sources are unofficial, can change without notice, and do not provide a canvas for
+every track.

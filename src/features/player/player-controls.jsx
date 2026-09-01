@@ -13,6 +13,7 @@ import {
   SliderThumb,
   SliderTrack,
   Spinner,
+  SwitchContent,
   SwitchControl,
   SwitchRoot,
   SwitchThumb,
@@ -723,15 +724,17 @@ export function PlayerControls(props) {
                   aria-label={t("videoViewTooltip")}
                   style={{ transform: "scale(1.25)" }}
                 >
-                  <SwitchControl>
-                    <SwitchThumb>
-                      {showVideoView ? (
-                        <ClapperboardPlay size={13} weight="fill" />
-                      ) : (
-                        <HeadphonesSimple size={13} weight="fill" />
-                      )}
-                    </SwitchThumb>
-                  </SwitchControl>
+                  <SwitchContent>
+                    <SwitchControl>
+                      <SwitchThumb>
+                        {showVideoView ? (
+                          <ClapperboardPlay size={13} weight="fill" />
+                        ) : (
+                          <HeadphonesSimple size={13} weight="fill" />
+                        )}
+                      </SwitchThumb>
+                    </SwitchControl>
+                  </SwitchContent>
                 </SwitchRoot>
               </Tooltip>
             </div>

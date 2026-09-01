@@ -14,6 +14,8 @@ export function QueueDock({
   nowPlayingContextTitle,
   onOpenArtist,
   rtlLayout,
+  canvasEnabled,
+  canvasSource,
 }) {
   return (
     <div
@@ -98,6 +100,8 @@ export function QueueDock({
         visible={queueOpen}
         nowPlayingContextTitle={nowPlayingContextTitle}
         onOpenArtist={onOpenArtist}
+        canvasEnabled={canvasEnabled}
+        canvasSource={canvasSource}
       />
     </div>
   );

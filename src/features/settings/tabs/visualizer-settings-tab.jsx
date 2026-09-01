@@ -17,12 +17,16 @@ import { SettingRow, Slider, Toggle } from "@/shared/ui/settings-controls.jsx";
 import { thumb } from "@/shared/api/thumbnails.js";
 export function VisualizerSettingsTab({
   ambientVisualizer,
+  canvasEnabled,
+  canvasSource,
   applyVizPreset,
   deleteVizPreset,
   exportVizPreset,
   handleVizImport,
   instrumentalViz,
   onToggleAmbientVisualizer,
+  onCanvasEnabledChange,
+  onCanvasSourceChange,
   onToggleInstrumentalViz,
   onUpdateViz,
   saveVizPreset,
@@ -239,6 +243,36 @@ export function VisualizerSettingsTab({
       >
         <Toggle value={instrumentalViz} onChange={onToggleInstrumentalViz} />
       </SettingRow>
+      <SettingRow
+        label={t("canvasArtwork") || "Animated cover"}
+        description={
+          t("canvasArtworkDesc") || "Show animated cover artwork in the About Song card"
+        }
+        icon={<MusicNote />}
+      >
+        <Toggle value={canvasEnabled} onChange={onCanvasEnabledChange} />
+      </SettingRow>
+      {canvasEnabled && (
+        <SettingRow label={t("canvasSource") || "Canvas source"} icon={<MusicNote />}>
+          <div className="flex flex-wrap justify-end gap-1.5">
+            {[
+              ["auto", t("canvasSourceAuto") || "Auto"],
+              ["apple_music", t("canvasSourceAppleMusic") || "Apple Music"],
+              ["tidal", t("canvasSourceTidal") || "Tidal"],
+              ["vivimusic", t("canvasSourceViviMusic") || "ViviMusic"],
+            ].map(([source, label]) => (
+              <Button
+                key={source}
+                variant={canvasSource === source ? "secondary" : "ghost"}
+                size="sm"
+                onPress={() => onCanvasSourceChange(source)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+        </SettingRow>
+      )}
       <SettingRow label={t("visualizerShape") || "Shape"} icon={<WaveformLines />}>
         <div className="flex gap-1.5">
           <Button

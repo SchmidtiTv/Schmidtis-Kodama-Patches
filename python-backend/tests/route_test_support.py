@@ -874,6 +874,16 @@ class FakeSongCreditsCache:
         self.entries.clear()
 
 
+class FakeCanvasArtworkFinder:
+    def __init__(self) -> None:
+        self.result = None
+        self.queries = []
+
+    def find(self, query: object) -> object:
+        self.queries.append(query)
+        return self.result
+
+
 class FakeDownloadService:
     def __init__(self, root: Path) -> None:
         self.root = root
@@ -1157,6 +1167,7 @@ class RouteTestCase(unittest.TestCase):
         self.band_member_finder = SimpleNamespace(find=lambda artist_name: [])
         self.album_details_finder = SimpleNamespace(find=lambda artist, album: None)
         self.song_credits_cache = FakeSongCreditsCache()
+        self.canvas_artwork_finder = FakeCanvasArtworkFinder()
         self.download_service = FakeDownloadService(self.root)
         self.export_service = FakeExportService()
         self.ffmpeg = FakeFFmpeg()
@@ -1181,6 +1192,7 @@ class RouteTestCase(unittest.TestCase):
                 "band_member_finder": self.band_member_finder,
                 "album_details_finder": self.album_details_finder,
                 "song_credits_cache": self.song_credits_cache,
+                "canvas_artwork_finder": self.canvas_artwork_finder,
                 "download_service": self.download_service,
                 "export_service": self.export_service,
                 "ffmpeg": self.ffmpeg,

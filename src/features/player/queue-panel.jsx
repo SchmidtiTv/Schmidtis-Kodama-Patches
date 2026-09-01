@@ -192,6 +192,8 @@ export function QueuePanel({
   visible,
   nowPlayingContextTitle,
   onOpenArtist,
+  canvasEnabled,
+  canvasSource,
 }) {
   const { track: currentTrack, playbackOrigin } = usePlaybackStatus();
   const { queue } = useQueueState();
@@ -463,6 +465,8 @@ export function QueuePanel({
                   isLiked={likedIds?.has(currentTrack.videoId)}
                   onToggleLike={onToggleLike}
                   saveLabel={t("save")}
+                  canvasEnabled={canvasEnabled}
+                  canvasSource={canvasSource}
                 />
               </div>
 

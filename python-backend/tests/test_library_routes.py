@@ -4,6 +4,7 @@ from unittest.mock import patch
 
 from route_test_support import JsonValue, RouteTestCase, TestResponse
 from src.lib import AlbumDetailsError
+from src.lib.music.canvas_artwork import CanvasArtwork
 
 
 class HistoryRouteTests(RouteTestCase):
@@ -30,6 +31,37 @@ def sse_events(response: TestResponse) -> list[JsonValue]:
 
 
 class LibraryListingRouteTests(RouteTestCase):
+    def test_song_canvas_validates_and_returns_optional_artwork(self) -> None:
+        invalid = self.client.post("/song/canvas", json={"title": "Song"})
+        self.assertEqual(invalid.status_code, 400)
+
+        unavailable = self.client.post(
+            "/song/canvas", json={"title": "Song", "artist": "Artist", "album": "Album"}
+        )
+        self.assertEqual(unavailable.status_code, 200)
+        self.assertEqual(unavailable.json, {"url": None})
+
+        self.canvas_artwork_finder.result = CanvasArtwork(
+            "tidal", "https://example.test/canvas.mp4"
+        )
+        resolved = self.client.post(
+            "/song/canvas",
+            json={
+                "title": "Song",
+                "artist": "Artist",
+                "album": "Album",
+                "durationSeconds": 185,
+                "source": "tidal",
+            },
+        )
+        self.assertEqual(resolved.status_code, 200)
+        self.assertEqual(
+            resolved.json,
+            {"source": "tidal", "url": "https://example.test/canvas.mp4"},
+        )
+        self.assertEqual(self.canvas_artwork_finder.queries[-1].duration_seconds, 185)
+        self.assertEqual(self.canvas_artwork_finder.queries[-1].source, "tidal")
+
     def test_online_library_listing_routes(self) -> None:
         playlists = self.client.get("/library/playlists")
         self.assertEqual(playlists.status_code, 200)

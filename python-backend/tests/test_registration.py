@@ -79,6 +79,7 @@ class RouteRegistrationTests(RouteTestCase):
             "/song/meta/<video_id>",
             "/song/info/<video_id>",
             "/song/stats/<video_id>",
+            "/song/canvas",
             "/song/credits/<video_id>",
             "/podcast/<playlist_id>",
             "/mood/categories",

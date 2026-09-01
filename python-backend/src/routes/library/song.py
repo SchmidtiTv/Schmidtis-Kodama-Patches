@@ -4,10 +4,11 @@ import json
 import re
 
 import requests
-from flask import jsonify
+from flask import jsonify, request
 
 from . import blueprint
-from ._services import music_session, song_credits_cache
+from ._services import canvas_artwork_finder, music_session, song_credits_cache
+from src.lib.music.canvas_artwork import query_from_payload
 from src.type_defs import RouteResponse
 
 
@@ -95,6 +96,18 @@ def song_stats(video_id: str) -> RouteResponse:
         return jsonify({"error": "stats unavailable"}), 502
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@blueprint.route("/song/canvas", methods=["POST"])
+def song_canvas() -> RouteResponse:
+    """Resolve optional looping cover artwork for the About Song hero card."""
+    query = query_from_payload(request.get_json(silent=True))
+    if query is None:
+        return jsonify({"error": "title and artist are required"}), 400
+    artwork = canvas_artwork_finder().find(query)
+    if artwork is None:
+        return jsonify({"url": None})
+    return jsonify({"source": artwork.source, "url": artwork.url})
 
 
 @blueprint.route("/song/credits/<video_id>")

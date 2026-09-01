@@ -1,7 +1,9 @@
+import { useState } from "react";
 import { Button } from "@heroui/react";
 import { Heart } from "@/shared/icons/icons.jsx";
 import { thumbHi } from "@/shared/api/thumbnails.js";
 import { RetryingImage } from "@/shared/ui/retrying-image.jsx";
+import { useSongCanvasArtwork } from "./use-song-canvas-artwork.js";
 
 function artistNames(artists) {
   if (Array.isArray(artists)) {
@@ -19,8 +21,16 @@ export function NowPlayingSidebarCard({
   isLiked,
   onToggleLike,
   saveLabel,
+  canvasEnabled,
+  canvasSource,
   className = "",
 }) {
+  const canvasArtwork = useSongCanvasArtwork(track, {
+    enabled: canvasEnabled,
+    source: canvasSource,
+  });
+  const [readyCanvasUrl, setReadyCanvasUrl] = useState("");
+
   if (!track) return null;
 
   const artists = artistNames(track.artists);
@@ -37,6 +47,21 @@ export function NowPlayingSidebarCard({
         />
       ) : (
         <div className="spotify-now-playing__artwork spotify-now-playing__artwork--empty" />
+      )}
+      {canvasArtwork?.url && (
+        <video
+          key={canvasArtwork.url}
+          src={canvasArtwork.url}
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+          className={`spotify-now-playing__canvas ${readyCanvasUrl === canvasArtwork.url ? "is-ready" : ""}`}
+          onCanPlay={() => setReadyCanvasUrl(canvasArtwork.url)}
+          onError={() => setReadyCanvasUrl((currentUrl) => (currentUrl === canvasArtwork.url ? "" : currentUrl))}
+        />
       )}
 
       <div className="spotify-now-playing__shade" aria-hidden="true" />

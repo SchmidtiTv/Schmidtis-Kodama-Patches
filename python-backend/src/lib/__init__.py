@@ -12,6 +12,7 @@ from .music.album import Album
 from .music.album_details import AlbumDetailsError, AlbumDetailsFinder
 from .music.band_members import BandMemberFinder, BandMemberLookupError
 from .music.download import DownloadService
+from .music.canvas_artwork import CanvasArtworkFinder
 from .music.credits import SongCreditsCache
 from .music.export import ExportService
 from .music.lyrics import LyricsService
@@ -47,6 +48,7 @@ __all__ = [
     "ComposerBridge",
     "ComposerBridgeError",
     "ComposerSettings",
+    "CanvasArtworkFinder",
     "DownloadService",
     "ExportService",
     "FFmpeg",
