@@ -328,6 +328,8 @@
   "discordStatusDisplaySong": "Song title",
   "discordStatusDisplayArtist": "Artist",
   "discordStatusDisplayApp": "Kodama",
+  "discordHideWhilePaused": "Hide status while paused",
+  "discordHideWhilePausedDesc": "Remove Discord Rich Presence until playback resumes",
   "ytmusicHistorySync": "YT Music History Sync",
   "ytmusicHistorySyncDesc": "Register plays in your actual YouTube Music watch history, so they count toward Recap/stats there. Requires being logged in.",
   "fontSize": "Font Size",

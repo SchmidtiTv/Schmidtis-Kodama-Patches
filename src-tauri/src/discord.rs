@@ -6,6 +6,8 @@ use crate::audio::engine::PlaybackTrack;
 
 pub struct DiscordRpc(Mutex<Option<DiscordIpcClient>>);
 
+const PAUSED_IMAGE: &str = "paused";
+
 impl DiscordRpc {
     pub fn new() -> Self {
         // discord-rich-presence 1.x: `new` is infallible (returns the client directly); only
@@ -88,17 +90,12 @@ fn update(
     if album_c.chars().count() >= 2 {
         assets = assets.large_text(&album_c);
     }
+    if paused {
+        assets = assets.small_image(PAUSED_IMAGE).small_text("Paused");
+    }
     let button = activity::Button::new("Listen on YouTube Music", &yt_url);
 
-    let state_str = if paused {
-        if artist_c.chars().count() >= 2 {
-            format!("{} · ⏸", artist_c)
-        } else {
-            String::new()
-        }
-    } else {
-        artist_c.clone()
-    };
+    let state_str = artist_c.clone();
 
     // Map the user's choice to Discord's status_display_type (which field the compact member-list
     // status line shows). "song"→Details, "artist"→State, "app"→Name (Discord's default).

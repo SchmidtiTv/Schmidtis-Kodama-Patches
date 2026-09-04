@@ -175,6 +175,8 @@ pub struct PlaybackIntegrationSettings {
     pub discord_enabled: bool,
     #[serde(default = "default_discord_status_display")]
     pub discord_status_display: String,
+    #[serde(default = "default_hide_discord_while_paused")]
+    pub hide_discord_while_paused: bool,
     #[serde(default)]
     pub lastfm_connected: bool,
     #[serde(default)]
@@ -190,6 +192,7 @@ impl Default for PlaybackIntegrationSettings {
         Self {
             discord_enabled: false,
             discord_status_display: default_discord_status_display(),
+            hide_discord_while_paused: default_hide_discord_while_paused(),
             lastfm_connected: false,
             youtube_history_enabled: false,
             overlay_updates_enabled: false,
@@ -213,6 +216,10 @@ impl PlaybackIntegrationSettings {
 
 fn default_discord_status_display() -> String {
     "song".to_string()
+}
+
+fn default_hide_discord_while_paused() -> bool {
+    true
 }
 
 #[derive(Clone, Debug, PartialEq)]

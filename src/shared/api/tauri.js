@@ -47,6 +47,9 @@ export const native = {
   audioSeek: (position) => invoke("audio_seek", { position }),
   /** @param {boolean} enabled @returns {Promise<void>} @example await native.setAudioAnalysisEnabled(true) */
   setAudioAnalysisEnabled: (enabled) => invoke("audio_set_analysis_enabled", { enabled }),
+  /** @param {boolean} enabled @param {number} preampDb @param {number[]} gainsDb @returns {Promise<void>} */
+  setAudioEqualizer: (enabled, preampDb, gainsDb) =>
+    invoke("audio_set_eq", { enabled, preampDb, gainsDb }),
   /** @param {number} volume @returns {Promise<void>} @example await native.setAudioVolume(0.5) */
   setAudioVolume: (volume) => invoke("audio_set_volume", { volume }),
 

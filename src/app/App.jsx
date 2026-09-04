@@ -139,10 +139,15 @@ export default function App() {
     const id = itemId(pl);
     const already = stored.find((p) => itemId(p) === id);
     const next = already ? stored.filter((p) => itemId(p) !== id) : [pl, ...stored];
-    localStorage.setItem(profileKey("kiyoshi-pinned"), JSON.stringify(next));
+    try {
+      localStorage.setItem(profileKey("kiyoshi-pinned"), JSON.stringify(next));
+    } catch {
+      addToast("Could not save the pinned item because local storage is full.", "error");
+      return;
+    }
     setPinnedIds(next.map((p) => itemId(p)));
     window.dispatchEvent(new Event("kiyoshi-pins-updated"));
-  }, []);
+  }, [addToast]);
 
   const [accent, setAccent] = useState(() => {
     const saved = localStorage.getItem("kiyoshi-accent");
@@ -302,6 +307,7 @@ export default function App() {
   const playerIntegrationRef = useRef({
     discordRpc: true,
     discordStatusDisplay: "song",
+    hideDiscordWhilePaused: true,
     youtubeHistoryEnabled: false,
     remoteEnabled: false,
   });
@@ -335,6 +341,9 @@ export default function App() {
   );
   const [discordStatusDisplay, setDiscordStatusDisplay] = useState(
     () => localStorage.getItem("kiyoshi-discord-status-display") || "song"
+  );
+  const [hideDiscordWhilePaused, setHideDiscordWhilePaused] = useState(
+    () => localStorage.getItem("kiyoshi-discord-hide-paused") !== "false"
   );
   const [ytmusicHistorySync, setYtmusicHistorySync] = useState(
     () => localStorage.getItem("kiyoshi-ytmusic-history-sync") === "true"
@@ -436,6 +445,7 @@ export default function App() {
     playerIntegrationRef.current = {
       discordRpc,
       discordStatusDisplay,
+      hideDiscordWhilePaused,
       lastfmConnected: lastfm.connected,
       youtubeHistoryEnabled: ytmusicHistorySync,
       remoteEnabled: playerIntegrationRef.current.remoteEnabled,
@@ -444,6 +454,7 @@ export default function App() {
   }, [
     discordRpc,
     discordStatusDisplay,
+    hideDiscordWhilePaused,
     lastfm.connected,
     ytmusicHistorySync,
     refreshNativeIntegrations,
@@ -1044,6 +1055,11 @@ export default function App() {
         setDiscordStatusDisplay(v);
         localStorage.setItem("kiyoshi-discord-status-display", v);
       },
+      hideDiscordWhilePaused,
+      onHideDiscordWhilePausedChange: (v) => {
+        setHideDiscordWhilePaused(v);
+        localStorage.setItem("kiyoshi-discord-hide-paused", String(v));
+      },
       ytmusicHistorySync,
       onYtmusicHistorySyncChange: (v) => {
         setYtmusicHistorySync(v);
@@ -1069,6 +1085,7 @@ export default function App() {
       closeTray,
       discordRpc,
       discordStatusDisplay,
+      hideDiscordWhilePaused,
       ytmusicHistorySync,
       ipv4First,
       toggleIpv4First,

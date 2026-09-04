@@ -12,9 +12,11 @@ import { ToggleButton, ToggleButtonGroupRoot } from "@heroui/react";
 export function ConnectionsSettingsTab({
   discordRpc,
   discordStatusDisplay,
+  hideDiscordWhilePaused,
   ipv4First,
   onDiscordRpcChange,
   onDiscordStatusDisplayChange,
+  onHideDiscordWhilePausedChange,
   onIpv4FirstChange,
   onPairDevice,
   onRememberDevice,
@@ -52,6 +54,11 @@ export function ConnectionsSettingsTab({
             <ToggleButton id="artist">{t("discordStatusDisplayArtist")}</ToggleButton>
             <ToggleButton id="app">{t("discordStatusDisplayApp")}</ToggleButton>
           </ToggleButtonGroupRoot>
+        </SettingRow>
+      )}
+      {discordRpc && (
+        <SettingRow label={t("discordHideWhilePaused")} description={t("discordHideWhilePausedDesc")} icon={<Info size={15} />}>
+          <Toggle value={hideDiscordWhilePaused} onChange={onHideDiscordWhilePausedChange} />
         </SettingRow>
       )}
       <SettingRow label={t("ipv4First")} description={t("ipv4FirstDesc")} icon={<WifiHigh />}>

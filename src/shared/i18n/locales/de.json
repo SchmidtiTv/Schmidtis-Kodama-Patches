@@ -323,6 +323,8 @@
   "discordStatusDisplaySong": "Songtitel",
   "discordStatusDisplayArtist": "Interpret",
   "discordStatusDisplayApp": "Kodama",
+  "discordHideWhilePaused": "Status bei Pause ausblenden",
+  "discordHideWhilePausedDesc": "Discord Rich Presence ausblenden, bis die Wiedergabe fortgesetzt wird",
   "ytmusicHistorySync": "YT-Music-Verlauf-Sync",
   "ytmusicHistorySyncDesc": "Trägt abgespielte Songs in deinen echten YouTube-Music-Wiedergabeverlauf ein, damit sie dort in Recap/Statistiken zählen. Erfordert eine angemeldete Sitzung.",
   "fontSize": "Schriftgröße",

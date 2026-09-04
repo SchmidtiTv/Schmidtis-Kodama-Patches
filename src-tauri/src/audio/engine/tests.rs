@@ -302,6 +302,7 @@ fn integration_preferences_are_shared_and_validated() {
         .update_integration_settings(PlaybackIntegrationSettings {
             discord_enabled: true,
             discord_status_display: "artist".to_string(),
+            hide_discord_while_paused: true,
             lastfm_connected: true,
             youtube_history_enabled: true,
             overlay_updates_enabled: true,

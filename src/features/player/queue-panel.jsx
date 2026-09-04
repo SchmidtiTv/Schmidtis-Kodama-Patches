@@ -316,8 +316,13 @@ export function QueuePanel({
     count: items.length,
     getScrollElement: () => listRef.current,
     estimateSize: (index) => (items[index]?.kind === "header" ? QUEUE_HEADER_H : QUEUE_ROW_H),
+    getItemKey: (index) => items[index]?.key ?? index,
     overscan: 8,
   });
+  const layoutKey = `${items.length}:${currentIdx}`;
+  useEffect(() => {
+    rowVirtualizer.measure();
+  }, [layoutKey, rowVirtualizer]);
 
   // "Playing from" context — derived from the trackIds snapshotted when the album was played, not
   // the live (shuffleable, editable) queue, so the position keeps meaning after a shuffle.

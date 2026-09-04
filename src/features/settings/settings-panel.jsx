@@ -163,6 +163,8 @@ export function SettingsPanel({
     onDiscordRpcChange,
     discordStatusDisplay = "song",
     onDiscordStatusDisplayChange,
+    hideDiscordWhilePaused = true,
+    onHideDiscordWhilePausedChange,
     ytmusicHistorySync,
     onYtmusicHistorySyncChange,
     ipv4First,
@@ -592,9 +594,11 @@ export function SettingsPanel({
             <ConnectionsSettingsTab
               discordRpc={discordRpc}
               discordStatusDisplay={discordStatusDisplay}
+              hideDiscordWhilePaused={hideDiscordWhilePaused}
               ipv4First={ipv4First}
               onDiscordRpcChange={onDiscordRpcChange}
               onDiscordStatusDisplayChange={onDiscordStatusDisplayChange}
+              onHideDiscordWhilePausedChange={onHideDiscordWhilePausedChange}
               onIpv4FirstChange={onIpv4FirstChange}
               onPairDevice={onPairDevice}
               onRememberDevice={onRememberDevice}

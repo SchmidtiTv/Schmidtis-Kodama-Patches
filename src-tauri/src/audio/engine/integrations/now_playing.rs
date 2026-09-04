@@ -36,6 +36,10 @@ impl NowPlayingSync {
             let _ = discord.clear();
             return;
         }
+        if settings.hide_discord_while_paused && snapshot.status == PlaybackStatus::Paused {
+            let _ = discord.clear();
+            return;
+        }
         if let Some(track) = snapshot.current_track.as_ref() {
             let _ = discord.update(
                 track,
@@ -64,9 +68,10 @@ fn discord_signature(
     settings: &PlaybackIntegrationSettings,
 ) -> String {
     format!(
-        "{}:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{}:{}",
         settings.discord_enabled,
         settings.discord_status_display,
+        settings.hide_discord_while_paused,
         snapshot
             .current_track
             .as_ref()

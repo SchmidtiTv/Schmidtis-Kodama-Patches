@@ -14,6 +14,7 @@ export function usePlayerNativeBridges({ integrationsRef, integrationRevision })
       .updatePlayerIntegrations({
         discordEnabled: !!settings.discordRpc,
         discordStatusDisplay: settings.discordStatusDisplay || "song",
+        hideDiscordWhilePaused: settings.hideDiscordWhilePaused !== false,
         lastfmConnected: !!settings.lastfmConnected,
         youtubeHistoryEnabled: !!settings.youtubeHistoryEnabled,
         overlayUpdatesEnabled: true,

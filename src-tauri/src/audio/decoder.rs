@@ -192,6 +192,7 @@ pub struct StreamingSource {
     sample_rate: u32,
     total_duration: Option<std::time::Duration>,
     analysis: Option<Arc<super::analyzer::AnalysisBuffer>>,
+    eq: Option<super::eq::EqChain>,
     tap_pos: u64,
     consumer_registered: bool,
 }
@@ -636,6 +637,7 @@ impl StreamingSource {
             sample_rate: info.sample_rate,
             total_duration: info.total_duration,
             analysis: None,
+            eq: None,
             tap_pos: 0,
             consumer_registered: false,
         })
@@ -668,6 +670,7 @@ impl StreamingSource {
             sample_rate: info.sample_rate,
             total_duration: info.total_duration,
             analysis: None,
+            eq: None,
             tap_pos: 0,
             consumer_registered: false,
         })
@@ -702,6 +705,10 @@ impl Iterator for StreamingSource {
             self.consumer_registered = true;
         }
         let sample = self.ring.pop_or_underrun()?;
+        let sample = self
+            .eq
+            .get_or_insert_with(|| super::eq::EqChain::new(self.sample_rate, self.channels))
+            .process(sample);
         if let Some(a) = &self.analysis {
             // Tap left channel only → mono stream at sample_rate.
             if self.channels <= 1 || self.tap_pos % self.channels as u64 == 0 {
@@ -775,6 +782,7 @@ mod tests {
             sample_rate: 48_000,
             total_duration: None,
             analysis: None,
+            eq: None,
             tap_pos: 0,
             consumer_registered: false,
         };
