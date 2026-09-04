@@ -69,7 +69,17 @@ export function LibraryView({ onOpenPlaylist, onOpenAlbum, onOpenArtist, onConte
       .then((r) => r.json())
       .then((d) => {
         if (d.error) throw new Error(d.error);
-        if (tab === "playlists") setPlaylists(d.playlists || []);
+        if (tab === "playlists") {
+          const nextPlaylists = d.playlists || [];
+          setPlaylists(nextPlaylists);
+          if (nextPlaylists.length) {
+            window.dispatchEvent(
+              new CustomEvent("kodama-library-playlists", {
+                detail: nextPlaylists.map((playlist) => playlist.playlistId).filter(Boolean),
+              })
+            );
+          }
+        }
         if (tab === "albums") setAlbums(d.albums || []);
         if (tab === "artists") setArtists(d.artists || []);
       })

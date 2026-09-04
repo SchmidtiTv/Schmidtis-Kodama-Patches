@@ -149,6 +149,55 @@ export default function App() {
     window.dispatchEvent(new Event("kiyoshi-pins-updated"));
   }, [addToast]);
 
+  const reconcileSidebarPlaylists = useCallback((liveIds) => {
+    if (!liveIds.length) return;
+    const live = new Set(liveIds);
+    const seenKey = profileKey("kiyoshi-library-playlists-seen");
+    let seen = new Set();
+    try {
+      seen = new Set(JSON.parse(localStorage.getItem(seenKey) || "[]"));
+    } catch {
+      // A corrupted seen-list must not make existing sidebar entries disposable.
+    }
+    let changed = false;
+    for (const prefix of ["kiyoshi-recent", "kiyoshi-pinned"]) {
+      const key = profileKey(prefix);
+      let entries;
+      try {
+        entries = JSON.parse(localStorage.getItem(key) || "[]");
+      } catch {
+        continue;
+      }
+      const next = entries.filter((entry) => {
+        if (entry?.type || !entry?.playlistId || live.has(entry.playlistId)) return true;
+        return !seen.has(entry.playlistId);
+      });
+      if (next.length !== entries.length) {
+        try {
+          localStorage.setItem(key, JSON.stringify(next));
+          changed = true;
+        } catch {
+          // Keeping stale local navigation is safer than partially writing it.
+        }
+      }
+    }
+    try {
+      localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...live])]))
+    } catch {
+      // Reconciliation remains best-effort when browser storage is unavailable.
+    }
+    if (changed) window.dispatchEvent(new Event("kiyoshi-recent-updated"));
+  }, []);
+
+  useEffect(() => {
+    const handleLibraryPlaylists = (event) => {
+      const ids = Array.isArray(event.detail) ? event.detail.filter(Boolean) : [];
+      reconcileSidebarPlaylists(ids);
+    };
+    window.addEventListener("kodama-library-playlists", handleLibraryPlaylists);
+    return () => window.removeEventListener("kodama-library-playlists", handleLibraryPlaylists);
+  }, [reconcileSidebarPlaylists]);
+
   const [accent, setAccent] = useState(() => {
     const saved = localStorage.getItem("kiyoshi-accent");
     if (saved) document.documentElement.style.setProperty("--accent", saved);
