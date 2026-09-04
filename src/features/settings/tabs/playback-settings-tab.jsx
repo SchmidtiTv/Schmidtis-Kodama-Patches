@@ -1,4 +1,5 @@
 import { Button } from "@heroui/react";
+import { EqualizerSettings } from "@/features/player/equalizer-settings.jsx";
 import { EyeSlash, PlayCircle, Sliders, Trash, WaveformLines } from "@/shared/icons/icons.jsx";
 import {
   SettingRow,
@@ -59,6 +60,7 @@ export function PlaybackSettingsTab({
         <Toggle value={playbackProgressive} onChange={onPlaybackProgressiveChange} />
       </SettingRow>
       <SettingsSectionLabel>{t("mixPlaybackTitle")}</SettingsSectionLabel>
+      <EqualizerSettings t={t} />
       <SettingRow
         label={t("mixPlayback")}
         description={t("mixPlaybackDesc")}

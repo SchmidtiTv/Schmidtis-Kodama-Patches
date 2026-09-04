@@ -388,6 +388,16 @@ export default function App() {
   const [discordRpc, setDiscordRpc] = useState(
     () => localStorage.getItem("kiyoshi-discord-rpc") !== "false"
   );
+  useEffect(() => {
+    try {
+      const config = JSON.parse(localStorage.getItem("kodama-equalizer"));
+      if (Array.isArray(config?.gainsDb) && config.gainsDb.length === 10) {
+        native.setAudioEqualizer(!!config.enabled, Number(config.preampDb) || 0, config.gainsDb).catch(() => {});
+      }
+    } catch {
+      // Equalizer preferences are optional and the native default is flat.
+    }
+  }, []);
   const [discordStatusDisplay, setDiscordStatusDisplay] = useState(
     () => localStorage.getItem("kiyoshi-discord-status-display") || "song"
   );
