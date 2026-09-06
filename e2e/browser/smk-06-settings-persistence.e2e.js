@@ -83,6 +83,32 @@ describe("SMK-06 settings persistence", () => {
     await $("[data-testid='view-home'] [data-track-id='track-normal']").waitForDisplayed();
   });
 
+  it("shows English equalizer controls with matching settings-card corners", async () => {
+    await $("[data-testid='account-menu-trigger']").click();
+    await $("[data-testid='menu-settings']").click();
+    await $("[data-testid='settings-nav-wiedergabe']").click();
+    const toggle = await $("[role='switch'][aria-label='Equalizer']");
+    await toggle.scrollIntoView();
+    await toggle.click();
+    const controls = await $("[data-testid='equalizer-controls']");
+    await controls.waitForDisplayed();
+    assert.ok((await controls.getText()).includes("Preamp"));
+    const cards = await browser.execute(() => {
+      const header = document
+        .querySelector("[role='switch'][aria-label='Equalizer']")
+        .closest(".card");
+      const panel = document.querySelector("[data-testid='equalizer-controls']");
+      return {
+        headerText: header.textContent,
+        headerRadius: getComputedStyle(header).borderTopLeftRadius,
+        panelRadius: getComputedStyle(panel).borderTopLeftRadius,
+      };
+    });
+    assert.ok(cards.headerText.includes("Ten frequency bands and a preamp, applied to playback."));
+    assert.equal(cards.panelRadius, cards.headerRadius);
+    assert.notEqual(cards.panelRadius, "0px");
+  });
+
   it("customizes the player bar from Appearance settings", async () => {
     await $("[data-testid='account-menu-trigger']").click();
     await $("[data-testid='menu-settings']").click();

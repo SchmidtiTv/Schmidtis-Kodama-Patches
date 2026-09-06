@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { CardRoot } from "@heroui/react";
 
 import { native } from "@/shared/api/tauri.js";
 import { Sliders } from "@/shared/icons/icons.jsx";
@@ -12,7 +13,11 @@ function loadConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
     if (Array.isArray(saved?.gainsDb) && saved.gainsDb.length === 10) {
-      return { ...DEFAULT_CONFIG, ...saved, gainsDb: saved.gainsDb.map((gain) => Number(gain) || 0) };
+      return {
+        ...DEFAULT_CONFIG,
+        ...saved,
+        gainsDb: saved.gainsDb.map((gain) => Number(gain) || 0),
+      };
     }
   } catch {
     // The native equalizer safely starts flat when an older preference is invalid.
@@ -31,32 +36,60 @@ export function EqualizerSettings({ t }) {
   const updateGain = (index, gain) => {
     setConfig((current) => ({
       ...current,
-      gainsDb: current.gainsDb.map((value, currentIndex) => currentIndex === index ? gain : value),
+      gainsDb: current.gainsDb.map((value, currentIndex) =>
+        currentIndex === index ? gain : value
+      ),
     }));
   };
 
   return (
     <>
-      <SettingRow label={t("equalizer") || "Equalizer"} description={t("equalizerDesc") || "Ten-band playback EQ"} icon={<Sliders />}>
-        <Toggle value={config.enabled} onChange={(enabled) => setConfig((current) => ({ ...current, enabled }))} />
+      <SettingRow label={t("equalizer")} description={t("equalizerDesc")} icon={<Sliders />}>
+        <Toggle
+          ariaLabel={t("equalizer")}
+          value={config.enabled}
+          onChange={(enabled) => setConfig((current) => ({ ...current, enabled }))}
+        />
       </SettingRow>
       {config.enabled && (
-        <div className="px-3 py-3 mb-2 rounded-[var(--r-lg)] bg-[var(--fill-subtle)]">
+        <CardRoot
+          variant="secondary"
+          className="bg-surface-1 px-[18px] py-4 mb-1.5"
+          data-testid="equalizer-controls"
+        >
           <div className="flex items-center gap-3 mb-3">
-            <span className="text-t11 text-muted w-12">Preamp</span>
-            <Slider min={-12} max={12} step={0.5} value={config.preampDb} onChange={(preampDb) => setConfig((current) => ({ ...current, preampDb }))} width={180} />
-            <span className="text-t11 text-primary tabular-nums">{config.preampDb.toFixed(1)} dB</span>
+            <span className="text-t11 text-muted min-w-24">{t("equalizerPreamp")}</span>
+            <Slider
+              min={-12}
+              max={12}
+              step={0.5}
+              value={config.preampDb}
+              onChange={(preampDb) => setConfig((current) => ({ ...current, preampDb }))}
+              width={180}
+            />
+            <span className="text-t11 text-primary tabular-nums">
+              {config.preampDb.toFixed(1)} dB
+            </span>
           </div>
           <div className="grid grid-cols-2 gap-x-5 gap-y-2">
             {FREQUENCIES.map((frequency, index) => (
               <label key={frequency} className="flex items-center gap-2 text-t11 text-muted">
                 <span className="w-7">{frequency}</span>
-                <Slider min={-12} max={12} step={0.5} value={config.gainsDb[index]} onChange={(gain) => updateGain(index, gain)} width={110} />
-                <span className="w-10 text-right tabular-nums">{config.gainsDb[index].toFixed(1)}</span>
+                <Slider
+                  min={-12}
+                  max={12}
+                  step={0.5}
+                  value={config.gainsDb[index]}
+                  onChange={(gain) => updateGain(index, gain)}
+                  width={110}
+                />
+                <span className="w-10 text-right tabular-nums">
+                  {config.gainsDb[index].toFixed(1)}
+                </span>
               </label>
             ))}
           </div>
-        </div>
+        </CardRoot>
       )}
     </>
   );
