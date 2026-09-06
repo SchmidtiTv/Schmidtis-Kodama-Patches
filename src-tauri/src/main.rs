@@ -33,7 +33,7 @@ use tauri_plugin_opener::OpenerExt;
 use window::{
     close_login_window, ensure_session_keeper, lock_square_for, open_composer_window,
     open_login_window, remove_window_border_for, rotate_session_cookies, set_fullscreen,
-    stop_session_keeper, WasMaximized,
+    stop_session_keeper, FullscreenState,
 };
 
 struct AppTray(tauri::tray::TrayIcon<tauri::Wry>);
@@ -312,7 +312,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_process::init())
         .manage(ServerProcess::new())
-        .manage(WasMaximized::new())
+        .manage(FullscreenState::new())
         .manage(DiscordRpc::new())
         .manage(AudioPlayer::new())
         .manage(PlaybackEngine::new())

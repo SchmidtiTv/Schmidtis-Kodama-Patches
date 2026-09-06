@@ -131,7 +131,7 @@ export function PlayerActionsMenu(props) {
       </DropdownTrigger>
       <DropdownPopover
         placement="top end"
-        className="min-w-60 data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:slide-in-from-bottom-2 data-[entering]:duration-200 data-[exiting]:animate-out data-[exiting]:fade-out-0 data-[exiting]:zoom-out-95 data-[exiting]:duration-150"
+        className="[--dd-min-w:15rem] data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:slide-in-from-bottom-2 data-[entering]:duration-200 data-[exiting]:animate-out data-[exiting]:fade-out-0 data-[exiting]:zoom-out-95 data-[exiting]:duration-150"
       >
         <DropdownMenu aria-label="More">
           {/* Add to Playlist (submenu) + Like */}
@@ -232,7 +232,10 @@ export function PlayerActionsMenu(props) {
                 {/* Inline height, not max-h-80: HeroUI sizes its popover from the available
                     viewport space, and that wins over the utility class — with 44 entries the
                     menu grew to the full window height. */}
-                <DropdownPopover className="min-w-40 overflow-y-auto scrollable" style={{ maxHeight: 320 }}>
+                <DropdownPopover
+                  className="[--dd-min-w:10rem] overflow-y-auto scrollable"
+                  style={{ maxHeight: 320 }}
+                >
                   <DropdownMenu aria-label="Language">
                     {TRANSLATION_LANGS.map(({ code, name }) => (
                       <DropdownItem
@@ -310,7 +313,7 @@ export function PlayerActionsMenu(props) {
                 {translate(language, "share")}
                 <DropdownSubmenuIndicator className="ml-auto" />
               </DropdownItem>
-              <DropdownPopover className="min-w-56">
+              <DropdownPopover className="[--dd-min-w:14rem]">
                 <DropdownMenu aria-label={translate(language, "share")}>
                   <DropdownSection>
                     <DropdownItem

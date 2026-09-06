@@ -10,6 +10,15 @@ All notable changes to Kodama (formerly Kiyoshi Music) are documented here.
 
 ## [Unreleased]
 
+- Integrated upstream master through `96f33b8` into the fork's modular architecture.
+- Added the Speed Dial visibility setting, sharper home artwork, and larger pager controls.
+- Fixed OLED component colors and sidebar/dropdown positioning at different UI zoom levels.
+- Aligned sidebar controls and added scroll fades without scrollbar arrows.
+- Improved Windows fullscreen transitions and cursor hiding; controls hide after one second
+  of inactivity and remain visible while the player bar is hovered.
+- Updated ytmusicapi to 1.12.2 to handle library playlists without artwork, and exposed backend
+  versions in Settings.
+
 ## [1.0.0-alpha.34] — 2026-08-20
 
 Changes:

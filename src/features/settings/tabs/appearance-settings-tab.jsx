@@ -1,3 +1,4 @@
+import { useAppearanceSettings } from "../settings-context.jsx";
 import {
   APP_ICON_GROUPS,
   FONT_LABELS,
@@ -47,6 +48,7 @@ export function AppearanceSettingsTab({
   uiZoom,
   vizPreviewTrack,
 }) {
+  const { showSpeedDial, onSpeedDialChange } = useAppearanceSettings();
   return (
     <>
       <div
@@ -371,6 +373,9 @@ export function AppearanceSettingsTab({
         }}
       >
         <SettingsSectionLabel>{t("apOthers")}</SettingsSectionLabel>
+        <SettingRow label={t("speedDial")} description={t("speedDialDesc")}>
+          <Toggle ariaLabel={t("speedDial")} value={showSpeedDial} onChange={onSpeedDialChange} />
+        </SettingRow>
         <SettingRow label={t("animations")} description={t("animationsDesc")} icon={<Sparkles />}>
           <Toggle value={animations} onChange={onAnimationsChange} />
         </SettingRow>

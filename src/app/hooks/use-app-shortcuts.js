@@ -1,7 +1,6 @@
 import { useEffect, useRef } from "react";
 import { matchesShortcut, serializeShortcut } from "@/shared/lib/shortcuts.js";
 import { IS_MAC } from "@/shared/lib/platform.js";
-import { native } from "@/shared/api/tauri.js";
 
 const ZOOM_STEPS = [0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.4, 1.5];
 
@@ -16,7 +15,7 @@ export function useAppShortcuts({
   setRecordingShortcut,
   setIsPlaying,
   setCurrentTrack,
-  setFullscreen,
+  toggleFullscreen,
   setOverlayOpen,
   setQueueOpen,
   setSplitView,
@@ -171,12 +170,8 @@ export function useAppShortcuts({
           audioRef.current.volume = dv * dv;
         }
       } else if (matchesShortcut(sc.fullscreen, e)) {
-        setFullscreen((f) => {
-          const next = !f;
-          native.setFullscreen(next).catch(() => {});
-          if (next) setOverlayOpen(true);
-          return next;
-        });
+        e.preventDefault();
+        if (!e.repeat) void toggleFullscreen();
       } else if (matchesShortcut(sc.mute, e)) {
         e.preventDefault();
         if (audioRef.current) {
@@ -241,7 +236,7 @@ export function useAppShortcuts({
     queueRef,
     recordingShortcutRef,
     setCurrentTrack,
-    setFullscreen,
+    toggleFullscreen,
     setIsPlaying,
     setOverlayOpen,
     setQueueOpen,

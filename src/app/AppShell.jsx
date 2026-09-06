@@ -1,3 +1,4 @@
+import { useFullscreenPlayer } from "./hooks/use-fullscreen-player.js";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AmbientBackdrop } from "@/shared/ui/ambient-backdrop.jsx";
 import { TitleBar } from "@/shared/ui/title-bar.jsx";
@@ -518,14 +519,16 @@ export const AppShell = memo(function AppShell({
     },
     [setQueueOpenState]
   );
-  const [fullscreen, setFullscreenState] = useState(false);
-  const [playerVisible, setPlayerVisible] = useState(true);
-  const [cursorVisible, setCursorVisible] = useState(true);
-  const setFullscreen = useCallback((value) => {
-    setPlayerVisible(true);
-    setCursorVisible(true);
-    setFullscreenState(value);
-  }, []);
+  const { fullscreen, playerVisible, toggleFullscreen, playerBarProps } = useFullscreenPlayer();
+  const handleToggleFullscreen = useCallback(async () => {
+    const next = await toggleFullscreen();
+    if (next === null) return;
+    if (next) setOverlayOpen(true);
+    else if (splitView) {
+      setSplitView(false);
+      setShowLyrics(true);
+    }
+  }, [toggleFullscreen, setOverlayOpen, splitView, setSplitView, setShowLyrics]);
   const openSettingsShortcut = useCallback(() => {
     setOverlayOpen(false);
     setSettingsOpen(true);
@@ -544,42 +547,6 @@ export const AppShell = memo(function AppShell({
   const toggleSidebarShortcut = useCallback(() => {
     setSidebarCollapsed((collapsed) => !collapsed);
   }, []);
-  const hideTimerRef = useRef(null);
-
-  useEffect(() => {
-    if (!fullscreen) {
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      return;
-    }
-    let lastX = null;
-    let lastY = null;
-    const onMove = (event) => {
-      if (event.type === "mousemove") {
-        if (event.clientX === lastX && event.clientY === lastY) return;
-        lastX = event.clientX;
-        lastY = event.clientY;
-      }
-      setPlayerVisible(true);
-      setCursorVisible(true);
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-      hideTimerRef.current = setTimeout(() => {
-        setPlayerVisible(false);
-        setCursorVisible(false);
-      }, 3000);
-    };
-    hideTimerRef.current = setTimeout(() => {
-      setPlayerVisible(false);
-      setCursorVisible(false);
-    }, 3000);
-    window.addEventListener("mousemove", onMove);
-    window.addEventListener("mousedown", onMove);
-    return () => {
-      window.removeEventListener("mousemove", onMove);
-      window.removeEventListener("mousedown", onMove);
-      if (hideTimerRef.current) clearTimeout(hideTimerRef.current);
-    };
-  }, [fullscreen]);
-
   useEffect(() => {
     if (!queueOpen) return;
     const id = setTimeout(() => setQueueSettled(true), animations ? 320 : 0);
@@ -597,7 +564,7 @@ export const AppShell = memo(function AppShell({
     setRecordingShortcut,
     setIsPlaying,
     setCurrentTrack,
-    setFullscreen,
+    toggleFullscreen: handleToggleFullscreen,
     setOverlayOpen,
     setQueueOpen,
     setSplitView,
@@ -775,7 +742,7 @@ export const AppShell = memo(function AppShell({
           background: "var(--bg-base)",
           position: "relative",
           isolation: "isolate",
-          cursor: fullscreen && !cursorVisible ? "none" : "default",
+          cursor: "default",
           zoom: uiZoom,
         }}
       >
@@ -953,6 +920,7 @@ export const AppShell = memo(function AppShell({
               />
             )}
             <div
+              {...playerBarProps}
               style={{
                 opacity: settingsOpen ? 0 : 1,
                 transform: fullscreen && !playerVisible ? "translateY(120%)" : "translateY(0)",
@@ -1006,20 +974,7 @@ export const AppShell = memo(function AppShell({
                 onToggleQueue={() => setQueueOpen((q) => !q)}
                 remoteEnabled={remoteEnabled}
                 fullscreen={fullscreen}
-                onToggleFullscreen={async () => {
-                  const next = !fullscreen;
-                  try {
-                    await native.setFullscreen(next);
-                  } catch (e) {
-                    console.error(e);
-                  }
-                  setFullscreen(next);
-                  if (next) setOverlayOpen(true);
-                  else if (splitView) {
-                    setSplitView(false);
-                    setShowLyrics(true);
-                  }
-                }}
+                onToggleFullscreen={handleToggleFullscreen}
                 onOpenAlbum={openAlbum}
                 onOpenArtist={openArtist}
                 onRefetchLyrics={() => {

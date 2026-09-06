@@ -19,6 +19,8 @@
   --foreground: var(--text-primary);
   --surface: var(--bg-surface);
   --overlay: var(--bg-elevated);
+  --surface-secondary: var(--surface-1);
+  --surface-tertiary: var(--surface-2);
   --primary: var(--accent);
   --muted: var(--text-muted);
 
@@ -1490,3 +1492,23 @@ button:not([class]) {
     opacity: 0;
   }
 }
+
+/* Reset HeroUI's standard scrollbar colors so Chromium uses our custom track. */
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+::-webkit-scrollbar-corner { background: transparent; }
+.scroll-shadow:not(.scroll-shadow--hide-scrollbar) {
+  scrollbar-width: auto;
+  scrollbar-color: auto;
+}
+
+/* Popovers live outside the zoomed shell; their width must follow the menu inside. */
+.dropdown__popover { min-width: calc(var(--dd-min-w, 0px) * var(--ui-zoom, 1)); }
+@media (min-width: 48rem) {
+  .dropdown__popover { min-width: calc(var(--dd-min-w, 13.75rem) * var(--ui-zoom, 1)); }
+}
+
+/* Override interactive descendants and portals, including the video's shadow controls. */
+html.cursor-hidden, html.cursor-hidden * {
+  cursor: url("data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAAGklEQVR42u3BAQEAAACCIP+vbkhAAQAAAO8GECAAAcm1w7EAAAAASUVORK5CYII=") 0 0, none !important;
+}
+html.cursor-hidden video { pointer-events: none !important; }

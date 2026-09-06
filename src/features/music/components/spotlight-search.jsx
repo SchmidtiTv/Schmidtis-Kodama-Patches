@@ -124,7 +124,7 @@ export function SpotlightSearch({
             width: "100%",
             padding: "8px 12px",
             border: "1px solid var(--border)",
-            borderRadius: "var(--r-xl)",
+            borderRadius: "999px",
             background: "color-mix(in srgb, var(--bg-elevated) 88%, transparent)",
             boxShadow: "0 5px 16px rgba(0,0,0,0.18)",
             color: "var(--text-secondary)",

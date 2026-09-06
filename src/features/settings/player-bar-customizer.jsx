@@ -110,7 +110,7 @@ export function PlayerBarCustomizer({ controls, onToggleControl, t, track }) {
               {t("addPlayerBarControl")}
             </Button>
           </DropdownTrigger>
-          <DropdownPopover placement="bottom end" className="min-w-48">
+          <DropdownPopover placement="bottom end" className="[--dd-min-w:12rem]">
             <DropdownMenu aria-label={t("addPlayerBarControl")}>
               {hiddenControls.map((control) => (
                 <DropdownItem

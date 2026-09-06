@@ -279,7 +279,7 @@ export function TrackContextMenu({
             {translate(language, "share")}
             <DropdownSubmenuIndicator className="ml-auto" />
           </DropdownItem>
-          <DropdownPopover className="min-w-56">
+          <DropdownPopover className="[--dd-min-w:14rem]">
             <DropdownMenu aria-label={translate(language, "share")}>
               <DropdownSection>
                 <CtxItem

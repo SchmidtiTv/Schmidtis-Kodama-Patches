@@ -169,38 +169,165 @@ pub fn remove_window_border_for(app: tauri::AppHandle, label: String) {
     }
 }
 
-pub struct WasMaximized(Mutex<bool>);
+pub struct FullscreenState {
+    #[cfg(windows)]
+    saved: Mutex<Option<windows::Win32::UI::WindowsAndMessaging::WINDOWPLACEMENT>>,
+    #[cfg(not(windows))]
+    was_maximized: Mutex<bool>,
+}
 
-impl WasMaximized {
+impl FullscreenState {
     pub fn new() -> Self {
-        WasMaximized(Mutex::new(false))
+        FullscreenState {
+            #[cfg(windows)]
+            saved: Mutex::new(None),
+            #[cfg(not(windows))]
+            was_maximized: Mutex::new(false),
+        }
     }
 }
 
 #[tauri::command]
-pub fn set_fullscreen(
+pub async fn set_fullscreen(
     window: tauri::WebviewWindow,
     fullscreen: bool,
-    state: tauri::State<WasMaximized>,
-) {
-    if fullscreen {
-        let maximized = window.is_maximized().unwrap_or(false);
-        *state.0.lock().unwrap() = maximized;
+    state: tauri::State<'_, FullscreenState>,
+) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        use windows::Win32::Foundation::{HWND, RECT};
+        use windows::Win32::Graphics::Gdi::{
+            GetMonitorInfoW, MonitorFromWindow, MONITORINFO, MONITOR_DEFAULTTONEAREST,
+        };
+        use windows::Win32::UI::HiDpi::{GetDpiForWindow, GetSystemMetricsForDpi};
+        use windows::Win32::UI::WindowsAndMessaging::{
+            GetWindowLongPtrW, GetWindowPlacement, SetWindowLongPtrW, SetWindowPlacement,
+            SetWindowPos, GWL_STYLE, HWND_NOTOPMOST, HWND_TOPMOST, SM_CXPADDEDBORDER,
+            SM_CXSIZEFRAME, SWP_FRAMECHANGED, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE,
+            WINDOWPLACEMENT, WS_MAXIMIZE,
+        };
 
-        if maximized {
-            let _ = window.unmaximize();
-            std::thread::sleep(std::time::Duration::from_millis(80));
-        }
-        let _ = window.set_fullscreen(true);
-        let _ = window.set_always_on_top(true);
-    } else {
-        let _ = window.set_fullscreen(false);
-        let _ = window.set_always_on_top(false);
-        if *state.0.lock().unwrap() {
-            std::thread::sleep(std::time::Duration::from_millis(80));
-            let _ = window.maximize();
+        let handle = window.hwnd().map_err(|error| error.to_string())?;
+        let raw = handle.0 as isize;
+        // This async command runs off the UI thread; wait for window geometry before resolving.
+        let (done_tx, done_rx) = std::sync::mpsc::channel::<Result<(), String>>();
+
+        if fullscreen {
+            let mut placement = WINDOWPLACEMENT {
+                length: std::mem::size_of::<WINDOWPLACEMENT>() as u32,
+                ..Default::default()
+            };
+            let mut rect: RECT;
+            unsafe {
+                let hwnd = HWND(raw as _);
+                GetWindowPlacement(hwnd, &mut placement).map_err(|error| error.to_string())?;
+                let mut info = MONITORINFO {
+                    cbSize: std::mem::size_of::<MONITORINFO>() as u32,
+                    ..Default::default()
+                };
+                let monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+                if !GetMonitorInfoW(monitor, &mut info).as_bool() {
+                    return Err("Could not read the fullscreen monitor geometry".into());
+                }
+                rect = info.rcMonitor;
+                let dpi = GetDpiForWindow(hwnd);
+                let frame = GetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi)
+                    + GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
+                // Compensate for tao's borderless client-area inset.
+                rect.left -= frame;
+                rect.right += frame;
+                rect.bottom += frame;
+            }
+            // Preserve the original placement across repeated enter requests.
+            let mut saved = state.saved.lock().unwrap();
+            if saved.is_some() {
+                return Ok(());
+            }
+            *saved = Some(placement);
+            drop(saved);
+
+            let result = window
+                .run_on_main_thread(move || unsafe {
+                    let hwnd = HWND(raw as _);
+                    let style = GetWindowLongPtrW(hwnd, GWL_STYLE);
+                    SetWindowLongPtrW(hwnd, GWL_STYLE, style & !(WS_MAXIMIZE.0 as isize));
+                    let result = SetWindowPos(
+                        hwnd,
+                        HWND_TOPMOST,
+                        rect.left,
+                        rect.top,
+                        rect.right - rect.left,
+                        rect.bottom - rect.top,
+                        SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+                    );
+                    let _ = done_tx.send(result.map_err(|error| error.to_string()));
+                })
+                .map_err(|error| error.to_string())
+                .and_then(|_| {
+                    done_rx
+                        .recv_timeout(std::time::Duration::from_millis(500))
+                        .map_err(|error| error.to_string())?
+                });
+            if result.is_err() {
+                *state.saved.lock().unwrap() = None;
+            }
+            result?;
+        } else {
+            let saved = *state.saved.lock().unwrap();
+            window
+                .run_on_main_thread(move || unsafe {
+                    let hwnd = HWND(raw as _);
+                    let result = SetWindowPos(
+                        hwnd,
+                        HWND_NOTOPMOST,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOOWNERZORDER | SWP_FRAMECHANGED,
+                    );
+                    let result = result.and_then(|_| {
+                        if let Some(placement) = saved {
+                            SetWindowPlacement(hwnd, &placement)
+                        } else {
+                            Ok(())
+                        }
+                    });
+                    let _ = done_tx.send(result.map_err(|error| error.to_string()));
+                })
+                .map_err(|error| error.to_string())?;
+            done_rx
+                .recv_timeout(std::time::Duration::from_millis(500))
+                .map_err(|error| error.to_string())??;
+            *state.saved.lock().unwrap() = None;
         }
     }
+
+    #[cfg(not(windows))]
+    {
+        if fullscreen {
+            let maximized = window.is_maximized().unwrap_or(false);
+            *state.was_maximized.lock().unwrap() = maximized;
+            if maximized {
+                let _ = window.unmaximize();
+                std::thread::sleep(std::time::Duration::from_millis(80));
+            }
+            window
+                .set_fullscreen(true)
+                .map_err(|error| error.to_string())?;
+            let _ = window.set_always_on_top(true);
+        } else {
+            window
+                .set_fullscreen(false)
+                .map_err(|error| error.to_string())?;
+            let _ = window.set_always_on_top(false);
+            if *state.was_maximized.lock().unwrap() {
+                std::thread::sleep(std::time::Duration::from_millis(80));
+                let _ = window.maximize();
+            }
+        }
+    }
+    Ok(())
 }
 
 // Per-profile WebView data directory. Persisted (not wiped on close) so a hidden

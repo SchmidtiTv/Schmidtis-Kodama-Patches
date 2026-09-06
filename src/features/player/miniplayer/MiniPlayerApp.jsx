@@ -1,3 +1,4 @@
+import { applyTheme, readTheme } from "@/shared/lib/theme.js";
 /**
  * Mini player — a square always-on-top window that *is* the cover art. Controls stay out of
  * the way until the pointer enters, then fade in over a darkened scrim.
@@ -48,10 +49,7 @@ export default function MiniPlayerApp() {
   useEffect(() => {
     const accent = localStorage.getItem("kiyoshi-accent");
     if (accent) document.documentElement.style.setProperty("--accent", accent);
-    document.documentElement.setAttribute(
-      "data-theme",
-      localStorage.getItem("kiyoshi-theme") || "dark"
-    );
+    applyTheme(readTheme());
     if (localStorage.getItem("kiyoshi-high-contrast") === "true") {
       document.documentElement.setAttribute("data-highcontrast", "true");
     }

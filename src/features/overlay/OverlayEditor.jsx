@@ -2198,7 +2198,7 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
             <span className="text-t13 font-semibold text-primary">Overlay</span>
             <CaretDown size={10} className="text-muted" />
           </DropdownTrigger>
-          <DropdownPopover placement="bottom start" className="min-w-[210px]">
+          <DropdownPopover placement="bottom start" className="[--dd-min-w:210px]">
             <DropdownMenu
               aria-label="Overlay menu"
               onAction={(key) => {
@@ -2796,7 +2796,7 @@ export default function OverlayEditor({ t, apiBase, standalone = false }) {
               >
                 <CaretDown size={11} />
               </DropdownTrigger>
-              <DropdownPopover placement="top start" className="min-w-44">
+              <DropdownPopover placement="top start" className="[--dd-min-w:11rem]">
                 <DropdownMenu
                   aria-label={t("ovlShape")}
                   onAction={(key) => setTool({ type: "shape", shape: String(key) })}

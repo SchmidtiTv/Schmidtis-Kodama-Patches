@@ -28,6 +28,61 @@ describe("SMK-06 settings persistence", () => {
     assert.equal(await $("[data-testid='nav-home']").getText(), "Home");
   });
 
+  it("uses dark HeroUI tokens for OLED and restores light tokens when switching back", async () => {
+    await $("[data-testid='account-menu-trigger']").click();
+    await $("[data-testid='menu-settings']").click();
+    await $("[data-testid='settings-nav-darstellung']").click();
+    await $("[data-testid='theme-oled']").click();
+    assert.equal(
+      await browser.execute(() => document.documentElement.classList.contains("dark")),
+      true
+    );
+    await browser.refresh();
+    await $("[data-testid='view-home']").waitForDisplayed();
+    assert.equal(await $("html").getAttribute("data-theme"), "oled");
+    assert.equal(
+      await browser.execute(() => document.documentElement.classList.contains("dark")),
+      true
+    );
+    await $("[data-testid='account-menu-trigger']").click();
+    await $("[data-testid='menu-settings']").click();
+    await $("[data-testid='settings-nav-darstellung']").click();
+    await $("[data-testid='theme-light']").click();
+    assert.equal(
+      await browser.execute(() => document.documentElement.classList.contains("dark")),
+      false
+    );
+  });
+
+  it("persists the Speed Dial setting and removes quick picks from Home", async () => {
+    await $("[data-testid='view-home'] [data-track-id='track-normal']").waitForDisplayed();
+    await $("[data-testid='account-menu-trigger']").click();
+    await $("[data-testid='menu-settings']").click();
+    await $("[data-testid='settings-nav-darstellung']").click();
+    const toggle = await $("[role='switch'][aria-label='Speed Dial']");
+    await toggle.scrollIntoView();
+    await toggle.click();
+    await browser.waitUntil(() =>
+      browser.execute(() => localStorage.getItem("kodama-speed-dial") === "false")
+    );
+    await browser.refresh();
+    await $("[data-testid='view-home']").waitForDisplayed();
+    await browser.waitUntil(() =>
+      browser.execute(
+        () => !document.querySelector("[data-testid='view-home'] [data-track-id='track-normal']")
+      )
+    );
+    assert.equal(await browser.execute(() => localStorage.getItem("kodama-speed-dial")), "false");
+    await $("[data-testid='account-menu-trigger']").click();
+    await $("[data-testid='menu-settings']").click();
+    await $("[data-testid='settings-nav-darstellung']").click();
+    const restoredToggle = await $("[role='switch'][aria-label='Speed Dial']");
+    await restoredToggle.scrollIntoView();
+    await restoredToggle.click();
+    await browser.refresh();
+    await $("[data-testid='view-home'] [data-track-id='track-normal']").waitForDisplayed();
+  });
+
   it("customizes the player bar from Appearance settings", async () => {
     await $("[data-testid='account-menu-trigger']").click();
     await $("[data-testid='menu-settings']").click();

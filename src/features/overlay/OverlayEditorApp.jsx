@@ -1,3 +1,4 @@
+import { applyTheme, readTheme } from "@/shared/lib/theme.js";
 /**
  * Minimal standalone entry point for the Overlay Editor window.
  * Loaded when ?overlayEditor=1 — avoids running the full App
@@ -19,6 +20,7 @@ export default function OverlayEditorApp() {
   useEffect(() => {
     native.removeWindowBorderFor("overlay-editor").catch(() => {});
     applyFontScale();
+    applyTheme(readTheme());
     document.documentElement.style.setProperty("--accent", EDITOR_ACCENT);
     document.documentElement.style.setProperty("--accent-dim", EDITOR_ACCENT_DIM);
   }, []);

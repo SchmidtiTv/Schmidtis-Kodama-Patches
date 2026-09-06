@@ -1,3 +1,4 @@
+import { useAppearanceSettings } from "@/features/settings/settings-context.jsx";
 import { lazy, memo, Suspense, useLayoutEffect, useMemo, useRef } from "react";
 import { ScrollShadowRoot } from "@heroui/react";
 
@@ -114,6 +115,7 @@ export const MainContent = memo(function MainContent({
   isOffline,
   language,
 }) {
+  const { showSpeedDial } = useAppearanceSettings();
   const activeProfileKey = profiles.find((profile) => profile.active)?.name || "default";
   const activeDisplayName = profiles.find((profile) => profile.active)?.displayName;
   const loadingFallback = <LoadingState label={translate(language, "loadingDots")} />;
@@ -145,11 +147,12 @@ export const MainContent = memo(function MainContent({
           homeActionsRef.current.setTrackContextMenu({ x: e.clientX, y: e.clientY, track })
         }
         hideExplicit={hideExplicit}
+        showSpeedDial={showSpeedDial}
         profileKey={activeProfileKey}
         refreshKey={viewRefreshKey}
       />
     ),
-    [activeDisplayName, activeProfileKey, hideExplicit, viewRefreshKey]
+    [activeDisplayName, activeProfileKey, hideExplicit, showSpeedDial, viewRefreshKey]
   );
 
   return (

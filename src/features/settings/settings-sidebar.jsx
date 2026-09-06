@@ -1,5 +1,7 @@
+import { useBackendVersions } from "./hooks/use-backend-versions.js";
+import { SidebarTooltip } from "@/shared/ui/tooltip.jsx";
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { Button, cn, ListBox, ListBoxItem } from "@heroui/react";
+import { Button, cn, ListBox, ListBoxItem, ScrollShadowRoot } from "@heroui/react";
 
 import {
   ArrowLeft,
@@ -46,6 +48,7 @@ export function SettingsSidebarContent({
   const [, setDebugTapCount] = useState(0);
   const [debugToast, setDebugToast] = useState(null);
   const debugTapTimer = useRef(null);
+  const backendVersions = useBackendVersions();
   const chromiumVersion = window.navigator.userAgent.match(/Chrome\/([\d.]+)/)?.[1] ?? "—";
   useEffect(() => {
     const handler = (e) => setDebugUnlocked(e.detail.unlocked);
@@ -164,14 +167,7 @@ export function SettingsSidebarContent({
           : undefined,
       }}
     >
-      {tooltip && (
-        <div
-          className="fixed -translate-y-1/2 bg-elevated text-primary px-2.5 py-1 rounded text-t12 whitespace-nowrap border border-border pointer-events-none z-[9999] shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
-          style={{ left: tooltip.x, top: tooltip.y }}
-        >
-          {tooltip.text}
-        </div>
-      )}
+      <SidebarTooltip tooltip={tooltip} />
       {/* Reserve the native title-bar area just as the main sidebar does. Without this,
           opening Settings replaces the spacer with this header and lets its controls sit
           immediately beneath the traffic lights. */}
@@ -225,14 +221,11 @@ export function SettingsSidebarContent({
       />
 
       {/* Nav items */}
-      <div
-        className="scrollable"
-        style={{
-          flex: 1,
-          overflowY: "auto",
-          overflowX: "hidden",
-          padding: collapsed ? "0 4px 8px" : "0 8px 8px",
-        }}
+      <ScrollShadowRoot
+        size={24}
+        hideScrollBar
+        className={collapsed ? "px-1" : "px-2"}
+        style={{ flex: 1, minHeight: 0, overflowX: "hidden", paddingBottom: 8 }}
       >
         <ListBox
           aria-label={t("appSettings")}
@@ -242,7 +235,7 @@ export function SettingsSidebarContent({
             if (k.startsWith("sec:")) onSectionSelect?.(k.slice(4));
             else setTab(k);
           }}
-          className="w-full"
+          className="w-full px-0!"
         >
           {navItems.flatMap((item) => {
             const parent = (
@@ -252,7 +245,7 @@ export function SettingsSidebarContent({
                 data-testid={`settings-nav-${item.id}`}
                 textValue={item.label}
                 className={cn(
-                  "text-t13 min-h-10 rounded-xl",
+                  "text-t13 min-h-10 rounded-full",
                   tab === item.id && "bg-accent-dim text-accent",
                   collapsed && "justify-center"
                 )}
@@ -289,7 +282,7 @@ export function SettingsSidebarContent({
                 id={"sec:" + sec.id}
                 textValue={sec.label}
                 className={cn(
-                  "text-t12 min-h-8 rounded-lg pl-9 relative",
+                  "text-t12 min-h-8 rounded-full pl-9 relative",
                   activeSection === sec.id ? "text-accent font-medium" : "text-secondary"
                 )}
                 style={
@@ -315,7 +308,7 @@ export function SettingsSidebarContent({
             return [parent, ...children];
           })}
         </ListBox>
-      </div>
+      </ScrollShadowRoot>
 
       {/* Footer — version info + debug tap + quit */}
       <div
@@ -370,6 +363,12 @@ export function SettingsSidebarContent({
               </span>
               <br />
               Chromium {chromiumVersion}
+              {backendVersions?.ytmusicapi && (
+                <>
+                  <br />
+                  ytmusicapi {backendVersions.ytmusicapi}
+                </>
+              )}
               <br />
               Schmidti Version
             </div>

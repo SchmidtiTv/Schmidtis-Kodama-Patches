@@ -1,3 +1,4 @@
+import { SidebarTooltip } from "@/shared/ui/tooltip.jsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Button,
@@ -15,6 +16,7 @@ import {
   DropdownTrigger,
   ListBox,
   ListBoxItem,
+  ScrollShadowRoot,
 } from "@heroui/react";
 import { DropdownMenu } from "@/shared/ui/zoomed-heroui.jsx";
 import { thumb } from "@/shared/api/thumbnails.js";
@@ -180,7 +182,7 @@ export function Sidebar({
         setView(key);
         onCloseOverlay?.();
       }}
-      className="w-full"
+      className="w-full px-0!"
     >
       {items.map((item) => (
         <ListBoxItem
@@ -189,7 +191,7 @@ export function Sidebar({
           data-testid={`nav-${item.id}`}
           textValue={item.label}
           className={cn(
-            "text-t13 min-h-10 rounded-xl",
+            "text-t13 min-h-10 rounded-full",
             view === item.id && "bg-accent-dim text-accent",
             collapsed && "justify-center"
           )}
@@ -221,7 +223,7 @@ export function Sidebar({
           onCloseOverlay?.();
         }
       }}
-      className="w-full"
+      className="w-full px-0!"
     >
       {items.map((pl) => (
         <ListBoxItem
@@ -272,7 +274,7 @@ export function Sidebar({
   // sidebar it uses HeroUI's Disclosure (animated expand/collapse + rotating
   // chevron). In the collapsed sidebar there are no headers — just the covers.
   const playlistSection = (titleKey, items, Icon, iconWeight) => (
-    <div className="bg-white/5 hover:bg-white/10 rounded-xl w-full mb-1.5 overflow-hidden transition-colors duration-150">
+    <div className="bg-white/5 hover:bg-white/10 rounded-[1.25rem] w-full mb-1.5 overflow-hidden transition-colors duration-150">
       <Disclosure
         isExpanded={collapsedGroupOpen[titleKey] ?? false}
         onExpandedChange={(isExpanded) => setCollapsedGroupExpanded(titleKey, isExpanded)}
@@ -327,11 +329,7 @@ export function Sidebar({
       placement="top start"
       className="data-entering:animate-in data-entering:fade-in-0 data-entering:zoom-in-95 data-entering:slide-in-from-bottom-3 data-entering:duration-300 data-entering:ease-out data-exiting:animate-out data-exiting:fade-out-0 data-exiting:zoom-out-95 data-exiting:slide-out-to-bottom-3 data-exiting:duration-200 data-exiting:ease-in"
     >
-      <DropdownMenu
-        onAction={handleAccountAction}
-        aria-label={t("account")}
-        className="w-(--trigger-width) min-w-56"
-      >
+      <DropdownMenu onAction={handleAccountAction} aria-label={t("account")} className="min-w-56">
         <DropdownSection>
           <DropdownItem id="profile" textValue={t("account")}>
             <span className="w-4 flex justify-center shrink-0">
@@ -427,15 +425,7 @@ export function Sidebar({
       className="w-full h-full bg-transparent flex flex-col pt-4 shrink-0 rounded-xl overflow-hidden"
       style={{ visibility: settingsOpen ? "hidden" : "visible" }}
     >
-      {/* Tooltip portal */}
-      {tooltip && (
-        <div
-          className="fixed -translate-y-1/2 bg-elevated text-primary px-2.5 py-1 rounded text-t12 whitespace-nowrap border border-border pointer-events-none z-9999 shadow-[0_2px_8px_rgba(0,0,0,0.3)]"
-          style={{ left: tooltip.x, top: tooltip.y }}
-        >
-          {tooltip.text}
-        </div>
-      )}
+      <SidebarTooltip tooltip={tooltip} />
 
       {/* Keep a dedicated drag strip above the macOS sidebar controls. */}
       {IS_MAC && !collapsed && (
@@ -525,7 +515,7 @@ export function Sidebar({
       </div>
 
       {!collapsed && !IS_MAC && !settingsOpen && (
-        <div className="px-3 mb-3">
+        <div className="px-2 mb-3">
           <SpotlightSearch
             onSearch={onSearch}
             shortcutParts={searchShortcutParts}
@@ -553,11 +543,10 @@ export function Sidebar({
 
       {/* Pinned + recent playlists */}
       {(pinnedPlaylists.length > 0 || recentPlaylists.length > 0) && (
-        <div
-          className={cn(
-            "overflow-y-auto flex-1 min-h-0 my-1",
-            collapsed ? "px-0 no-scrollbar" : "px-2"
-          )}
+        <ScrollShadowRoot
+          size={24}
+          hideScrollBar
+          className={cn("flex-1 min-h-0 my-1", collapsed ? "px-0" : "px-2")}
         >
           {pinnedPlaylists.length > 0 &&
             playlistSection("pinned", pinnedPlaylists, PushPin, "fill")}
@@ -567,7 +556,7 @@ export function Sidebar({
               recentPlaylists.filter((pl) => !isPinned(pl)),
               ClockCounterClockwise
             )}
-        </div>
+        </ScrollShadowRoot>
       )}
 
       {/* New Playlist button */}

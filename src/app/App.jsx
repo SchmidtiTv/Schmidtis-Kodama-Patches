@@ -1,3 +1,4 @@
+import { applyTheme } from "@/shared/lib/theme.js";
 import {
   lazy,
   Suspense,
@@ -308,7 +309,7 @@ export default function App() {
 
   const handleThemeChange = useCallback((t) => {
     setTheme(t);
-    document.documentElement.setAttribute("data-theme", t);
+    applyTheme(t);
     localStorage.setItem("kiyoshi-theme", t);
     if (t === "light") {
       const now = Date.now();
@@ -328,7 +329,7 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    document.documentElement.setAttribute("data-theme", theme);
+    applyTheme(theme);
   }, [theme]);
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -567,6 +568,7 @@ export default function App() {
   const [hideExplicit, setHideExplicit] = useState(
     () => localStorage.getItem("kiyoshi-hide-explicit") === "true"
   );
+  const [showSpeedDial, setShowSpeedDial] = usePersistedState("kodama-speed-dial", true);
   const [showTrackNumbers, setShowTrackNumbers] = useState(
     () => localStorage.getItem("kodama-track-numbers") === "true"
   );
@@ -586,6 +588,10 @@ export default function App() {
     () => localStorage.getItem("kiyoshi-hide-handle") === "true"
   );
   const [uiZoom, setUiZoom] = usePersistedState("kiyoshi-ui-zoom", 1.0, UI_ZOOM_STORAGE);
+
+  useEffect(() => {
+    document.documentElement.style.setProperty("--ui-zoom", uiZoom);
+  }, [uiZoom]);
 
   const [customShortcuts, setCustomShortcuts] = useState(() => {
     try {
@@ -892,6 +898,8 @@ export default function App() {
       onUiZoomChange: (v) => {
         setUiZoom(v);
       },
+      showSpeedDial,
+      onSpeedDialChange: setShowSpeedDial,
       showTrackNumbers,
       onTrackNumbersChange: handleTrackNumbersChange,
       hideExplicit,
@@ -960,6 +968,8 @@ export default function App() {
       setAppFontScale,
       uiZoom,
       setUiZoom,
+      showSpeedDial,
+      setShowSpeedDial,
       showTrackNumbers,
       handleTrackNumbersChange,
       hideExplicit,

@@ -46,7 +46,7 @@ export default function DevMenu({ player, addToast }) {
         </DropdownTrigger>
         <DropdownPopover
           placement="top start"
-          className="min-w-60 data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:slide-in-from-bottom-2 data-[entering]:duration-150"
+          className="[--dd-min-w:15rem] data-[entering]:animate-in data-[entering]:fade-in-0 data-[entering]:zoom-in-95 data-[entering]:slide-in-from-bottom-2 data-[entering]:duration-150"
         >
           <DropdownMenu aria-label="Development tools">
             <DropdownSection>

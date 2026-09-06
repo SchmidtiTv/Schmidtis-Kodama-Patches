@@ -26,7 +26,7 @@ import {
   SunHorizon,
 } from "@/shared/icons/icons.jsx";
 import { API } from "@/shared/api/client.js";
-import { thumb } from "@/shared/api/thumbnails.js";
+import { thumbHi } from "@/shared/api/thumbnails.js";
 import { RetryingImage } from "@/shared/ui/retrying-image.jsx";
 import { useLang } from "@/shared/i18n/context.jsx";
 import { Carousel } from "../components/carousel.jsx";
@@ -54,6 +54,7 @@ export function HomeView({
   onContextMenu,
   onTrackContextMenu,
   hideExplicit,
+  showSpeedDial = true,
   profileKey = "default",
   refreshKey = 0,
 }) {
@@ -251,7 +252,7 @@ export function HomeView({
   const speedDialSection =
     allSections.find(isQuickPicks) ||
     allSections.find((s) => isAllSongsSection(s) && !isDiscover(s) && !isListenAgain(s));
-  const speedDialItems = speedDialSection?.items || [];
+  const speedDialItems = showSpeedDial ? speedDialSection?.items || [] : [];
 
   // Left column: up to 2 carousel sections. Prefer Listen again + Daily Discover,
   // then fill from remaining (non-song-grid) sections so the column reliably
@@ -423,7 +424,7 @@ export function HomeView({
             {item.thumbnail ? (
               <RetryingImage
                 className="home-card-img"
-                src={thumb(item.thumbnail)}
+                src={thumbHi(item.thumbnail, size * 2)}
                 alt=""
                 style={{
                   width: "100%",
@@ -820,21 +821,21 @@ export function HomeView({
                           isIconOnly
                           size="sm"
                           variant="secondary"
-                          className="size-7 min-w-0 rounded-full"
+                          className="h-8 w-10 min-w-0 rounded-full"
                           isDisabled={curPage === 0}
                           onPress={() => goPage(-1)}
                         >
-                          <CaretLeft size={13} weight="bold" />
+                          <CaretLeft size={14} weight="bold" />
                         </Button>
                         <Button
                           isIconOnly
                           size="sm"
                           variant="secondary"
-                          className="size-7 min-w-0 rounded-full"
+                          className="h-8 w-10 min-w-0 rounded-full"
                           isDisabled={curPage >= pages.length - 1}
                           onPress={() => goPage(1)}
                         >
-                          <CaretRight size={13} weight="bold" />
+                          <CaretRight size={14} weight="bold" />
                         </Button>
                       </div>
                     )}
@@ -883,7 +884,7 @@ export function HomeView({
                             {item.thumbnail ? (
                               <RetryingImage
                                 className="home-card-img"
-                                src={thumb(item.thumbnail)}
+                                src={thumbHi(item.thumbnail, 480)}
                                 alt=""
                                 style={{
                                   width: "100%",
