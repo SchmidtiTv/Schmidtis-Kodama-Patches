@@ -9,7 +9,6 @@ import {
   TextFieldRoot,
   InputRoot,
   TextArea,
-  ModalRoot,
   ModalBackdrop,
   ModalContainer,
   ModalHeader,
@@ -19,7 +18,7 @@ import {
   ModalFooter,
   ModalCloseTrigger,
 } from "@heroui/react";
-import { ModalDialog } from "@/shared/ui/zoomed-heroui.jsx";
+import { ModalDialog, ModalRoot } from "@/shared/ui/zoomed-heroui.jsx";
 import { Bug, CheckCircle, Info, ImageSquare, PaperPlaneTilt } from "@/shared/icons/icons.jsx";
 import { Toggle } from "@/shared/ui/settings-controls.jsx";
 import { API } from "@/shared/api/client.js";

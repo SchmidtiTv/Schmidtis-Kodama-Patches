@@ -1,4 +1,15 @@
-import { Button } from "@heroui/react";
+import {
+  Button,
+  ListBox,
+  ListBoxItem,
+  SelectIndicator,
+  SelectPopover,
+  SelectRoot,
+  SelectTrigger,
+  SelectValue,
+} from "@heroui/react";
+import { useEffect, useState } from "react";
+import { native } from "@/shared/api/tauri.js";
 import { EqualizerSettings } from "@/features/player/equalizer-settings.jsx";
 import { EyeSlash, PlayCircle, Sliders, Trash, WaveformLines } from "@/shared/icons/icons.jsx";
 import {
@@ -18,6 +29,7 @@ function isActiveCrossfadeOverride(key, videoIds) {
 export function PlaybackSettingsTab({
   anonStats,
   autoplay,
+  audioOutput,
   crossfade,
   crossfadeOverrides,
   crossfadeQueue,
@@ -25,6 +37,7 @@ export function PlaybackSettingsTab({
   hideExplicit,
   onAnonStatsChange,
   onAutoplayChange,
+  onAudioOutputChange,
   onCrossfadeChange,
   onHideExplicitChange,
   onPlaybackProgressiveChange,
@@ -38,6 +51,11 @@ export function PlaybackSettingsTab({
   showTrackNumbers,
   t,
 }) {
+  const [outputDevices, setOutputDevices] = useState([]);
+  useEffect(() => {
+    native.audioOutputs().then(({ devices = [] }) => setOutputDevices(devices)).catch(() => {});
+  }, []);
+  const selectedOutput = outputDevices.includes(audioOutput) ? audioOutput : "default";
   const queueVideoIds = new Set((crossfadeQueue || []).map((track) => track?.videoId));
   const activeCrossfadeOverrides = Object.entries(crossfadeOverrides).filter(([key]) =>
     isActiveCrossfadeOverride(key, queueVideoIds)
@@ -45,7 +63,33 @@ export function PlaybackSettingsTab({
 
   return (
     <>
+      <div id="set-sec-pb-general" data-settings-section="pb-general" />
       <SettingsSectionLabel>{t("general")}</SettingsSectionLabel>
+      {outputDevices.length > 0 && (
+        <SettingRow label={t("audioOutput")} icon={<PlayCircle />}>
+          <SelectRoot
+            aria-label={t("audioOutput")}
+            selectedKey={selectedOutput}
+            onSelectionChange={(key) => onAudioOutputChange?.(key === "default" ? "" : String(key))}
+            className="min-w-48"
+          >
+            <SelectTrigger>
+              <SelectValue />
+              <SelectIndicator />
+            </SelectTrigger>
+            <SelectPopover>
+              <ListBox>
+                <ListBoxItem id="default">{t("systemDefault")}</ListBoxItem>
+                {outputDevices.map((device) => (
+                  <ListBoxItem key={device} id={device}>
+                    {device}
+                  </ListBoxItem>
+                ))}
+              </ListBox>
+            </SelectPopover>
+          </SelectRoot>
+        </SettingRow>
+      )}
       <SettingRow label={t("autoplay")} description={t("autoplayDesc")} icon={<PlayCircle />}>
         <Toggle value={autoplay} onChange={onAutoplayChange} />
       </SettingRow>
@@ -59,6 +103,7 @@ export function PlaybackSettingsTab({
       >
         <Toggle value={playbackProgressive} onChange={onPlaybackProgressiveChange} />
       </SettingRow>
+      <div id="set-sec-pb-mix" data-settings-section="pb-mix" />
       <SettingsSectionLabel>{t("mixPlaybackTitle")}</SettingsSectionLabel>
       <EqualizerSettings t={t} />
       <SettingRow

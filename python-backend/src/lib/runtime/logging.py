@@ -20,6 +20,7 @@ class LogTee:
         self._stream = stream
         self._level = level
         self._buffer = ""
+        self._transient = False
 
     def write(self, data: str) -> int:
         try:
@@ -28,18 +29,37 @@ class LogTee:
         except Exception:
             pass
 
-        self._buffer += data
-        while "\n" in self._buffer:
-            line, self._buffer = self._buffer.split("\n", 1)
+        self._buffer += data.replace("\r\n", "\n")
+        while True:
+            newline = self._buffer.find("\n")
+            carriage_return = self._buffer.find("\r")
+            if newline < 0 and carriage_return < 0:
+                break
+
+            split_at = (
+                newline
+                if carriage_return < 0 or (0 <= newline < carriage_return)
+                else carriage_return
+            )
+            transient = split_at == carriage_return and (newline < 0 or carriage_return < newline)
+            line, self._buffer = self._buffer[:split_at], self._buffer[split_at + 1 :]
             if line.strip():
-                FEEDBACK_LOG_RING.append(line)
+                entry = {
+                    "ts": time.time(),
+                    "level": self._level,
+                    "msg": line[:2000],
+                    "source": "backend",
+                }
+                if self._transient and FEEDBACK_LOG_RING:
+                    FEEDBACK_LOG_RING[-1] = line
+                else:
+                    FEEDBACK_LOG_RING.append(line)
                 with DEBUG_LOG_LOCK:
-                    DEBUG_LOG.append({
-                        "ts": time.time(),
-                        "level": self._level,
-                        "msg": line.rstrip("\r")[:2000],
-                        "source": "backend",
-                    })
+                    if self._transient and DEBUG_LOG:
+                        DEBUG_LOG[-1] = entry
+                    else:
+                        DEBUG_LOG.append(entry)
+            self._transient = transient
         return len(data)
 
     def flush(self) -> None:

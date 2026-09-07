@@ -5,6 +5,7 @@ from unittest import TestCase
 from src.lib.runtime.logging import (
     DEBUG_LOG,
     DEBUG_LOG_LOCK,
+    FEEDBACK_LOG_RING,
     LogTee,
     _DropNoisyAccessLogs,
     setup_logger,
@@ -30,8 +31,13 @@ class RuntimeLoggingTests(TestCase):
     def test_noisy_access_log_filter_drops_timer_driven_endpoints(self) -> None:
         drop_filter = _DropNoisyAccessLogs()
         record = logging.LogRecord(
-            "werkzeug", logging.INFO, __file__, 0,
-            '127.0.0.1 - - "POST /overlay/push HTTP/1.1" 200 -', (), None,
+            "werkzeug",
+            logging.INFO,
+            __file__,
+            0,
+            '127.0.0.1 - - "POST /overlay/push HTTP/1.1" 200 -',
+            (),
+            None,
         )
 
         self.assertFalse(drop_filter.filter(record))
@@ -39,8 +45,13 @@ class RuntimeLoggingTests(TestCase):
     def test_noisy_access_log_filter_keeps_diagnostic_records(self) -> None:
         drop_filter = _DropNoisyAccessLogs()
         record = logging.LogRecord(
-            "backend", logging.INFO, __file__, 0,
-            "stream tier resolved in 120ms", (), None,
+            "backend",
+            logging.INFO,
+            __file__,
+            0,
+            "stream tier resolved in 120ms",
+            (),
+            None,
         )
 
         self.assertTrue(drop_filter.filter(record))
@@ -58,3 +69,16 @@ class RuntimeLoggingTests(TestCase):
             entry = DEBUG_LOG[-1]
         self.assertEqual(entry["level"], "INFO")
         self.assertEqual(entry["msg"], "printed diagnostic")
+
+    def test_log_tee_replaces_carriage_return_progress_instead_of_accumulating_it(self) -> None:
+        with DEBUG_LOG_LOCK:
+            DEBUG_LOG.clear()
+        FEEDBACK_LOG_RING.clear()
+
+        tee = LogTee(StringIO(), "INFO")
+        tee.write("download 10%\rdownload 50%\rdownload 100%\nfinished\n")
+
+        with DEBUG_LOG_LOCK:
+            entries = list(DEBUG_LOG)
+        self.assertEqual([entry["msg"] for entry in entries], ["download 100%", "finished"])
+        self.assertEqual(list(FEEDBACK_LOG_RING)[-2:], ["download 100%", "finished"])

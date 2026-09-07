@@ -12,7 +12,11 @@
 // modal.js: ModalContainer wraps react-aria's Modal, ModalDialog wraps its Dialog) — so
 // re-exporting zoom-aware versions of just these two, and importing from here instead of
 // "@heroui/react" wherever they're used, applies the fix without touching every call site.
-import { DropdownMenu as HeroDropdownMenu, ModalDialog as HeroModalDialog } from "@heroui/react";
+import {
+  DropdownMenu as HeroDropdownMenu,
+  ModalDialog as HeroModalDialog,
+} from "@heroui/react";
+import { Children, cloneElement, isValidElement } from "react";
 import { useZoom } from "@/features/settings/display-context.jsx";
 
 export function DropdownMenu({ style, ...props }) {
@@ -31,4 +35,10 @@ export function ModalDialog({ style, ...props }) {
   // internally. maxHeight:100% (of the container's real fixed height) + minHeight:0 lets it
   // actually shrink to fit, handing overflow back to the body's own scroll.
   return <HeroModalDialog style={{ ...style, zoom, maxHeight: "100%", minHeight: 0 }} {...props} />;
+}
+
+export function ModalRoot({ children, ...props }) {
+  return Children.map(children, (child) =>
+    isValidElement(child) ? cloneElement(child, props) : child
+  );
 }

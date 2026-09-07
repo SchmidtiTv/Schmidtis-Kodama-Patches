@@ -12,14 +12,14 @@ mod server;
 mod window;
 
 use audio::{
-    audio_pause, audio_play, audio_resume, audio_seek, audio_set_analysis_enabled, audio_set_eq,
-    audio_set_volume, audio_stop, playback_engine_replace_queue, playback_engine_set_current_track,
-    playback_engine_snapshot, playback_engine_update_transition_policy,
-    playback_engine_update_transport, player_get_snapshot, player_next, player_pause, player_play,
-    player_preload, player_previous, player_restart, player_seek, player_set_liked,
-    player_set_queue, player_set_repeat, player_set_shuffle, player_set_ui_visible,
-    player_set_volume, player_update_integrations, start_audio_thread, start_integration_worker,
-    AudioPlayer, PlaybackEngine,
+    audio_outputs, audio_pause, audio_play, audio_resume, audio_seek, audio_set_analysis_enabled,
+    audio_set_eq, audio_set_output, audio_set_volume, audio_stop, playback_engine_replace_queue,
+    playback_engine_set_current_track, playback_engine_snapshot,
+    playback_engine_update_transition_policy, playback_engine_update_transport,
+    player_get_snapshot, player_next, player_pause, player_play, player_preload, player_previous,
+    player_restart, player_seek, player_set_liked, player_set_queue, player_set_repeat,
+    player_set_shuffle, player_set_ui_visible, player_set_volume, player_update_integrations,
+    start_audio_thread, start_integration_worker, AudioPlayer, PlaybackEngine,
 };
 use discord::{clear_discord_rpc, disconnect_rpc, DiscordRpc};
 #[cfg(windows)]
@@ -429,6 +429,8 @@ fn main() {
             audio_set_analysis_enabled,
             audio_set_eq,
             audio_set_volume,
+            audio_outputs,
+            audio_set_output,
             player_set_queue,
             player_play,
             player_restart,

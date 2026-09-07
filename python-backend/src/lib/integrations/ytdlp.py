@@ -5,7 +5,6 @@ import io
 import json
 import logging
 import os
-import shutil
 import sys
 import time
 from typing import Optional, cast
@@ -13,6 +12,7 @@ from typing import Optional, cast
 import requests
 
 from src.config import config_dirs
+from src.lib.integrations.node_runtime import NodeRuntime
 from src.lib.music.youtube_music import YoutubeMusicSessionState
 from src.lib.profiles.profile import Profile
 
@@ -42,6 +42,7 @@ class YTDLP:
         self._profiles = profiles
         self._music_state = music_state
         self._logger = logger or logging.getLogger(__name__)
+        self._node_runtime = NodeRuntime(config_dirs.RUNTIME_DIR, self._logger)
         # Old server.py: _ydl_cookie_last_refresh
         self.last_cookie_refresh = 0.0
         if profiles is not None:
@@ -54,36 +55,8 @@ class YTDLP:
                         legacy_cookie_file,
                     )
 
-    @staticmethod
-    # Old server.py: _ensure_node_in_path
-    def ensure_node_in_path() -> None:
-        """Add a bundled Node.js executable directory to ``PATH`` when needed."""
-        if shutil.which("node"):
-            return
-
-        executable_dir = os.path.dirname(os.path.abspath(sys.executable))
-        candidates = [executable_dir]
-        parent_dir = os.path.dirname(executable_dir)
-        if parent_dir and parent_dir != executable_dir:
-            candidates.append(parent_dir)
-
-        node_name = "node.exe" if sys.platform == "win32" else "node"
-        if sys.platform == "darwin":
-            candidates.extend(
-                [
-                    os.path.join(parent_dir, "Resources"),
-                    os.path.join(executable_dir, "..", "Resources"),
-                ]
-            )
-
-        for directory in candidates:
-            bundled_node = os.path.join(directory, node_name)
-            if os.path.isfile(bundled_node):
-                os.environ["PATH"] = directory + os.pathsep + os.environ.get("PATH", "")
-                print(f"[ydl] added bundled {node_name} to PATH: {bundled_node}", flush=True)
-                return
-
-        print(f"[ydl] {node_name} not found - nsig decryption may fail for some tracks", flush=True)
+    def ensure_node_in_path(self) -> None:
+        self._node_runtime.ensure_in_path()
 
     @staticmethod
     def activate_ytdlp_update() -> None:

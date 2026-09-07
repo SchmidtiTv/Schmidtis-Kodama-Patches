@@ -11,11 +11,10 @@ import {
   ModalHeader,
   ModalHeading,
   ModalIcon,
-  ModalRoot,
   TextFieldRoot,
   toast,
 } from "@heroui/react";
-import { ModalDialog } from "@/shared/ui/zoomed-heroui.jsx";
+import { ModalDialog, ModalRoot } from "@/shared/ui/zoomed-heroui.jsx";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import {

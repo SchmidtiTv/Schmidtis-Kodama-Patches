@@ -165,6 +165,7 @@ class ConfigDirs:
         self.MIX_DATABASE = self.CACHE_DIR / "mix.sqlite3"
         self.YTDLP_UPDATE_DIR = self.CACHE_DIR / "ytdlp"
         self.BIN_DIR = self.CACHE_DIR / "bin"
+        self.RUNTIME_DIR = self.CACHE_DIR / "runtime"
 
         for directory in (
             self.PROFILES_DIR,
@@ -178,6 +179,7 @@ class ConfigDirs:
             self.VIDEO_SYNC_CACHE_DIR,
             self.YTDLP_UPDATE_DIR,
             self.BIN_DIR,
+            self.RUNTIME_DIR,
         ):
             directory.mkdir(parents=True, exist_ok=True)
 
@@ -230,6 +232,7 @@ class ConfigLyrics:
 class ConfigYTDLP:
     """Client options and browser-cookie refresh settings for yt-dlp."""
 
+    NODE_VERSION = "v22.18.0"
     WEB_MUSIC_OPTIONS = {"extractor_args": {"youtube": {"player_client": ["web_music"]}}}
     ANDROID_OPTIONS = {
         "extractor_args": {"youtube": {"player_client": ["android_music"], "player_skip": ["js"]}}

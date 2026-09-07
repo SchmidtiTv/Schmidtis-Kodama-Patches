@@ -185,9 +185,12 @@ export function LibraryView({ onOpenPlaylist, onOpenAlbum, onOpenArtist, onConte
       {/* Sort + search row */}
       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 20 }}>
         <Sliders size={12} style={{ color: "var(--text-muted)", flexShrink: 0 }} />
+        <div role="group" aria-label={t("sortOrder")} className="flex items-center gap-1">
         {sortOptions.map((o) => (
           <button
             key={o.value}
+            type="button"
+            aria-pressed={sortOrder === o.value}
             onClick={() => setSortOrder(o.value)}
             style={{
               background:
@@ -214,6 +217,7 @@ export function LibraryView({ onOpenPlaylist, onOpenAlbum, onOpenArtist, onConte
             {o.label}
           </button>
         ))}
+        </div>
         {/* Search — right side */}
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 6 }}>
           <div
@@ -225,6 +229,7 @@ export function LibraryView({ onOpenPlaylist, onOpenAlbum, onOpenArtist, onConte
           >
             <input
               ref={searchRef}
+              aria-label={t("search")}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               onKeyDown={(e) => {

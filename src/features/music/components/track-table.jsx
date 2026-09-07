@@ -5,6 +5,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { API } from "@/shared/api/client.js";
 import { thumb, hiResThumb } from "@/shared/api/thumbnails.js";
 import { RetryingImage } from "@/shared/ui/retrying-image.jsx";
+import { ProgressToast } from "@/shared/ui/progress-toast.jsx";
 import { AmbientBackdrop } from "@/shared/ui/ambient-backdrop.jsx";
 import { useAnimations, useTrackNumbers } from "@/features/settings/display-context.jsx";
 import { useLang } from "@/shared/i18n/context.jsx";
@@ -1380,37 +1381,7 @@ export function PlaylistLayout({
         </div>
       </div>
 
-      {/* Loading progress */}
-      {loading && !cached && (
-        <div style={{ padding: "0 28px 12px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-            <span style={{ fontSize: "var(--t11)", color: "var(--text-muted)" }}>
-              {t("fetchingSongs")}
-            </span>
-            <span style={{ fontSize: "var(--t11)", color: "var(--accent)", fontWeight: 500 }}>
-              {progress}%
-            </span>
-          </div>
-          <div
-            style={{
-              height: 3,
-              background: "var(--bg-elevated)",
-              borderRadius: "var(--r-full)",
-              overflow: "hidden",
-            }}
-          >
-            <div
-              style={{
-                height: "100%",
-                borderRadius: "var(--r-full)",
-                background: "linear-gradient(90deg,var(--accent),#c020e0)",
-                width: `${progress}%`,
-                transition: "width 0.4s ease",
-              }}
-            />
-          </div>
-        </div>
-      )}
+      {loading && !cached && <ProgressToast label={t("fetchingSongs")} percent={progress} />}
 
       {/* Column headers */}
       <div

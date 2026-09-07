@@ -57,6 +57,16 @@
   --color-field-placeholder: var(--text-muted);
 }
 
+.toast-region {
+  zoom: var(--ui-zoom, 1);
+  bottom: 120px;
+}
+
+img.img-failed {
+  background: var(--placeholder-gradient, var(--bg-elevated));
+  object-fit: cover;
+}
+
 [dir="rtl"] .fa-arrow-left,
 [dir="rtl"] .fa-arrow-right,
 [dir="rtl"] .fa-caret-left,

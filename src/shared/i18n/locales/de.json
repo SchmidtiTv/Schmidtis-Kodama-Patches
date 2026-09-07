@@ -145,6 +145,8 @@
   "appFont": "App-Schriftart",
   "behaviour": "Verhalten",
   "general": "Allgemein",
+  "audioOutput": "Audioausgabe",
+  "systemDefault": "Systemstandard",
   "connection": "Verbindung",
   "connect": "Verbinden",
   "disconnect": "Trennen",

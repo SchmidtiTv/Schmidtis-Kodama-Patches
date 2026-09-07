@@ -1,7 +1,6 @@
 import { useState } from "react";
 import {
   Button,
-  ModalRoot,
   ModalBackdrop,
   ModalContainer,
   ModalHeader,
@@ -11,7 +10,7 @@ import {
   ModalIcon,
   ModalCloseTrigger,
 } from "@heroui/react";
-import { ModalDialog } from "@/shared/ui/zoomed-heroui.jsx";
+import { ModalDialog, ModalRoot } from "@/shared/ui/zoomed-heroui.jsx";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { Info, ArrowSquareOut } from "@/shared/icons/icons.jsx";

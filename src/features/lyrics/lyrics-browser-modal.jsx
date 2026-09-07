@@ -4,7 +4,6 @@ import {
   Button,
   Spinner,
   toast,
-  ModalRoot,
   ModalBackdrop,
   ModalContainer,
   Dropdown,
@@ -13,7 +12,7 @@ import {
   DropdownItem,
   ScrollShadowRoot,
 } from "@heroui/react";
-import { DropdownMenu, ModalDialog } from "@/shared/ui/zoomed-heroui.jsx";
+import { DropdownMenu, ModalDialog, ModalRoot } from "@/shared/ui/zoomed-heroui.jsx";
 import {
   MicrophoneStand,
   Flag,

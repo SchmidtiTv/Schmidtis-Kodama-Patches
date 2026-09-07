@@ -127,6 +127,8 @@ export function SettingsPanel({
     onRemoveCrossfadeOverride,
     playbackProgressive,
     onPlaybackProgressiveChange,
+    audioOutput,
+    onAudioOutputChange,
     mixTransitionsEnabled,
     onMixTransitionsEnabledChange,
     mixTempoLockEnabled,
@@ -585,6 +587,8 @@ export function SettingsPanel({
               onRemoveCrossfadeOverride={onRemoveCrossfadeOverride}
               onTrackNumbersChange={onTrackNumbersChange}
               playbackProgressive={playbackProgressive}
+              audioOutput={audioOutput}
+              onAudioOutputChange={onAudioOutputChange}
               showTrackNumbers={showTrackNumbers}
               t={t}
             />

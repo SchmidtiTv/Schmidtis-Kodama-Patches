@@ -47,6 +47,7 @@ class ConfigDirsTests:
 
             assert config_dirs.CACHE_DIR == base_dir
             assert config_dirs.CACHE_DATABASE == base_dir / "cache.sqlite3"
+            assert config_dirs.RUNTIME_DIR == base_dir / "runtime"
 
     def test_migration_does_not_overwrite_an_existing_destination(self) -> None:
         """Retain both copies when an earlier cache already occupies the new path."""
@@ -77,3 +78,7 @@ class ConfigDirsTests:
 
             assert config.LEGACY_BROWSER_COOKIE_FILE == base_dir / "browser_cookies.txt"
             assert config.BROWSER_COOKIE_STORE_FILE == cache_dir / "browser-cookies.enc"
+
+
+def test_ytdlp_config_pins_the_node_runtime_version() -> None:
+    assert ConfigYTDLP.NODE_VERSION == "v22.18.0"

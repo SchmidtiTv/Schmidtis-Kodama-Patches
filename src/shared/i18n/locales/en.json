@@ -145,6 +145,8 @@
   "appFont": "App Font",
   "behaviour": "Behaviour",
   "general": "General",
+  "audioOutput": "Audio output",
+  "systemDefault": "System default",
   "connection": "Connection",
   "connect": "Connect",
   "disconnect": "Disconnect",

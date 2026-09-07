@@ -31,6 +31,7 @@ export function ConnectionsSettingsTab({
 }) {
   return (
     <>
+      <div id="set-sec-conn-discord" data-settings-section="conn-discord" />
       <SettingRow label={t("discordRpc")} description={t("discordRpcDesc")} icon={<ShareNodes />}>
         <Toggle value={discordRpc} onChange={onDiscordRpcChange} />
       </SettingRow>
@@ -64,7 +65,9 @@ export function ConnectionsSettingsTab({
       <SettingRow label={t("ipv4First")} description={t("ipv4FirstDesc")} icon={<WifiHigh />}>
         <Toggle value={ipv4First} onChange={onIpv4FirstChange} />
       </SettingRow>
+      <div id="set-sec-conn-lastfm" data-settings-section="conn-lastfm" />
       <LastfmRow />
+      <div id="set-sec-conn-ytmusic" data-settings-section="conn-ytmusic" />
       <SettingRow
         label={t("ytmusicHistorySync")}
         description={t("ytmusicHistorySyncDesc")}
@@ -72,6 +75,7 @@ export function ConnectionsSettingsTab({
       >
         <Toggle value={ytmusicHistorySync} onChange={onYtmusicHistorySyncChange} />
       </SettingRow>
+      <div id="set-sec-conn-remote" data-settings-section="conn-remote" />
       <SettingRow
         label={
           <span

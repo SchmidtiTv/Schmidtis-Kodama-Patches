@@ -1004,6 +1004,8 @@ export default function App() {
       onRemoveCrossfadeOverride: removeCrossfadeOverride,
       playbackProgressive,
       onPlaybackProgressiveChange: setPlaybackProgressive,
+      audioOutput: player.audioOutput,
+      onAudioOutputChange: player.setAudioOutput,
       mixTransitionsEnabled,
       onMixTransitionsEnabledChange: setMixTransitionsEnabled,
       mixTempoLockEnabled,
@@ -1036,6 +1038,8 @@ export default function App() {
       removeCrossfadeOverride,
       playbackProgressive,
       setPlaybackProgressive,
+      player.audioOutput,
+      player.setAudioOutput,
       mixTransitionsEnabled,
       setMixTransitionsEnabled,
       mixTempoLockEnabled,
@@ -1463,7 +1467,7 @@ export default function App() {
                           {/* Toast Notifications */}
                           <ToastProvider
                             placement="bottom end"
-                            className="bottom-[120px]! z-[100000]!"
+                            className="toast-region z-[100000]!"
                           />
 
                           <Suspense fallback={null}>

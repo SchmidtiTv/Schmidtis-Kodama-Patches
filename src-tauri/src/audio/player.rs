@@ -1,3 +1,4 @@
+use cpal::traits::{DeviceTrait, HostTrait};
 use rodio::Source;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -23,11 +24,47 @@ pub enum AudioCmd {
     Resume,
     Stop,
     Seek(f64),
+    SetOutput(String),
     SetVolume(f32),
     SetAnalysisEnabled(bool),
 }
 
 pub struct AudioPlayer(Mutex<Option<std::sync::mpsc::SyncSender<AudioCmd>>>);
+
+static PREFERRED_OUTPUT: Mutex<String> = Mutex::new(String::new());
+static CURRENT_OUTPUT: Mutex<Option<String>> = Mutex::new(None);
+
+fn output_device_names() -> Result<Vec<String>, String> {
+    let host = cpal::default_host();
+    let devices = host
+        .output_devices()
+        .map_err(|error| error.to_string())?
+        .filter_map(|device| device.name().ok())
+        .collect::<Vec<_>>();
+    Ok(devices)
+}
+
+fn open_output() -> Result<(rodio::OutputStream, rodio::OutputStreamHandle), String> {
+    let host = cpal::default_host();
+    let selected = PREFERRED_OUTPUT
+        .lock()
+        .map_err(|error| error.to_string())?
+        .clone();
+    let device = if selected.is_empty() {
+        host.default_output_device()
+    } else {
+        host.output_devices()
+            .map_err(|error| error.to_string())?
+            .find(|device| device.name().ok().as_deref() == Some(selected.as_str()))
+            .or_else(|| host.default_output_device())
+    }
+    .ok_or_else(|| "No audio output device is available".to_string())?;
+    let name = device.name().ok();
+    let output =
+        rodio::OutputStream::try_from_device(&device).map_err(|error| error.to_string())?;
+    *CURRENT_OUTPUT.lock().map_err(|error| error.to_string())? = name;
+    Ok(output)
+}
 
 fn crossfade_volumes(volume: f32, progress: f32) -> (f32, f32) {
     let angle = progress.clamp(0.0, 1.0) * std::f32::consts::FRAC_PI_2;
@@ -132,9 +169,9 @@ pub fn start_audio_thread(
     let current_analysis = Arc::clone(&current_analysis);
     let analysis_enabled_for_player = Arc::clone(&analysis_enabled);
 
+    let command_tx = tx.clone();
     std::thread::spawn(move || {
-        let output = rodio::OutputStream::try_default();
-        let (_stream, handle) = match output {
+        let (mut _stream, mut handle) = match open_output() {
             Ok(pair) => pair,
             Err(e) => {
                 eprintln!("[Audio] Output init failed: {e}");
@@ -709,6 +746,29 @@ pub fn start_audio_thread(
                             }
                         }
                     }
+                    AudioCmd::SetOutput(name) => {
+                        *PREFERRED_OUTPUT.lock().unwrap() = name;
+                        let resume_at = if xfade_start.is_some() {
+                            sink2
+                                .as_ref()
+                                .map(|s| s.get_pos().as_secs_f64())
+                                .unwrap_or(0.0)
+                        } else {
+                            sink.as_ref()
+                                .map(|s| s.get_pos().as_secs_f64() + seek_offset)
+                                .unwrap_or(0.0)
+                        };
+                        match open_output() {
+                            Ok((new_stream, new_handle)) => {
+                                _stream = new_stream;
+                                handle = new_handle;
+                                if sink.is_some() || sink2.is_some() {
+                                    let _ = command_tx.send(AudioCmd::Seek(resume_at));
+                                }
+                            }
+                            Err(error) => eprintln!("[Audio] Output switch failed: {error}"),
+                        }
+                    }
                     AudioCmd::SetVolume(v) => {
                         volume = v;
                         // During a crossfade the two sinks are mid-ramp; rescale both to keep
@@ -895,17 +955,29 @@ pub fn send_audio(state: &tauri::State<AudioPlayer>, cmd: AudioCmd) -> Result<()
 #[tauri::command]
 pub fn audio_set_eq(enabled: bool, preamp_db: f32, gains_db: Vec<f32>) -> Result<(), String> {
     if gains_db.len() != super::eq::BANDS {
-        return Err(format!("expected {} bands, got {}", super::eq::BANDS, gains_db.len()));
+        return Err(format!(
+            "expected {} bands, got {}",
+            super::eq::BANDS,
+            gains_db.len()
+        ));
     }
     let mut gains = [0.0f32; super::eq::BANDS];
     for (slot, g) in gains.iter_mut().zip(gains_db) {
         // The UI clamps too, but this is a public command surface and a wild value here would
         // reach the filter design straight away.
-        *slot = if g.is_finite() { g.clamp(-24.0, 24.0) } else { 0.0 };
+        *slot = if g.is_finite() {
+            g.clamp(-24.0, 24.0)
+        } else {
+            0.0
+        };
     }
     super::eq::set_config(super::eq::EqConfig {
         enabled,
-        preamp_db: if preamp_db.is_finite() { preamp_db.clamp(-24.0, 24.0) } else { 0.0 },
+        preamp_db: if preamp_db.is_finite() {
+            preamp_db.clamp(-24.0, 24.0)
+        } else {
+            0.0
+        },
         gains_db: gains,
     });
     Ok(())
@@ -952,6 +1024,19 @@ pub fn audio_seek(state: tauri::State<AudioPlayer>, position: f64) -> Result<(),
 #[tauri::command]
 pub fn audio_set_volume(state: tauri::State<AudioPlayer>, volume: f32) -> Result<(), String> {
     send_audio(&state, AudioCmd::SetVolume(volume))
+}
+
+#[tauri::command]
+pub fn audio_outputs() -> Result<serde_json::Value, String> {
+    Ok(serde_json::json!({
+        "devices": output_device_names()?,
+        "systemDefault": CURRENT_OUTPUT.lock().map_err(|error| error.to_string())?.clone(),
+    }))
+}
+
+#[tauri::command]
+pub fn audio_set_output(state: tauri::State<AudioPlayer>, name: String) -> Result<(), String> {
+    send_audio(&state, AudioCmd::SetOutput(name))
 }
 
 #[tauri::command]

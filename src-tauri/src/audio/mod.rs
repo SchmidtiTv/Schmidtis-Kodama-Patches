@@ -1,7 +1,7 @@
 pub mod analyzer;
 pub mod decoder;
-pub mod eq;
 pub mod engine;
+pub mod eq;
 pub mod http_source;
 mod mix_processor;
 pub mod player;
@@ -16,7 +16,7 @@ pub use engine::{
     start_integration_worker, PlaybackEngine,
 };
 pub use player::{
-    audio_pause, audio_play, audio_resume, audio_seek, audio_set_analysis_enabled, audio_set_eq,
-    audio_set_volume, audio_stop,
+    audio_outputs, audio_pause, audio_play, audio_resume, audio_seek, audio_set_analysis_enabled,
+    audio_set_eq, audio_set_output, audio_set_volume, audio_stop,
 };
 pub use player::{start_audio_thread, AudioPlayer};

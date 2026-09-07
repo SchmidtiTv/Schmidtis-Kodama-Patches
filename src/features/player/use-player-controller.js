@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { API } from "@/shared/api/client.js";
+import { native } from "@/shared/api/tauri.js";
 import { translate } from "@/shared/i18n/i18n.js";
 import { IpcAudio } from "./ipc-audio.js";
 import { registerPlayerCommands as bpRegisterCommands } from "@/features/player/player-bridge.js";
@@ -128,6 +129,18 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
     setPlaybackProgressiveState(v);
     localStorage.setItem("kodama-playback-mode", v ? "progressive" : "classic");
   }, []);
+  const [audioOutput, setAudioOutputState] = useState(
+    () => localStorage.getItem("kodama-audio-output") || ""
+  );
+  const setAudioOutput = useCallback((name) => {
+    setAudioOutputState(name);
+    localStorage.setItem("kodama-audio-output", name);
+  }, []);
+  useEffect(() => {
+    native.setAudioOutput(audioOutput).catch((error) => {
+      console.warn("[Audio] Could not switch output device", error);
+    });
+  }, [audioOutput]);
   const [mixTransitionsEnabled, setMixTransitionsEnabledState] = useState(
     () => localStorage.getItem("kodama-mix-transitions-enabled") !== "false"
   );
@@ -316,6 +329,8 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
     setCrossfade,
     playbackProgressive,
     setPlaybackProgressive,
+    audioOutput,
+    setAudioOutput,
     mixTransitionsEnabled,
     setMixTransitionsEnabled,
     mixTempoLockEnabled,

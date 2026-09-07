@@ -112,7 +112,17 @@ export function SettingsSidebarContent({
         { id: "acc-behaviour", label: t("behaviour") },
       ],
     },
-    { id: "connections", label: t("connections"), iconEl: <Link size={18} /> },
+    {
+      id: "connections",
+      label: t("connections"),
+      iconEl: <Link size={18} />,
+      sections: [
+        { id: "conn-discord", label: t("discordRpc") },
+        { id: "conn-lastfm", label: "Last.fm" },
+        { id: "conn-ytmusic", label: t("ytmusicHistorySync") },
+        { id: "conn-remote", label: t("remoteControl") },
+      ],
+    },
     {
       id: "lyrics",
       label: t("lyrics"),
@@ -125,8 +135,27 @@ export function SettingsSidebarContent({
         { id: "lyrics-composer", label: t("composer") },
       ],
     },
-    { id: "wiedergabe", label: t("playback"), iconEl: <Play size={18} /> },
-    { id: "visualizer", label: t("visualizer"), iconEl: <WaveformLines size={18} /> },
+    {
+      id: "wiedergabe",
+      label: t("playback"),
+      iconEl: <Play size={18} />,
+      sections: [
+        { id: "pb-general", label: t("general") },
+        { id: "pb-mix", label: t("mixPlaybackTitle") },
+      ],
+    },
+    {
+      id: "visualizer",
+      label: t("visualizer"),
+      iconEl: <WaveformLines size={18} />,
+      sections: [
+        { id: "viz-general", label: t("general") },
+        { id: "viz-shape", label: t("visualizerShape") },
+        { id: "viz-bars", label: t("visualizerBars") },
+        { id: "viz-response", label: t("visualizerResponse") },
+        { id: "viz-color", label: t("visualizerColor") },
+      ],
+    },
     {
       id: "storage",
       label: t("storage"),

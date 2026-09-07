@@ -226,6 +226,7 @@ export function VisualizerSettingsTab({
           </div>
         )}
       </div>
+      <div id="set-sec-viz-general" data-settings-section="viz-general" />
       <SettingRow
         label={t("visualizer")}
         description={t("visualizerDesc")}
@@ -273,6 +274,7 @@ export function VisualizerSettingsTab({
           </div>
         </SettingRow>
       )}
+      <div id="set-sec-viz-shape" data-settings-section="viz-shape" />
       <SettingRow label={t("visualizerShape") || "Shape"} icon={<WaveformLines />}>
         <div className="flex gap-1.5">
           <Button
@@ -348,6 +350,7 @@ export function VisualizerSettingsTab({
           }
         />
       </SettingRow>
+      <div id="set-sec-viz-bars" data-settings-section="viz-bars" />
       <SettingRow label={t("visualizerBars") || "Bars"} icon={<WaveformLines />}>
         <Slider
           min={8}
@@ -411,6 +414,7 @@ export function VisualizerSettingsTab({
           width={200}
         />
       </SettingRow>
+      <div id="set-sec-viz-response" data-settings-section="viz-response" />
       <SettingRow label={t("visualizerResponse") || "Responsiveness"} icon={<WaveformLines />}>
         <Slider
           min={0}
@@ -521,6 +525,7 @@ export function VisualizerSettingsTab({
           }
         />
       </SettingRow>
+      <div id="set-sec-viz-color" data-settings-section="viz-color" />
       <SettingRow label={t("visualizerColor") || "Color"} icon={<PaintBrushBroad />}>
         <div className="flex items-center gap-1.5">
           <Button

@@ -1,6 +1,6 @@
 // Small shared settings/UI primitives extracted from App.jsx. Thin wrappers around HeroUI so
 // the many existing call sites ({value,onChange} etc.) stay unchanged.
-import React from "react";
+import React, { Children, cloneElement, isValidElement, useId } from "react";
 import {
   SliderRoot,
   SliderTrack,
@@ -13,11 +13,22 @@ import {
   CardRoot,
 } from "@heroui/react";
 
-export function Slider({ min, max, step = 1, value, onChange, onChangeCommit, width = 120 }) {
+export function Slider({
+  min,
+  max,
+  step = 1,
+  value,
+  onChange,
+  onChangeCommit,
+  width = 120,
+  "aria-label": ariaLabel,
+  "aria-labelledby": ariaLabelledBy,
+}) {
   // Thin wrapper around HeroUI Slider so existing {min,max,step,value,onChange,onChangeCommit,width} callers stay unchanged.
   return (
     <SliderRoot
-      aria-label="slider"
+      aria-label={ariaLabelledBy ? undefined : ariaLabel || "Slider"}
+      aria-labelledby={ariaLabelledBy}
       value={value}
       minValue={min}
       maxValue={max}
@@ -35,10 +46,21 @@ export function Slider({ min, max, step = 1, value, onChange, onChangeCommit, wi
   );
 }
 
-export function Toggle({ value, onChange, ariaLabel = "toggle" }) {
+export function Toggle({
+  value,
+  onChange,
+  ariaLabel,
+  "aria-label": ariaLabelProp,
+  "aria-labelledby": ariaLabelledBy,
+}) {
   // Thin wrapper around HeroUI Switch so all existing Toggle({value,onChange}) call sites stay unchanged.
   return (
-    <SwitchRoot isSelected={!!value} onChange={onChange} aria-label={ariaLabel}>
+    <SwitchRoot
+      isSelected={!!value}
+      onChange={onChange}
+      aria-label={ariaLabelledBy ? undefined : ariaLabelProp || ariaLabel || "Toggle"}
+      aria-labelledby={ariaLabelledBy}
+    >
       <SwitchContent>
         <SwitchControl>
           <SwitchThumb />
@@ -49,6 +71,11 @@ export function Toggle({ value, onChange, ariaLabel = "toggle" }) {
 }
 
 export function SettingRow({ label, description, icon, children }) {
+  const labelId = useId();
+  const labelledControl = Children.map(children, (child) =>
+    isValidElement(child) ? cloneElement(child, { "aria-labelledby": labelId }) : child
+  );
+
   return (
     <CardRoot
       variant="secondary"
@@ -61,13 +88,15 @@ export function SettingRow({ label, description, icon, children }) {
           </div>
         )}
         <div className="min-w-0">
-          <div className="text-t13 font-medium text-primary">{label}</div>
+          <div id={labelId} className="text-t13 font-medium text-primary">
+            {label}
+          </div>
           {description && (
             <div className="text-t11 text-muted mt-0.5 leading-snug">{description}</div>
           )}
         </div>
       </div>
-      <div className="shrink-0">{children}</div>
+      <div className="shrink-0">{labelledControl}</div>
     </CardRoot>
   );
 }

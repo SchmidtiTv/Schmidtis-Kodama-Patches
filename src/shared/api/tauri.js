@@ -12,6 +12,8 @@ export const nativeCommand = {
   audioResume: "audio_resume",
   audioSeek: "audio_seek",
   setAudioVolume: "audio_set_volume",
+  audioOutputs: "audio_outputs",
+  setAudioOutput: "audio_set_output",
 };
 
 export const native = {
@@ -52,6 +54,10 @@ export const native = {
     invoke("audio_set_eq", { enabled, preampDb, gainsDb }),
   /** @param {number} volume @returns {Promise<void>} @example await native.setAudioVolume(0.5) */
   setAudioVolume: (volume) => invoke("audio_set_volume", { volume }),
+  /** @returns {Promise<{devices: string[], systemDefault: string | null}>} */
+  audioOutputs: () => invoke("audio_outputs"),
+  /** @param {string} name Empty string uses the system default output. */
+  setAudioOutput: (name) => invoke("audio_set_output", { name }),
 
   /** @returns {Promise<object>} Playback snapshot. @example const snapshot = await native.getPlayerSnapshot() */
   getPlayerSnapshot: () => invoke("player_get_snapshot"),

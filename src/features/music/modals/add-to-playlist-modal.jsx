@@ -8,7 +8,6 @@ import {
   SearchFieldSearchIcon,
   SearchFieldInput,
   SearchFieldClearButton,
-  ModalRoot,
   ModalBackdrop,
   ModalContainer,
   ModalHeader,
@@ -17,7 +16,7 @@ import {
   ModalBody,
   ModalCloseTrigger,
 } from "@heroui/react";
-import { ModalDialog } from "@/shared/ui/zoomed-heroui.jsx";
+import { ModalDialog, ModalRoot } from "@/shared/ui/zoomed-heroui.jsx";
 import { Playlist, MagnifyingGlass, Plus } from "@/shared/icons/icons.jsx";
 import { API } from "@/shared/api/client.js";
 import { thumb } from "@/shared/api/thumbnails.js";

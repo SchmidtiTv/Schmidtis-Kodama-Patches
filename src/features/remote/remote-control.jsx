@@ -1,7 +1,6 @@
 import { useState, useEffect } from "react";
 import {
   Button,
-  ModalRoot,
   ModalBackdrop,
   ModalContainer,
   ModalHeader,
@@ -10,7 +9,7 @@ import {
   ModalBody,
   ModalCloseTrigger,
 } from "@heroui/react";
-import { ModalDialog } from "@/shared/ui/zoomed-heroui.jsx";
+import { ModalDialog, ModalRoot } from "@/shared/ui/zoomed-heroui.jsx";
 import { DeviceMobile, Check, PushPin, Trash } from "@/shared/icons/icons.jsx";
 import { useLang } from "@/shared/i18n/context.jsx";
 

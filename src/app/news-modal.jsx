@@ -2,7 +2,6 @@ import { useState } from "react";
 import {
   cn,
   Button,
-  ModalRoot,
   ModalBackdrop,
   ModalContainer,
   ModalHeader,
@@ -12,7 +11,7 @@ import {
   ModalFooter,
   ModalCloseTrigger,
 } from "@heroui/react";
-import { ModalDialog } from "@/shared/ui/zoomed-heroui.jsx";
+import { ModalDialog, ModalRoot } from "@/shared/ui/zoomed-heroui.jsx";
 import { renderNewsBody } from "@/shared/ui/news-body.jsx";
 import { Megaphone, Star, ArrowClockwise } from "@/shared/icons/icons.jsx";
 
