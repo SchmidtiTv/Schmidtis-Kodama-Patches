@@ -450,6 +450,8 @@ class FakeYoutubeClient:
                 "results": self.get_library_albums(),
             },
             "videos": {
+                "browseId": "UCartist",
+                "params": "videos-param",
                 "results": [
                     {
                         "videoId": "video",
@@ -459,6 +461,18 @@ class FakeYoutubeClient:
                         "thumbnails": cast(list[object], []),
                     }
                 ]
+            },
+            "playlists": {
+                "browseId": "UCartist",
+                "params": "playlists-param",
+                "results": [
+                    {
+                        "playlistId": "artist-playlist",
+                        "title": "Artist playlist",
+                        "count": "8 songs",
+                        "thumbnails": cast(list[object], []),
+                    }
+                ],
             },
             "related": {
                 "results": [
@@ -471,6 +485,15 @@ class FakeYoutubeClient:
                 ]
             },
         }
+
+    def get_user(self, browse_id: object) -> object:
+        return self.get_artist(browse_id)
+
+    def get_user_videos(self, channel_id: object, params: object) -> object:
+        return self.get_artist(channel_id)["videos"]["results"]
+
+    def get_user_playlists(self, channel_id: object, params: object) -> object:
+        return self.get_artist(channel_id)["playlists"]["results"]
 
     def subscribe_artists(self, channel_ids: object) -> object:
         self.subscribed_artists.append(channel_ids)

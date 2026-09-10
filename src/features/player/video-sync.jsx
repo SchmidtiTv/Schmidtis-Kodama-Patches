@@ -8,13 +8,14 @@
 // This module just fetches that data once per track and keeps the <video> element's own position
 // corrected against ordinary clock drift against whatever audio is currently loaded.
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Button } from "@heroui/react";
 import { API } from "@/shared/api/client.js";
 import { fetchLyrics } from "@/features/lyrics/fetch.js";
 import { DEFAULT_LYRICS_PROVIDERS } from "@/features/lyrics/providers.js";
 import { parseDurationToSeconds } from "@/features/lyrics/parse.js";
 import { paintLineWords } from "@/features/lyrics/paint.js";
 import { sustainedWordScale } from "@/features/lyrics/sustained-line.js";
-import { isRtlLang, hasJapaneseText } from "@/shared/i18n/i18n.js";
+import { hasJapaneseText, isRtlLang, translate } from "@/shared/i18n/i18n.js";
 
 // Real-world calibration (2026-07-18): a confirmed correct match ("Nachos") scored 10.5, a
 // second plausible one scored 5.2 — but a confidence of 3.38 turned out to be a false positive
@@ -22,6 +23,24 @@ import { isRtlLang, hasJapaneseText } from "@/shared/i18n/i18n.js";
 // above the observed false positive while still under the strongest confirmed match.
 const CONFIDENCE_THRESHOLD = 7; // below this the computed offset is untrustworthy — skip video mode
 const DRIFT_CORRECTION_S = 0.35; // only re-seek the video once it has drifted this far from target
+const FORCED_KEY = "kodama-video-sync-forced";
+const FORCED_MAX = 200;
+
+function readForcedVideoIds() {
+  try {
+    const stored = JSON.parse(localStorage.getItem(FORCED_KEY) || "[]");
+    return Array.isArray(stored) ? stored : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberForcedVideo(videoId) {
+  if (!videoId) return;
+  const next = readForcedVideoIds().filter((id) => id !== videoId);
+  next.push(videoId);
+  localStorage.setItem(FORCED_KEY, JSON.stringify(next.slice(-FORCED_MAX)));
+}
 
 // maxHeight: null/0 = best available; otherwise caps resolution (e.g. for a weak/metered connection).
 export function useVideoSync(videoId, enabled, maxHeight) {
@@ -31,7 +50,9 @@ export function useVideoSync(videoId, enabled, maxHeight) {
     counterpartVideoId: null,
     ready: false,
     selfVideo: false,
+    uncertain: false,
   });
+  const [forceTick, setForceTick] = useState(0);
 
   useEffect(() => {
     setState({
@@ -40,19 +61,18 @@ export function useVideoSync(videoId, enabled, maxHeight) {
       counterpartVideoId: null,
       ready: false,
       selfVideo: false,
+      uncertain: false,
     });
     if (!enabled || !videoId) return;
     let cancelled = false;
     fetch(`${API}/video-sync/offset/${videoId}`)
       .then((r) => r.json())
       .then((d) => {
-        if (
-          cancelled ||
-          !d.available ||
-          !d.counterpartVideoId ||
-          !(d.confidence >= CONFIDENCE_THRESHOLD)
-        )
+        if (cancelled || !d.available || !d.counterpartVideoId) return;
+        if (!(d.confidence >= CONFIDENCE_THRESHOLD) && !readForcedVideoIds().includes(videoId)) {
+          setState((current) => ({ ...current, uncertain: true }));
           return;
+        }
         const q = maxHeight ? `?maxHeight=${maxHeight}` : "";
         return fetch(`${API}/video-sync/stream/${d.counterpartVideoId}${q}`)
           .then((r) => r.json())
@@ -64,6 +84,7 @@ export function useVideoSync(videoId, enabled, maxHeight) {
               counterpartVideoId: d.counterpartVideoId,
               ready: true,
               selfVideo: Boolean(d.selfVideo),
+              uncertain: false,
             });
           });
       })
@@ -71,9 +92,14 @@ export function useVideoSync(videoId, enabled, maxHeight) {
     return () => {
       cancelled = true;
     };
-  }, [videoId, enabled, maxHeight]);
+  }, [videoId, enabled, maxHeight, forceTick]);
 
-  return state;
+  const useAnyway = useCallback(() => {
+    rememberForcedVideo(videoId);
+    setForceTick((tick) => tick + 1);
+  }, [videoId]);
+
+  return { ...state, useAnyway };
 }
 
 export function VideoSyncVideo({ src, offsetSeconds, audioRef, isPlaying, style }) {
@@ -648,13 +674,6 @@ function CaptionOverlay({
   );
 }
 
-// Dedicated video pane — parallel to CoverView / LyricsOverlay, not squeezed into the small
-// cover-art box (a muted video that size would be pointless). Fills the full width of this pane
-// (not the whole app window — this only ever occupies the cover-pane's share of the layout,
-// same as CoverView/LyricsOverlay). No title/artist overlay — that's already shown by the rest
-// of the player chrome and would just clutter the picture. Only ever mounted once a synced video
-// is actually ready (gated by the audio/video switch in the player bar), so it doesn't need its
-// own loading/unavailable state.
 export function VideoSyncView({
   videoSync,
   audioRef,
@@ -667,6 +686,7 @@ export function VideoSyncView({
   captionsTranslationLang = "DE",
   captionsRomaji = false,
   captionsSyllableZoom = false,
+  language = "en",
 }) {
   return (
     <div
@@ -695,6 +715,19 @@ export function VideoSyncView({
           isPlaying={isPlaying}
           style={{ objectFit: "contain" }}
         />
+      )}
+      {!videoSync.ready && videoSync.uncertain && (
+        <div className="flex max-w-[420px] flex-col items-center gap-2 px-6 text-center">
+          <div className="text-t14 font-semibold text-primary">
+            {translate(language, "videoSyncUncertain")}
+          </div>
+          <div className="text-t12 leading-relaxed text-muted">
+            {translate(language, "videoSyncUncertainHint")}
+          </div>
+          <Button variant="secondary" size="sm" className="mt-1" onPress={videoSync.useAnyway}>
+            {translate(language, "videoSyncUseAnyway")}
+          </Button>
+        </div>
       )}
       {showCaptions && (
         <CaptionOverlay

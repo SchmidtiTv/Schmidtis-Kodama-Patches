@@ -1,4 +1,4 @@
-import { applyTheme } from "@/shared/lib/theme.js";
+import { applyShape, applyTheme } from "@/shared/lib/theme.js";
 import {
   lazy,
   Suspense,
@@ -199,12 +199,16 @@ export default function App() {
     return () => window.removeEventListener("kodama-library-playlists", handleLibraryPlaylists);
   }, [reconcileSidebarPlaylists]);
 
+  const [accentCustom, setAccentCustom] = useState(() => localStorage.getItem("kiyoshi-accent") !== null);
   const [accent, setAccent] = useState(() => {
     const saved = localStorage.getItem("kiyoshi-accent");
     if (saved) document.documentElement.style.setProperty("--accent", saved);
     return saved || "#e040fb";
   });
   const [theme, setTheme] = useState(() => localStorage.getItem("kiyoshi-theme") || "dark");
+  const [sharpCorners, setSharpCorners] = useState(
+    () => localStorage.getItem("kiyoshi-sharp-corners") === "true"
+  );
   const [highContrast, setHighContrast] = useState(() => {
     const hc = localStorage.getItem("kiyoshi-high-contrast") === "true";
     if (hc) document.documentElement.setAttribute("data-highcontrast", "true");
@@ -301,16 +305,28 @@ export default function App() {
   const handleAccentChange = useCallback(
     (color) => {
       setAccent(color);
+      setAccentCustom(true);
       if (!accentDynamic) document.documentElement.style.setProperty("--accent", color);
       localStorage.setItem("kiyoshi-accent", color);
     },
     [accentDynamic]
   );
+  const handleAccentReset = useCallback(() => {
+    localStorage.removeItem("kiyoshi-accent");
+    document.documentElement.style.removeProperty("--accent");
+    setAccentCustom(false);
+    const themedAccent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    if (themedAccent) setAccent(themedAccent);
+  }, []);
 
   const handleThemeChange = useCallback((t) => {
     setTheme(t);
     applyTheme(t);
     localStorage.setItem("kiyoshi-theme", t);
+    if (!accentCustom) {
+      const themedAccent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+      if (themedAccent) setAccent(themedAccent);
+    }
     if (t === "light") {
       const now = Date.now();
       if (now - lightClickRef.current.lastTime < 700) {
@@ -326,11 +342,14 @@ export default function App() {
     } else {
       lightClickRef.current.count = 0;
     }
-  }, []);
+  }, [accentCustom]);
 
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+  useEffect(() => {
+    applyShape(sharpCorners ? "sharp" : "round");
+  }, [sharpCorners]);
   const [searchQuery, setSearchQuery] = useState("");
 
   const {
@@ -423,7 +442,8 @@ export default function App() {
     videoSyncEnabled,
     videoSyncQuality === "auto" ? null : Number(videoSyncQuality)
   );
-  const showVideoView = videoSync.ready && videoViewTrackId === currentTrack?.videoId;
+  const showVideoView =
+    (videoSync.ready || videoSync.uncertain) && videoViewTrackId === currentTrack?.videoId;
   const setShowVideoView = useCallback(
     (visible) => setVideoViewTrackId(visible ? currentTrack?.videoId || null : null),
     [currentTrack?.videoId]
@@ -431,7 +451,8 @@ export default function App() {
 
   useEffect(() => {
     if (!accentDynamic) {
-      document.documentElement.style.setProperty("--accent", accent);
+      if (accentCustom) document.documentElement.style.setProperty("--accent", accent);
+      else document.documentElement.style.removeProperty("--accent");
       return;
     }
     const url = currentTrack?.thumbnail ? thumb(currentTrack.thumbnail) : null;
@@ -457,7 +478,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [accentDynamic, currentTrack?.thumbnail, accent, accentSat, accentLight]);
+  }, [accentCustom, accentDynamic, currentTrack?.thumbnail, accent, accentSat, accentLight]);
 
   const usageSecRef = useRef(Number(localStorage.getItem("kiyoshi-total-usage") || 0));
   const playtimeSecRef = useRef(Number(localStorage.getItem("kiyoshi-total-playtime") || 0));
@@ -863,6 +884,8 @@ export default function App() {
     () => ({
       accent,
       onAccentChange: handleAccentChange,
+      accentCustom,
+      onAccentReset: handleAccentReset,
       accentDynamic,
       onAccentDynamicChange: handleAccentDynamicChange,
       accentSat,
@@ -874,6 +897,11 @@ export default function App() {
       onAppIconChange: handleAppIconChange,
       theme,
       onThemeChange: handleThemeChange,
+      sharpCorners,
+      onSharpCornersChange: (value) => {
+        setSharpCorners(value);
+        localStorage.setItem("kiyoshi-sharp-corners", String(value));
+      },
       animations,
       onAnimationsChange: (v) => {
         setAnimations(v);
@@ -946,7 +974,9 @@ export default function App() {
     }),
     [
       accent,
+      accentCustom,
       handleAccentChange,
+      handleAccentReset,
       accentDynamic,
       handleAccentDynamicChange,
       accentSat,
@@ -957,6 +987,7 @@ export default function App() {
       appIconCustomizationAvailable,
       handleAppIconChange,
       theme,
+      sharpCorners,
       handleThemeChange,
       animations,
       highContrast,

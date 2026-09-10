@@ -43,8 +43,15 @@ class YoutubeResponseMapper:
         """Pick the smallest thumbnail at least ``min_size`` pixels wide."""
         if not thumbs:
             return ""
-        candidates = [thumb for thumb in thumbs if isinstance(thumb.get("width"), int) and cast(int, thumb["width"]) >= min_size]
-        chosen = min(candidates, key=lambda thumb: cast(int, thumb["width"])) if candidates else thumbs[0]
+        valid_thumbs = [thumb for thumb in thumbs if isinstance(thumb, Mapping)]
+        if not valid_thumbs:
+            return ""
+        candidates = [thumb for thumb in valid_thumbs if isinstance(thumb.get("width"), int) and cast(int, thumb["width"]) >= min_size]
+        chosen = (
+            min(candidates, key=lambda thumb: cast(int, thumb["width"]))
+            if candidates
+            else max(valid_thumbs, key=lambda thumb: int(thumb.get("width") or 0))
+        )
         url = chosen.get("url", "")
         return url if isinstance(url, str) else ""
 

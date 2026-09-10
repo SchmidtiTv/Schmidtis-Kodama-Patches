@@ -99,16 +99,13 @@ export function PlayerBarCustomizer({ controls, onToggleControl, t, track }) {
           </div>
         </div>
         <Dropdown>
-          <DropdownTrigger data-testid="player-bar-add-control">
-            <Button
-              variant="secondary"
-              size="sm"
-              isDisabled={hiddenControls.length === 0}
-              className="shrink-0"
-            >
-              <Plus size={13} />
-              {t("addPlayerBarControl")}
-            </Button>
+          <DropdownTrigger
+            data-testid="player-bar-add-control"
+            isDisabled={hiddenControls.length === 0}
+            className="button button--sm button--secondary shrink-0"
+          >
+            <Plus size={13} />
+            {t("addPlayerBarControl")}
           </DropdownTrigger>
           <DropdownPopover placement="bottom end" className="[--dd-min-w:12rem]">
             <DropdownMenu aria-label={t("addPlayerBarControl")}>

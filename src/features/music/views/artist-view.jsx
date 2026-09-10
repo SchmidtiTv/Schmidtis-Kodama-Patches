@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button, Skeleton } from "@heroui/react";
+import { Button } from "@heroui/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 import { TrackRow } from "@/features/music/components/rows.jsx";
@@ -17,6 +17,7 @@ import {
 import { API } from "@/shared/api/client.js";
 import { thumb, hiResThumb } from "@/shared/api/thumbnails.js";
 import { useLang } from "@/shared/i18n/context.jsx";
+import { LoadingState } from "@/shared/ui/loading-state.jsx";
 import { ArtistDescription } from "../components/artist-description.jsx";
 import { MediaTile } from "../components/media-tile.jsx";
 import { usePlaybackStatus, usePlayerActions } from "../../player/player-context.jsx";
@@ -42,6 +43,10 @@ export function ArtistView({
   const [allAlbumsLoading, setAllAlbumsLoading] = useState(false);
   const [allSingles, setAllSingles] = useState(null);
   const [allSinglesLoading, setAllSinglesLoading] = useState(false);
+  const [allVideos, setAllVideos] = useState(null);
+  const [allVideosLoading, setAllVideosLoading] = useState(false);
+  const [allPlaylists, setAllPlaylists] = useState(null);
+  const [allPlaylistsLoading, setAllPlaylistsLoading] = useState(false);
   const [subscribed, setSubscribed] = useState(null); // null = unknown (not loaded yet)
   const [subLoading, setSubLoading] = useState(false);
   const [subError, setSubError] = useState(null);
@@ -53,6 +58,10 @@ export function ArtistView({
   useEffect(() => {
     setLoading(true);
     setError(null);
+    setAllAlbums(null);
+    setAllSingles(null);
+    setAllVideos(null);
+    setAllPlaylists(null);
     fetch(`${API}/artist/${browseId}`)
       .then((r) => r.json())
       .then((d) => {
@@ -86,15 +95,7 @@ export function ArtistView({
     return () => controller.abort();
   }, [artist?.name, browseId]);
 
-  if (loading)
-    return (
-      <div style={{ padding: 28 }}>
-        <Skeleton className="h-[200px] w-full rounded-xl mb-6" />
-        {[1, 2, 3, 4, 5].map((i) => (
-          <Skeleton key={i} className="h-[52px] w-full rounded-lg mb-2" />
-        ))}
-      </div>
-    );
+  if (loading) return <LoadingState label={t("loadingDots")} minHeight={440} />;
 
   if (error) return <div style={{ padding: 28, color: "var(--status-danger)" }}>{error}</div>;
   if (!artist) return null;
@@ -138,6 +139,24 @@ export function ArtistView({
         handlePlay(queue[0], queue);
       })
       .catch(() => {});
+  };
+  const loadAllVideos = () => {
+    if (!artist.videosBrowseId || !artist.videosParams) return;
+    setAllVideosLoading(true);
+    fetch(`${API}/artist_videos?channelId=${encodeURIComponent(artist.videosBrowseId)}&params=${encodeURIComponent(artist.videosParams)}`)
+      .then((response) => response.json())
+      .then((data) => setAllVideos(data.videos || []))
+      .catch(() => {})
+      .finally(() => setAllVideosLoading(false));
+  };
+  const loadAllPlaylists = () => {
+    if (!artist.playlistsBrowseId || !artist.playlistsParams) return;
+    setAllPlaylistsLoading(true);
+    fetch(`${API}/artist_playlists?channelId=${encodeURIComponent(artist.playlistsBrowseId)}&params=${encodeURIComponent(artist.playlistsParams)}`)
+      .then((response) => response.json())
+      .then((data) => setAllPlaylists(data.playlists || []))
+      .catch(() => {})
+      .finally(() => setAllPlaylistsLoading(false));
   };
 
   return (
@@ -610,14 +629,24 @@ export function ArtistView({
         {/* Videos */}
         {artist.videos?.length > 0 && (
           <div style={{ marginBottom: 32 }}>
-            <div style={{ fontSize: "var(--t16)", fontWeight: 600, marginBottom: 12 }}>
-              {t("videos")}
+            <div className="flex items-center justify-between gap-3" style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: "var(--t16)", fontWeight: 600 }}>{t("videos")}</div>
+              {!allVideos && artist.videosPlaylistId && (
+                <Button size="sm" variant="ghost" onPress={() => onOpenPlaylist?.({ playlistId: artist.videosPlaylistId, title: `${artist.name} – ${t("videos")}`, thumbnail: artist.thumbnail })}>
+                  {t("showAll")}
+                </Button>
+              )}
+              {!allVideos && artist.videosBrowseId && artist.videosParams && (
+                <Button size="sm" variant="ghost" isDisabled={allVideosLoading} onPress={loadAllVideos}>
+                  {t("showAll")}
+                </Button>
+              )}
             </div>
             <div
               className="carousel"
               style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 8 }}
             >
-              {artist.videos.map((v, i) => {
+              {(allVideos || artist.videos).map((v, i) => {
                 const playVideo = () =>
                   handlePlay(
                     {
@@ -627,7 +656,7 @@ export function ArtistView({
                       thumbnail: v.thumbnail,
                       duration: "",
                     },
-                    artist.videos.map((x) => ({
+                    (allVideos || artist.videos).map((x) => ({
                       videoId: x.videoId,
                       title: x.title,
                       artists: x.artists,
@@ -647,6 +676,30 @@ export function ArtistView({
                   />
                 );
               })}
+            </div>
+          </div>
+        )}
+
+        {artist.playlists?.length > 0 && (
+          <div style={{ marginBottom: 32 }}>
+            <div className="flex items-center justify-between gap-3" style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: "var(--t16)", fontWeight: 600 }}>{t("playlists")}</div>
+              {!allPlaylists && artist.playlistsBrowseId && artist.playlistsParams && (
+                <Button size="sm" variant="ghost" isDisabled={allPlaylistsLoading} onPress={loadAllPlaylists}>
+                  {t("showAll")}
+                </Button>
+              )}
+            </div>
+            <div className="carousel" style={{ display: "flex", gap: 14, overflowX: "auto", paddingBottom: 8 }}>
+              {(allPlaylists || artist.playlists).map((playlist, index) => (
+                <MediaTile
+                  key={`${playlist.playlistId}-${index}`}
+                  thumbnail={playlist.thumbnail}
+                  title={playlist.title}
+                  subtitle={playlist.count || null}
+                  onOpen={() => onOpenPlaylist?.(playlist)}
+                />
+              ))}
             </div>
           </div>
         )}

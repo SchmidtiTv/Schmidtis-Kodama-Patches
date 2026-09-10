@@ -21,6 +21,7 @@ export const VIZ_DEFAULTS = {
   tilt: 0, // 0..1 — high-frequency boost
   smoothBands: 0, // 0..1 — gaussian smoothing across bands
   render: "bars", // "bars" | "curve"
+  barCap: "round", // "round" | "square"
   peakHold: false, // hold peaks + slow decay
   gradient: false, // colour by bar height (base → gradColor)
   gradColor: "#ffffff",
@@ -245,7 +246,7 @@ export function CoverView({
       const maxLen = cfg.barLength,
         gap = cfg.gap,
         curve = cfg.render === "curve";
-      ctx.lineCap = "round";
+      ctx.lineCap = cfg.barCap === "square" ? "square" : "round";
       ctx.lineWidth = cfg.barThickness;
 
       let bx = (w - 260) / 2,

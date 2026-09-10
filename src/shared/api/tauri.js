@@ -5,6 +5,10 @@ async function invoke(command, args) {
   return invokeCommand(command, args);
 }
 
+export function isNativeRuntime() {
+  return Boolean(globalThis.isTauri && globalThis.__TAURI_INTERNALS__);
+}
+
 // Needed by the browser-E2E media recorder; command strings remain owned here.
 export const nativeCommand = {
   audioPlay: "audio_play",

@@ -91,5 +91,15 @@ export function useVideoAudioSync({
     return () => {
       cancelled = true;
     };
-  }, [enabled, showVideoView]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [
+    enabled,
+    audioRef,
+    trackRef,
+    setIsPlaying,
+    showVideoView,
+    videoSync?.ready,
+    videoSync?.counterpartVideoId,
+    videoSync?.offsetSeconds,
+    videoSync?.selfVideo,
+  ]);
 }

@@ -108,11 +108,12 @@ img.img-failed {
   /* Border */
   --color-border: var(--stroke);
 
-  /* Border radius — intentionally NOT remapped to our --r-* tokens.
-     Tailwind's default scale (sm 4 / md 6 / lg 8 / xl 12 / 2xl 16 / 3xl 24px)
-     already matches our scale and gives HeroUI components (which use rounded-2xl,
-     rounded-3xl) their genuine intended radii. Remapping --radius-2xl to the
-     undefined --r-2xl previously broke ListBox item corners. */
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-2xl: var(--r-2xl);
+  --radius-3xl: var(--r-2xl);
 
   /* Font size scale */
   --font-size-t10: var(--t10);
@@ -354,7 +355,7 @@ img.img-failed {
   --slider-track: #505050;
   --accent-dim: rgba(255, 255, 255, 0.12);
 }
-[data-highcontrast="true"]:not([data-theme="light"]) {
+[data-highcontrast="true"]:not([data-mode="light"]) {
   --bg-base: #000000;
   --bg-surface: #0a0a0a;
   --bg-elevated: #141414;
@@ -365,7 +366,7 @@ img.img-failed {
   --t1: rgba(255, 255, 255, 1);
   --text-primary: var(--t1);
 }
-[data-theme="light"][data-highcontrast="true"] {
+[data-mode="light"][data-highcontrast="true"] {
   --bg-base: #ffffff;
   --bg-surface: #ffffff;
   --bg-elevated: #f0f0f0;
@@ -391,17 +392,27 @@ img.img-failed {
   background-color: #999;
 }
 
-[data-theme="light"] ::-webkit-scrollbar-thumb {
+[data-mode="light"] ::-webkit-scrollbar-thumb {
   background: #bbb;
 }
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+[data-mode="light"] ::-webkit-scrollbar-thumb:hover {
   background: #888;
 }
-[data-theme="light"] .scrollable:hover::-webkit-scrollbar-thumb {
+[data-mode="light"] .scrollable:hover::-webkit-scrollbar-thumb {
   background: #888;
 }
-[data-theme="light"] .carousel:hover::-webkit-scrollbar-thumb {
+[data-mode="light"] .carousel:hover::-webkit-scrollbar-thumb {
   background: #888;
+}
+
+[data-shape="sharp"] {
+  --r-xs: 0;
+  --r-sm: 0;
+  --r-md: 0;
+  --r-lg: 0;
+  --r-xl: 0;
+  --r-2xl: 0;
+  --r-full: 0;
 }
 
 html,
@@ -493,10 +504,10 @@ body,
   background-color: rgba(255, 255, 255, 0.13) !important;
 }
 /* Light theme: a translucent dark tint instead (white would vanish on a light surface). */
-[data-theme="light"] [data-slot="search-field-group"] {
+[data-mode="light"] [data-slot="search-field-group"] {
   background-color: rgba(0, 0, 0, 0.05) !important;
 }
-[data-theme="light"] [data-slot="search-field-group"]:focus-within {
+[data-mode="light"] [data-slot="search-field-group"]:focus-within {
   background-color: rgba(0, 0, 0, 0.08) !important;
 }
 

@@ -32,12 +32,40 @@ def _extract_artist_desc_url(browse_id: str) -> str | None:
     return None
 
 
+def _shelf_more(artist: dict, key: str) -> dict[str, str]:
+    shelf = artist.get(key) or {}
+    browse_id = shelf.get("browseId", "") or ""
+    if browse_id.startswith("VL"):
+        return {f"{key}PlaylistId": browse_id[2:], f"{key}BrowseId": "", f"{key}Params": ""}
+    return {
+        f"{key}PlaylistId": "",
+        f"{key}BrowseId": browse_id,
+        f"{key}Params": shelf.get("params", "") or "",
+    }
+
+
+def _video_item(video: dict, artist_name: str) -> dict[str, str]:
+    artists = video.get("artists") or []
+    return {
+        "videoId": video.get("videoId", ""),
+        "title": video.get("title", ""),
+        "artists": ", ".join(artist.get("name", "") for artist in artists) or artist_name,
+        "views": video.get("views", ""),
+        "thumbnail": YoutubeResponseMapper.select_thumbnail(video.get("thumbnails", [])),
+    }
+
+
 @blueprint.route("/artist/<browse_id>")
 def get_artist(browse_id: str) -> RouteResponse:
     try:
         session = music_session()
         client = session.get_active_client()
-        artist = client.get_artist(browse_id)
+        try:
+            artist = client.get_artist(browse_id)
+        except KeyError as error:
+            if "musicImmersiveHeaderRenderer" not in str(error):
+                raise
+            artist = client.get_user(browse_id)
 
         # Top songs
         tracks = []
@@ -93,13 +121,15 @@ def get_artist(browse_id: str) -> RouteResponse:
         for v in (artist.get("videos", {}).get("results", [])):
             if not v.get("videoId"):
                 continue
-            v_artists = v.get("artists") or []
-            videos.append({
-                "videoId":   v.get("videoId", ""),
-                "title":     v.get("title", ""),
-                "artists":   ", ".join(a.get("name", "") for a in v_artists) or artist.get("name", ""),
-                "views":     v.get("views", ""),
-                "thumbnail": YoutubeResponseMapper.select_thumbnail(v.get("thumbnails", [])),
+            videos.append(_video_item(v, artist.get("name", "")))
+
+        playlists = []
+        for playlist in (artist.get("playlists", {}).get("results", [])):
+            playlists.append({
+                "playlistId": playlist.get("playlistId", ""),
+                "title": playlist.get("title", ""),
+                "count": playlist.get("count", ""),
+                "thumbnail": YoutubeResponseMapper.select_thumbnail(playlist.get("thumbnails", [])),
             })
 
         # Related artists ("Fans might also like")
@@ -128,14 +158,53 @@ def get_artist(browse_id: str) -> RouteResponse:
             "albumsParams":   artist.get("albums", {}).get("params", "") or "",
             "singlesBrowseId": artist.get("singles", {}).get("browseId", "") or "",
             "singlesParams":   artist.get("singles", {}).get("params", "") or "",
+            **_shelf_more(artist, "videos"),
+            **_shelf_more(artist, "playlists"),
             "tracks":  tracks,
             "albums":  albums,
             "singles": singles,
             "videos":  videos,
+            "playlists": playlists,
             "related": related,
         })
     except Exception as e:
         return jsonify({"error": str(e)}), 500
+
+
+@blueprint.route("/artist_videos")
+def artist_videos() -> RouteResponse:
+    channel_id = request.args.get("channelId", "")
+    params = request.args.get("params", "")
+    if not channel_id or not params:
+        return jsonify({"error": "channelId and params are required"}), 400
+    try:
+        items = music_session().get_active_client().get_user_videos(channel_id, params)
+        return jsonify({"videos": [_video_item(item, "") for item in items or [] if item.get("videoId")]})
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
+
+
+@blueprint.route("/artist_playlists")
+def artist_playlists() -> RouteResponse:
+    channel_id = request.args.get("channelId", "")
+    params = request.args.get("params", "")
+    if not channel_id or not params:
+        return jsonify({"error": "channelId and params are required"}), 400
+    try:
+        items = music_session().get_active_client().get_user_playlists(channel_id, params)
+        return jsonify({
+            "playlists": [
+                {
+                    "playlistId": item.get("playlistId", ""),
+                    "title": item.get("title", ""),
+                    "count": item.get("count", ""),
+                    "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                }
+                for item in items or []
+            ]
+        })
+    except Exception as error:
+        return jsonify({"error": str(error)}), 500
 
 
 @blueprint.route("/artist/<browse_id>/subscribe", methods=["POST"])

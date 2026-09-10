@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { native } from "@/shared/api/tauri.js";
+import { isNativeRuntime, native } from "@/shared/api/tauri.js";
 import { createFullscreenIdle } from "./fullscreen-idle.js";
 
 export function useFullscreenPlayer() {
@@ -15,7 +15,7 @@ export function useFullscreenPlayer() {
     pendingRef.current = true;
     const next = !fullscreenRef.current;
     try {
-      if (window.__TAURI_INTERNALS__) await native.setFullscreen(next);
+      if (isNativeRuntime()) await native.setFullscreen(next);
       fullscreenRef.current = next;
       setVisible(true);
       setFullscreen(next);

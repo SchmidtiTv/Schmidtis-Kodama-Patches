@@ -352,6 +352,8 @@ class YoutubeMusicSession:
                     "[cookies] refresh ping is LOGGED OUT (statuses: %s) - re-login required.",
                     ", ".join(statuses),
                 )
+            if authenticated is not None:
+                self.state.last_authenticated = authenticated
             if not fresh_cookies:
                 self._logger.info(
                     "[cookies] refresh: no rotating cookies returned (authed=%s, statuses: %s)",
@@ -388,8 +390,6 @@ class YoutubeMusicSession:
                 pass
 
             self.state.psidts_last_refresh = now
-            if authenticated is not None:
-                self.state.last_authenticated = authenticated
             self._logger.info(
                 "[cookies] session refreshed (authed=%s): %s | %s",
                 authenticated,

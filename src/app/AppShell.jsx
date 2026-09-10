@@ -963,7 +963,7 @@ export const AppShell = memo(function AppShell({
                     setShowLyricsManual((l) => !l);
                   }
                 }}
-                videoAvailable={videoSync.ready}
+                videoAvailable={videoSync.ready || videoSync.uncertain}
                 showVideoView={showVideoView}
                 onSetVideoView={(value) => {
                   if (value && !overlayOpen) setOverlayOpen(true);

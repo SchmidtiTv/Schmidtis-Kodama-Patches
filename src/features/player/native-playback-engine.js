@@ -1,5 +1,5 @@
 import { parseDurationToSeconds } from "@/features/lyrics/parse.js";
-import { native } from "@/shared/api/tauri.js";
+import { isNativeRuntime, native } from "@/shared/api/tauri.js";
 
 function artistNames(artists) {
   if (Array.isArray(artists)) {
@@ -46,7 +46,7 @@ function transitionOverrides(overrides, queue) {
 }
 
 async function invokeEngine(command) {
-  if (!globalThis.__TAURI_INTERNALS__) return null;
+  if (!isNativeRuntime()) return null;
   try {
     return await command();
   } catch (error) {

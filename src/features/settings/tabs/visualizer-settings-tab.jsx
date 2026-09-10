@@ -1,5 +1,6 @@
 import {
   ArrowClockwise,
+  ArrowsClockwise,
   CaretDown,
   CaretUp,
   DownloadSimple,
@@ -20,6 +21,7 @@ export function VisualizerSettingsTab({
   canvasEnabled,
   canvasSource,
   applyVizPreset,
+  overwriteVizPreset,
   deleteVizPreset,
   exportVizPreset,
   handleVizImport,
@@ -201,6 +203,16 @@ export function VisualizerSettingsTab({
                 >
                   {p.name}
                 </button>
+                <Button
+                  isIconOnly
+                  size="sm"
+                  variant="ghost"
+                  className="h-7! w-7! min-w-0!"
+                  onPress={() => overwriteVizPreset(p.id)}
+                  title={t("vizPresetOverwrite") || "Overwrite"}
+                >
+                  <ArrowsClockwise size={13} />
+                </Button>
                 <Button
                   isIconOnly
                   size="sm"
@@ -512,6 +524,24 @@ export function VisualizerSettingsTab({
             }
           >
             {t("visualizerCurve") || "Curve"}
+          </Button>
+        </div>
+      </SettingRow>
+      <SettingRow label={t("visualizerBarCap") || "Bar ends"} icon={<WaveformLines />}>
+        <div className="flex gap-1.5">
+          <Button
+            variant={(vizConfig.barCap || "round") === "round" ? "secondary" : "ghost"}
+            size="sm"
+            onPress={() => onUpdateViz({ barCap: "round" })}
+          >
+            {t("visualizerBarCapRound") || "Round"}
+          </Button>
+          <Button
+            variant={vizConfig.barCap === "square" ? "secondary" : "ghost"}
+            size="sm"
+            onPress={() => onUpdateViz({ barCap: "square" })}
+          >
+            {t("visualizerBarCapSquare") || "Square"}
           </Button>
         </div>
       </SettingRow>

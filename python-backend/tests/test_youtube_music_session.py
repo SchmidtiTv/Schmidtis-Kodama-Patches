@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import MagicMock, call, patch
 
 from ytmusicapi.exceptions import YTMusicServerError
@@ -81,6 +82,20 @@ class YoutubeMusicSessionTests(unittest.TestCase):
             daemon=True,
         )
         thread_class.return_value.start.assert_called_once_with()
+
+    def test_cookie_refresh_marks_a_logged_out_session_without_rotated_cookies(self) -> None:
+        profiles = MagicMock()
+        profiles.is_local.return_value = False
+        upstream = MagicMock()
+        upstream.cookies = []
+        upstream.get.return_value = SimpleNamespace(status_code=200, text='"LOGGED_IN":false')
+        session = YoutubeMusicSession(profiles=profiles, session_factory=lambda: upstream)
+        session.state.current_profile = "default"
+        session.state.ytm = SimpleNamespace(base_headers={"cookie": "SAPISID=value"})
+
+        session.refresh_session_cookies(force=True)
+
+        self.assertFalse(session.state.last_authenticated)
 
     def test_reauth_and_logout_clear_only_that_profiles_playlist_memory(self) -> None:
         playlist_cache = MagicMock()

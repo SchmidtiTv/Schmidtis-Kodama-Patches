@@ -7,6 +7,7 @@ import {
   ZOOM_STEPS,
 } from "../settings-constants.js";
 import { AccentColorPicker } from "../settings-integration-controls.jsx";
+import { ThemeCatalogue } from "../theme-catalogue.jsx";
 import { Button, CardRoot, cn } from "@heroui/react";
 import {
   Check,
@@ -22,8 +23,10 @@ import {
   Slider,
   Toggle,
 } from "@/shared/ui/settings-controls.jsx";
+import { allThemes } from "@/shared/lib/themes.js";
 export function AppearanceSettingsTab({
   accent,
+  accentCustom,
   accentDynamic,
   accentLight,
   accentSat,
@@ -33,6 +36,7 @@ export function AppearanceSettingsTab({
   appIcon,
   appIconCustomizationAvailable,
   onAccentChange,
+  onAccentReset,
   onAccentDynamicChange,
   onAccentLightChange,
   onAccentSatChange,
@@ -43,6 +47,8 @@ export function AppearanceSettingsTab({
   onThemeChange,
   onUiZoomChange,
   playerBarControls,
+  sharpCorners,
+  onSharpCornersChange,
   t,
   theme,
   uiZoom,
@@ -62,43 +68,29 @@ export function AppearanceSettingsTab({
         <div
           style={{
             display: "flex",
+            flexWrap: "wrap",
             gap: 12,
             marginBottom: 8,
           }}
         >
-          {[
-            {
-              id: "dark",
-              label: t("themeDark"),
-              bg: "#0d0d0d",
-              surface: "#141414",
-              elevated: "#1c1c1c",
-              text: "#f0f0f0",
-            },
-            {
-              id: "oled",
-              label: t("themeOled"),
-              bg: "#000000",
-              surface: "#080808",
-              elevated: "#0f0f0f",
-              text: "#ffffff",
-            },
-            {
-              id: "light",
-              label: t("themeLight"),
-              bg: "#f0f0f0",
-              surface: "#ffffff",
-              elevated: "#e4e4e4",
-              text: "#111111",
-            },
-          ].map((th) => (
+          {allThemes().map((th) => {
+            const tokens = th.tokens;
+            const isLight = th.mode === "light";
+            const preview = {
+              bg: tokens["--bg-base"] || (isLight ? "#f0f0f0" : "#0d0d0d"),
+              surface: tokens["--bg-surface"] || (isLight ? "#ffffff" : "#141414"),
+              elevated: tokens["--bg-elevated"] || (isLight ? "#e4e4e4" : "#1c1c1c"),
+              text: tokens["--t1"] || (isLight ? "#111111" : "#f0f0f0"),
+            };
+            const labels = { dark: t("themeDark"), oled: t("themeOled"), light: t("themeLight"), grove: t("themeGrove") };
+            return (
             <CardRoot
               key={th.id}
               data-testid={`theme-${th.id}`}
               onClick={() => onThemeChange(th.id)}
               variant="transparent"
               className={cn(
-                "relative flex-1 p-0 gap-0 rounded-[10px] overflow-hidden cursor-default border-2",
+                "relative flex-1 min-w-[130px] p-0 gap-0 rounded-[10px] overflow-hidden cursor-default border-2",
                 anim && "transition-transform",
                 theme === th.id
                   ? "border-accent shadow-[0_0_0_2px_var(--accent)]"
@@ -115,14 +107,14 @@ export function AppearanceSettingsTab({
               {/* Mini preview */}
               <div
                 style={{
-                  background: th.bg,
+                  background: preview.bg,
                   padding: 10,
                   height: 80,
                 }}
               >
                 <div
                   style={{
-                    background: th.surface,
+                    background: preview.surface,
                     borderRadius: "var(--r-md)",
                     padding: "6px 8px",
                     marginBottom: 5,
@@ -142,7 +134,7 @@ export function AppearanceSettingsTab({
                       width: "40%",
                       height: 4,
                       borderRadius: 3,
-                      background: th.text,
+                      background: preview.text,
                       opacity: 0.3,
                     }}
                   />
@@ -156,7 +148,7 @@ export function AppearanceSettingsTab({
                   <div
                     style={{
                       flex: 1,
-                      background: th.elevated,
+                      background: preview.elevated,
                       borderRadius: "var(--r-sm)",
                       height: 24,
                     }}
@@ -164,7 +156,7 @@ export function AppearanceSettingsTab({
                   <div
                     style={{
                       flex: 1,
-                      background: th.elevated,
+                      background: preview.elevated,
                       borderRadius: "var(--r-sm)",
                       height: 24,
                     }}
@@ -174,20 +166,22 @@ export function AppearanceSettingsTab({
               {/* Label */}
               <div
                 style={{
-                  background: th.surface,
+                  background: preview.surface,
                   padding: "7px 10px",
                   fontSize: "var(--t12)",
                   fontWeight: 500,
-                  color: theme === th.id ? accent : th.text,
+                  color: theme === th.id ? accent : preview.text,
                   textAlign: "center",
-                  borderTop: `1px solid ${th.id === "light" ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.06)"}`,
+                  borderTop: `1px solid ${isLight ? "rgba(0,0,0,0.1)" : "rgba(255,255,255,0.06)"}`,
                 }}
               >
-                {th.label}
+                {labels[th.id] || th.label}
               </div>
             </CardRoot>
-          ))}
+            );
+          })}
         </div>
+        <ThemeCatalogue onThemeChange={onThemeChange} t={t} />
       </div>
 
       {appIconCustomizationAvailable && <div
@@ -361,7 +355,14 @@ export function AppearanceSettingsTab({
             </SettingRow>
           </>
         ) : (
-          <AccentColorPicker value={accent} onChange={onAccentChange} />
+          <>
+            <AccentColorPicker value={accent} onChange={onAccentChange} />
+            {accentCustom && (
+              <Button className="mt-2" size="sm" variant="ghost" onPress={onAccentReset}>
+                {t("accentReset")}
+              </Button>
+            )}
+          </>
         )}
       </div>
 
@@ -378,6 +379,9 @@ export function AppearanceSettingsTab({
         </SettingRow>
         <SettingRow label={t("animations")} description={t("animationsDesc")} icon={<Sparkles />}>
           <Toggle value={animations} onChange={onAnimationsChange} />
+        </SettingRow>
+        <SettingRow label={t("sharpCorners")} description={t("sharpCornersDesc")}>
+          <Toggle value={sharpCorners} onChange={onSharpCornersChange} />
         </SettingRow>
         <SettingRow label={t("uiZoom")} description={t("uiZoomDesc")} icon={<MagnifyingGlass />}>
           <div

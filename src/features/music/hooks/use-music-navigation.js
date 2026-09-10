@@ -168,7 +168,7 @@ export function useMusicNavigation({ setSearchQuery }) {
         thumbnail: item.thumbnail,
         tracks: [],
         total: null,
-        loading: false,
+        loading: true,
         progress: 0,
         cached: false,
         fromView: fromView || "library",
@@ -183,19 +183,33 @@ export function useMusicNavigation({ setSearchQuery }) {
         type: "album",
       });
       const url = `${API}/album/${item.browseId}${refresh ? "?refresh=1" : ""}`;
-      const r = await fetch(url);
-      const d = await r.json();
-      setCollection((c) => ({
-        ...c,
-        title: d.title,
-        thumbnail: d.thumbnail || c.thumbnail,
-        tracks: d.tracks || [],
-        total: d.tracks?.length || 0,
-        albumArtists: d.artists,
-        albumArtistBrowseId: d.artistBrowseId,
-        year: d.year,
-        cached: !refresh && !!d.cached,
-      }));
+      try {
+        const response = await fetch(url);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const data = await response.json();
+        setCollection((current) =>
+          current?.browseId === item.browseId
+            ? {
+                ...current,
+                title: data.title,
+                thumbnail: data.thumbnail || current.thumbnail,
+                tracks: data.tracks || [],
+                total: data.tracks?.length || 0,
+                albumArtists: data.artists,
+                albumArtistBrowseId: data.artistBrowseId,
+                year: data.year,
+                cached: !refresh && !!data.cached,
+                loading: false,
+              }
+            : current
+        );
+      } catch {
+        // Keep the initial collection details visible when the album request fails, but never
+        // leave its loading state running indefinitely.
+        setCollection((current) =>
+          current?.browseId === item.browseId ? { ...current, loading: false } : current
+        );
+      }
     },
     [addRecentPlaylist]
   );

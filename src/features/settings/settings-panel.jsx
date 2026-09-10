@@ -72,6 +72,8 @@ export function SettingsPanel({
   const t = useLang();
   const {
     accent,
+    accentCustom,
+    onAccentReset,
     onAccentChange,
     accentDynamic,
     onAccentDynamicChange,
@@ -84,6 +86,8 @@ export function SettingsPanel({
     onAppIconChange,
     theme,
     onThemeChange,
+    sharpCorners,
+    onSharpCornersChange,
     animations,
     onAnimationsChange,
     highContrast,
@@ -239,11 +243,13 @@ export function SettingsPanel({
     vizImportRef,
     saveVizPreset,
     applyVizPreset,
+    overwriteVizPreset,
     deleteVizPreset,
     exportVizPreset,
     handleVizImport,
   } = useVisualizerSettingsTab({
     t,
+    uiZoom,
     vizConfig,
     onUpdateViz,
   });
@@ -505,7 +511,8 @@ export function SettingsPanel({
           {tab === "visualizer" && (
             <VisualizerSettingsTab
               ambientVisualizer={ambientVisualizer}
-              applyVizPreset={applyVizPreset}
+                applyVizPreset={applyVizPreset}
+                overwriteVizPreset={overwriteVizPreset}
               deleteVizPreset={deleteVizPreset}
               exportVizPreset={exportVizPreset}
               handleVizImport={handleVizImport}
@@ -539,6 +546,7 @@ export function SettingsPanel({
             <>
               <AppearanceSettingsTab
                 accent={accent}
+                accentCustom={accentCustom}
                 accentDynamic={accentDynamic}
                 accentLight={accentLight}
                 accentSat={accentSat}
@@ -548,6 +556,7 @@ export function SettingsPanel({
                 appIcon={appIcon}
                 appIconCustomizationAvailable={appIconCustomizationAvailable}
                 onAccentChange={onAccentChange}
+                onAccentReset={onAccentReset}
                 onAccentDynamicChange={onAccentDynamicChange}
                 onAccentLightChange={onAccentLightChange}
                 onAccentSatChange={onAccentSatChange}
@@ -556,6 +565,8 @@ export function SettingsPanel({
                 onFontScaleChange={onFontScaleChange}
                 onPlayerBarControlToggle={onPlayerBarControlToggle}
                 onThemeChange={onThemeChange}
+                sharpCorners={sharpCorners}
+                onSharpCornersChange={onSharpCornersChange}
                 onUiZoomChange={onUiZoomChange}
                 playerBarControls={playerBarControls}
                 t={t}

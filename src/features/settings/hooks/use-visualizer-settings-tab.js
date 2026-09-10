@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { VIZ_DEFAULTS } from "@/features/player/player-ui.jsx";
-export function useVisualizerSettingsTab({ t, vizConfig, onUpdateViz }) {
+export function useVisualizerSettingsTab({ t, uiZoom, vizConfig, onUpdateViz }) {
   // Visualizer preview scales with the window height (live on resize) so on short windows it
   // shrinks — both the box AND the cover — leaving room to reach the options below.
   const [winH, setWinH] = useState(() => window.innerHeight);
@@ -10,8 +10,10 @@ export function useVisualizerSettingsTab({ t, vizConfig, onUpdateViz }) {
       setWinH(window.innerHeight);
       setWinW(window.innerWidth);
     };
-    window.addEventListener("resize", onResize);
-    return () => window.removeEventListener("resize", onResize);
+    const observer = new ResizeObserver(onResize);
+    observer.observe(document.documentElement);
+    onResize();
+    return () => observer.disconnect();
   }, []);
   const vizPreviewH = Math.round(Math.max(260, Math.min(620, winH * 0.48)));
   const vizCoverSize = Math.round(Math.max(130, Math.min(260, vizPreviewH * 0.42)));
@@ -38,9 +40,10 @@ export function useVisualizerSettingsTab({ t, vizConfig, onUpdateViz }) {
     setVizPreviewW(el.clientWidth);
     return () => ro.disconnect();
   }, [vizPreviewOpen]);
-  const vizScale = vizPreviewW > 0 && winW > 0 ? vizPreviewW / winW : vizCoverSize / 260;
+  const vizWinW = winW / (uiZoom || 1);
+  const vizScale = vizPreviewW > 0 && vizWinW > 0 ? vizPreviewW / vizWinW : vizCoverSize / 260;
   const vizPreviewHReplica =
-    vizPreviewW > 0 && winW > 0 ? Math.round((vizPreviewW * winH) / winW) : vizPreviewH;
+    vizPreviewW > 0 && vizWinW > 0 ? Math.round((vizPreviewW * winH) / winW) : vizPreviewH;
   const vizPreviewCover = Math.max(60, Math.round(260 * vizScale));
 
   // Visualizer presets — save/apply/import/export named snapshots of the config (same pattern as
@@ -82,30 +85,28 @@ export function useVisualizerSettingsTab({ t, vizConfig, onUpdateViz }) {
       ...VIZ_DEFAULTS,
       ...p.config,
     });
-  const deleteVizPreset = (id) => persistVizPresets(vizPresets.filter((p) => p.id !== id));
-  const exportVizPreset = (p) => {
-    const blob = new Blob(
-      [
-        JSON.stringify(
-          {
-            name: p.name,
-            savedAt: p.savedAt,
-            config: p.config,
-          },
-          null,
-          2
-        ),
-      ],
-      {
-        type: "application/json",
-      }
+  const overwriteVizPreset = (id) =>
+    persistVizPresets(
+      vizPresets.map((preset) =>
+        preset.id === id
+          ? { ...preset, savedAt: new Date().toISOString(), config: { ...vizConfig } }
+          : preset
+      )
     );
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${(p.name || "visualizer").replace(/[^\w\s-]/g, "").trim() || "visualizer"}.kodama-visualizer.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+  const deleteVizPreset = (id) => persistVizPresets(vizPresets.filter((p) => p.id !== id));
+  const exportVizPreset = async (preset) => {
+    const base = (preset.name || "visualizer").replace(/[^\w\s-]/g, "").trim() || "visualizer";
+    const { save } = await import("@tauri-apps/plugin-dialog");
+    const { writeTextFile } = await import("@tauri-apps/plugin-fs");
+    const path = await save({
+      defaultPath: `${base}.kodama-visualizer.json`,
+      filters: [{ name: "Visualizer preset", extensions: ["json"] }],
+    });
+    if (!path) return;
+    await writeTextFile(
+      path,
+      JSON.stringify({ name: preset.name, savedAt: preset.savedAt, config: preset.config }, null, 2)
+    );
   };
   const handleVizImport = (e) => {
     const files = Array.from(e.target.files || []);
@@ -162,6 +163,7 @@ export function useVisualizerSettingsTab({ t, vizConfig, onUpdateViz }) {
     vizImportRef,
     saveVizPreset,
     applyVizPreset,
+    overwriteVizPreset,
     deleteVizPreset,
     exportVizPreset,
     handleVizImport,

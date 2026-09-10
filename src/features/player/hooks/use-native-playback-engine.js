@@ -85,6 +85,7 @@ export function useNativePlaybackEngine({
   }, [applySnapshot]);
 
   useEffect(() => {
+    if (!nativeAvailable) return undefined;
     const syncVisibility = () => {
       const visible = document.visibilityState === "visible";
       setNativeUiVisible(visible).then((snapshot) => {
@@ -97,7 +98,7 @@ export function useNativePlaybackEngine({
       document.removeEventListener("visibilitychange", syncVisibility);
       setNativeUiVisible(false);
     };
-  }, [applySnapshot]);
+  }, [applySnapshot, nativeAvailable]);
 
   useEffect(() => {
     if (!nativeAvailable) return;

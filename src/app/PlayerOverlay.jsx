@@ -2,6 +2,7 @@ import { memo } from "react";
 import { LyricsOverlay } from "@/features/lyrics/LyricsOverlay.jsx";
 import { CoverView } from "@/features/player/player-ui.jsx";
 import { hiResThumb } from "@/features/player/cover-art.js";
+import { thumb } from "@/shared/api/thumbnails.js";
 import { SIDEBAR_COLLAPSED } from "./shell-constants.js";
 import { VideoSyncView } from "@/features/player/video-sync.jsx";
 
@@ -94,7 +95,7 @@ export const PlayerOverlay = memo(function PlayerOverlay({
               inset: 0,
               pointerEvents: "none",
               backgroundImage: currentTrack.thumbnail
-                ? `url(${hiResThumb(currentTrack.thumbnail)})`
+                ? `url(${thumb(hiResThumb(currentTrack.thumbnail))})`
                 : "none",
               backgroundSize: "cover",
               backgroundPosition: "center",
