@@ -1,6 +1,9 @@
 # Dependencies (greift auch für composer/node_modules)
 node_modules/
 
+# Isolated agent worktrees
+.worktrees/
+
 # Build-Artefakte (Frontend) — greift auch für composer/dist (wird lokal/in CI gebaut)
 dist/
 
