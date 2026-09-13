@@ -104,6 +104,7 @@ def create_app() -> Flask:
             cache_settings=app.extensions["cache_settings"],
             musixmatch=MusixMatch(),
             metadata_cache=metadata_cache,
+            music_session=music_session,
         )
         app.extensions["album_cache"] = Album(metadata_cache=metadata_cache)
         app.extensions["band_member_finder"] = BandMemberFinder()

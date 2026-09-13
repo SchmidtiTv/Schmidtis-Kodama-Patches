@@ -6,7 +6,6 @@ from types import SimpleNamespace
 from unittest.mock import Mock, patch
 
 import requests
-
 from src.lib.music.lyrics import LyricsService
 from src.lib.runtime.metadata_cache import MetadataCache
 
@@ -58,9 +57,7 @@ class LyricsProviderTests(unittest.TestCase):
             },
         ]
 
-        selected = LyricsService._pick_paxsenix_song(
-            songs, "Bad Apple!!", "nomico", 220_000
-        )
+        selected = LyricsService._pick_paxsenix_song(songs, "Bad Apple!!", "nomico", 220_000)
 
         self.assertEqual(selected["id"], 2)
 
@@ -68,19 +65,74 @@ class LyricsProviderTests(unittest.TestCase):
         response = _Response(
             {
                 "lyrics": (
-                    '<Lyric_1 LyricContent="[0,1000]Hello(0,500)'
-                    ' &amp; world(500,500)\\n" />'
+                    '<Lyric_1 LyricContent="[0,1000]Hello(0,500)' ' &amp; world(500,500)\\n" />'
                 )
             }
         )
 
         with patch("src.lib.music.lyrics.requests.get", return_value=response):
-            result = LyricsService._lookup_portato(
-                "Song", "Artist", "Album", "180", "portato"
-            )
+            result = LyricsService._lookup_portato("Song", "Artist", "Album", "180", "portato")
 
         self.assertEqual(result["source"], "Better Lyrics Portato")
         self.assertIn("& world", result["qrc"])
+
+    def test_binilyrics_returns_ttml_from_a_trusted_storage_url(self) -> None:
+        search = _Response(
+            {"results": [{"lyricsUrl": "https://lyrics-storage.binimum.org/lyrics/song.ttml"}]}
+        )
+        lyrics = _Response({}, text='<tt><body><p begin="0:00">A line</p></body></tt>')
+
+        with patch("src.lib.music.lyrics.requests.get", side_effect=[search, lyrics]) as get:
+            result = LyricsService._lookup_binilyrics(
+                "Song", "Artist", "Album", "180", "binilyrics"
+            )
+
+        self.assertEqual(result["source"], "BiniLyrics")
+        self.assertEqual(result["ttml"], lyrics.text)
+        self.assertEqual(
+            get.call_args_list[0].kwargs["params"],
+            {
+                "track": "Song",
+                "artist": "Artist",
+                "album": "Album",
+                "duration": "180",
+            },
+        )
+
+    def test_binilyrics_rejects_an_untrusted_storage_url(self) -> None:
+        search = _Response({"results": [{"lyricsUrl": "https://example.com/lyrics.ttml"}]})
+
+        with patch("src.lib.music.lyrics.requests.get", return_value=search) as get:
+            result = LyricsService._lookup_binilyrics("Song", "Artist", "", "", "binilyrics")
+
+        self.assertIsNone(result)
+        self.assertEqual(get.call_count, 1)
+
+    def test_better_lyrics_legato_returns_line_timed_lrc(self) -> None:
+        response = _Response({"lyrics": "[00:12.34]A lyric line", "provider": "kugou"})
+
+        with patch("src.lib.music.lyrics.requests.get", return_value=response) as get:
+            result = LyricsService._lookup_better_lyrics_legato(
+                "Song", "Artist", "Album", "180", "legato"
+            )
+
+        self.assertEqual(
+            result,
+            {
+                "source": "Better Lyrics Legato",
+                "synced": "[00:12.34]A lyric line",
+                "plain": None,
+            },
+        )
+        self.assertEqual(
+            get.call_args.kwargs["params"],
+            {
+                "s": "Song",
+                "a": "Artist",
+                "al": "Album",
+                "d": "180",
+            },
+        )
 
 
 class LyricsFastTierTests(unittest.TestCase):
@@ -92,6 +144,58 @@ class LyricsFastTierTests(unittest.TestCase):
             musixmatch=SimpleNamespace(),
             metadata_cache=cache,
         )
+
+    def test_youtube_native_lyrics_are_converted_to_lrc(self) -> None:
+        class TimedLine:
+            text = "A lyric line"
+            start_time = 12_340
+
+        class YoutubeClient:
+            def get_watch_playlist(self, **kwargs: object) -> dict[str, str]:
+                return {"lyrics": "MPLYt_test"}
+
+            def get_lyrics(self, browse_id: str, timestamps: bool) -> dict[str, object]:
+                return {"lyrics": [TimedLine()]}
+
+        self.service._music_session = SimpleNamespace(get_active_client=lambda: YoutubeClient())
+
+        result = self.service._lookup_youtube("youtube", "video-id")
+
+        self.assertEqual(
+            result,
+            {
+                "source": "YouTube Music",
+                "synced": "[00:12.34]A lyric line",
+                "plain": None,
+            },
+        )
+
+    def test_youtube_captions_fall_back_when_native_lyrics_are_unavailable(self) -> None:
+        class YoutubeClient:
+            def get_watch_playlist(self, **kwargs: object) -> dict[str, str]:
+                return {}
+
+        self.service._music_session = SimpleNamespace(get_active_client=lambda: YoutubeClient())
+        track_list = _Response(
+            {},
+            text='<transcript_list><track lang_code="en" lang_default="true" /></transcript_list>',
+        )
+        captions = _Response(
+            {}, text='<transcript><text start="12.34">A caption line</text></transcript>'
+        )
+
+        with patch("src.lib.music.lyrics.requests.get", side_effect=[track_list, captions]) as get:
+            result = self.service._lookup_youtube("youtube", "video-id")
+
+        self.assertEqual(
+            result,
+            {
+                "source": "YouTube Captions",
+                "synced": "[00:12.34]A caption line",
+                "plain": None,
+            },
+        )
+        self.assertEqual(get.call_args_list[0].kwargs["params"], {"type": "list", "v": "video-id"})
 
     def tearDown(self) -> None:
         self.tempdir.cleanup()
@@ -107,6 +211,9 @@ class LyricsFastTierTests(unittest.TestCase):
             return {"source": "Better Lyrics", "ttml": "better-lyrics"}
 
         with (
+            patch.object(
+                LyricsService, "_lookup_binilyrics", staticmethod(lambda *args, **kwargs: None)
+            ),
             patch.object(LyricsService, "_lookup_lrclib", staticmethod(slow_lrclib)),
             patch.object(LyricsService, "_lookup_better_lyrics", staticmethod(fast_better)),
             patch.object(LyricsService, "_lookup_portato", staticmethod(lambda *a, **k: None)),
@@ -117,8 +224,13 @@ class LyricsFastTierTests(unittest.TestCase):
 
     def test_falls_back_to_a_lower_priority_provider_when_higher_priority_misses(self) -> None:
         with (
+            patch.object(
+                LyricsService, "_lookup_binilyrics", staticmethod(lambda *args, **kwargs: None)
+            ),
             patch.object(LyricsService, "_lookup_lrclib", staticmethod(lambda *a, **k: None)),
-            patch.object(LyricsService, "_lookup_better_lyrics", staticmethod(lambda *a, **k: None)),
+            patch.object(
+                LyricsService, "_lookup_better_lyrics", staticmethod(lambda *a, **k: None)
+            ),
             patch.object(
                 LyricsService,
                 "_lookup_portato",
@@ -174,5 +286,7 @@ class LyricsFastTierTests(unittest.TestCase):
             self.assertEqual(version["submitterName"], "Name-u1")
 
         # Both candidates share submitter "u1" — the display name lookup must be deduped.
-        leaderboard_calls = [call for call in get.call_args_list if "/leaderboard/users/" in call.args[0]]
+        leaderboard_calls = [
+            call for call in get.call_args_list if "/leaderboard/users/" in call.args[0]
+        ]
         self.assertEqual(len(leaderboard_calls), 1)

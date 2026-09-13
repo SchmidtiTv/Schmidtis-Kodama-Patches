@@ -79,6 +79,23 @@ class RootMusicRouteTests(RouteTestCase):
         self.assertTrue(response.json["sections"][0]["items"][0]["isVideo"])
         self.assertFalse(response.json["sections"][0]["items"][1]["isVideo"])
 
+    def test_home_ignores_missing_or_malformed_upstream_entries(self) -> None:
+        self.music_session.client.get_home = lambda limit=15: [
+            None,
+            {
+                "title": "Quick picks",
+                "contents": [
+                    None,
+                    {"videoId": "vid", "title": "Song", "artists": [], "thumbnails": []},
+                ],
+            },
+        ]
+
+        response = self.client.get("/home")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json["sections"][0]["items"][0]["videoId"], "vid")
+
     def test_root_music_routes(self) -> None:
         self.assertEqual(self.client.get("/status").json["ok"], True)
         self.assertEqual(self.client.get("/search").json, {"results": []})

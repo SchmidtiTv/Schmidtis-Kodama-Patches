@@ -4,10 +4,13 @@
 export const DEFAULT_LYRICS_PROVIDERS = [
   { id: "better", label: "Better Lyrics", enabled: true },
   { id: "unison", label: "Unison", enabled: true },
+  { id: "binilyrics", label: "BiniLyrics", enabled: true },
   { id: "portato", label: "Better Lyrics Portato", enabled: true },
-  { id: "paxsenix-netease", label: "NetEase (Paxsenix)", enabled: true },
   { id: "musixmatch", label: "Musixmatch", enabled: true },
+  { id: "paxsenix-netease", label: "NetEase (Paxsenix)", enabled: true },
+  { id: "youtube", label: "YouTube Music", enabled: true },
   { id: "lrclib", label: "LRCLIB", enabled: true },
+  { id: "legato", label: "Better Lyrics Legato", enabled: true },
   { id: "kugou", label: "Kugou", enabled: true },
   { id: "simp", label: "SimpMusic", enabled: true },
 ];
@@ -35,11 +38,17 @@ export const PROVIDER_SYNC = {
     color: "#ce93d8",
     bg: "rgba(206,147,216,0.12)",
   },
-  portato: {
+  binilyrics: {
     label: "Syllable",
     icon: "/sync-syllable.svg",
     color: "#ce93d8",
     bg: "rgba(206,147,216,0.12)",
+  },
+  portato: {
+    label: "Word",
+    icon: "/sync-word.svg",
+    color: "#f48fb1",
+    bg: "rgba(244,143,177,0.12)",
   },
   "paxsenix-netease": {
     label: "Word",
@@ -54,11 +63,14 @@ export const PROVIDER_SYNC = {
     bg: "rgba(244,143,177,0.12)",
   },
   lrclib: { label: "Line", icon: "/sync-line.svg", color: "#81c784", bg: "rgba(129,199,132,0.12)" },
+  youtube: { label: "Line", icon: "/sync-line.svg", color: "#81c784", bg: "rgba(129,199,132,0.12)" },
+  legato: { label: "Line", icon: "/sync-line.svg", color: "#81c784", bg: "rgba(129,199,132,0.12)" },
   kugou: { label: "Line", icon: "/sync-line.svg", color: "#81c784", bg: "rgba(129,199,132,0.12)" },
   simp: { label: "Line", icon: "/sync-line.svg", color: "#81c784", bg: "rgba(129,199,132,0.12)" },
 };
 
 const SYNC_ORDER = ["syllable", "word", "line"];
+const SYNC_QUALITY = { plain: 0, line: 1, word: 2, syllable: 3 };
 const SYNC_BY_LEVEL = {
   syllable: PROVIDER_SYNC.better,
   word: PROVIDER_SYNC.musixmatch,
@@ -70,4 +82,13 @@ export function providerSyncLevels(id) {
   if (!best) return [];
   const index = SYNC_ORDER.indexOf(best.label.toLowerCase());
   return index === -1 ? [best] : SYNC_ORDER.slice(index).map((level) => SYNC_BY_LEVEL[level]);
+}
+
+export function lyricsSyncQuality(providerId, lines) {
+  const timedLines = Array.isArray(lines) ? lines.filter((line) => line?.time >= 0) : [];
+  if (!timedLines.length) return SYNC_QUALITY.plain;
+  if (!timedLines.some((line) => line.wordSync)) return SYNC_QUALITY.line;
+
+  const declaredQuality = PROVIDER_SYNC[providerId]?.label?.toLowerCase();
+  return SYNC_QUALITY[declaredQuality] || SYNC_QUALITY.word;
 }

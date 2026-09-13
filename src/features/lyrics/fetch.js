@@ -1,5 +1,5 @@
 import { API } from "@/shared/api/client.js";
-import { DEFAULT_LYRICS_PROVIDERS } from "./providers.js";
+import { DEFAULT_LYRICS_PROVIDERS, lyricsSyncQuality } from "./providers.js";
 import { parseLrc, parseNetease, parseQrc, parseRichSync, parseTtml } from "./parse.js";
 
 async function fetchLyrics(
@@ -50,6 +50,20 @@ async function fetchLyrics(
     }
     return null;
   };
+  const tryBiniLyrics = async () => {
+    const params = new URLSearchParams({ title, artist, source: "binilyrics" });
+    if (album) params.set("album", album);
+    if (duration) params.set("duration", Math.round(duration));
+    const r = await fetch(`${API}/lyrics?${params}`, opt);
+    if (r.ok) {
+      const d = await r.json();
+      if (d?.ttml) {
+        const lrc = parseTtml(d.ttml);
+        if (lrc.length) return { source: "BiniLyrics", lrc };
+      }
+    }
+    return null;
+  };
   const tryLrclib = async () => {
     const params = new URLSearchParams({ title, artist, source: "lrclib" });
     const r = await fetch(`${API}/lyrics?${params}`, opt);
@@ -84,6 +98,30 @@ async function fetchLyrics(
           lrc: d.plain.split("\n").map((t) => ({ time: -1, text: t })),
         };
     }
+    return null;
+  };
+  const tryYoutube = async () => {
+    if (!videoId) return null;
+    const params = new URLSearchParams({ title, artist, source: "youtube", videoId });
+    const r = await fetch(`${API}/lyrics?${params}`, opt);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d.synced) return { source: d.source || "YouTube Music", lrc: parseLrc(d.synced) };
+    if (d.plain)
+      return {
+        source: d.source || "YouTube Music",
+        lrc: d.plain.split("\n").map((t) => ({ time: -1, text: t })),
+      };
+    return null;
+  };
+  const tryLegato = async () => {
+    const params = new URLSearchParams({ title, artist, source: "legato" });
+    if (album) params.set("album", album);
+    if (duration) params.set("duration", Math.round(duration));
+    const r = await fetch(`${API}/lyrics?${params}`, opt);
+    if (!r.ok) return null;
+    const d = await r.json();
+    if (d.synced) return { source: "Better Lyrics Legato", lrc: parseLrc(d.synced) };
     return null;
   };
   const tryPortato = async () => {
@@ -131,25 +169,33 @@ async function fetchLyrics(
 
   const tryFns = {
     better: tryBetter,
+    binilyrics: tryBiniLyrics,
     portato: tryPortato,
     "paxsenix-netease": tryPaxNetease,
     unison: tryUnison,
     lrclib: tryLrclib,
     kugou: tryKugou,
     simp: trySimp,
+    youtube: tryYoutube,
+    legato: tryLegato,
     musixmatch: tryMusixmatch,
   };
   const enabledProviders = providers.filter((p) => p.enabled && tryFns[p.id]);
 
   const settled = new Map();
-  const decideBest = () => {
-    for (const provider of enabledProviders) {
-      if (!settled.has(provider.id)) return undefined;
-      const result = settled.get(provider.id);
-      if (result) return result;
-    }
-    return null;
-  };
+  // Better Lyrics falls back by actual synchronization fidelity, not response time.
+  // Keep the configured provider order as the deterministic tie-break within a tier.
+  const orderedResults = () =>
+    enabledProviders
+      .map((provider, priority) => ({ result: settled.get(provider.id), priority }))
+      .filter(({ result }) => result?.lrc)
+      .sort(
+        (left, right) =>
+          lyricsSyncQuality(right.result.providerId, right.result.lrc) -
+            lyricsSyncQuality(left.result.providerId, left.result.lrc) ||
+          left.priority - right.priority
+      )
+      .map(({ result }) => result);
 
   await Promise.all(
     enabledProviders.map((provider) =>
@@ -159,9 +205,10 @@ async function fetchLyrics(
           settled.set(provider.id, result ? { ...result, providerId: provider.id } : null);
           if (!onUpdate) return;
           try {
+            const results = orderedResults();
             onUpdate({
-              best: decideBest(),
-              results: enabledProviders.map((item) => settled.get(item.id)).filter(Boolean),
+              best: results[0] || null,
+              results,
               failedIds: enabledProviders
                 .filter((item) => settled.get(item.id) === null)
                 .map((item) => item.id),
@@ -176,7 +223,7 @@ async function fetchLyrics(
     )
   );
 
-  const allResults = enabledProviders.map((provider) => settled.get(provider.id)).filter(Boolean);
+  const allResults = orderedResults();
   const failedIds = enabledProviders
     .filter((provider) => !settled.get(provider.id))
     .map((provider) => provider.id);
