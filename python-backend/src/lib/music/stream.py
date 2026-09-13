@@ -529,11 +529,58 @@ class StreamService:
                     f"[stream-prepare] {video_id} fmt={fmt} auth={not no_auth} failed: {e}"
                 )
         err_str = str(last_err) if last_err else "Download failed"
+        fallback_path = self._download_resolved_audio(video_id, cache_dir)
+        if fallback_path is not None:
+            return {"path": fallback_path}, 200
         premium = "Music Premium" in err_str
         unavailable = self._is_unavailable(err_str)
         self._logger.error(f"[stream-prepare] {video_id}: {type(last_err).__name__}: {err_str}")
         self.last_error = {"videoId": video_id, "error": err_str}
         return {"error": err_str, "premium_only": premium, "unavailable": unavailable}, 500
+
+    def _download_resolved_audio(self, video_id: str, cache_dir: str) -> str | None:
+        """Save a URL from the resilient stream resolver when yt-dlp download fails.
+
+        The resolver tries more YouTube clients than yt-dlp's direct download path. Reusing its
+        signed URL keeps classic playback available when a format-specific download is rejected.
+        """
+        url = self.resolve_audio_url(video_id)
+        if not url or url == "premium_only":
+            return None
+
+        # The decoder probes the container bytes, so a conventional playable extension is only
+        # needed for this cache's reuse check; it does not constrain the resolved codec.
+        path = os.path.join(cache_dir, f"{video_id}.webm")
+        temporary_path = f"{path}.part"
+        try:
+            with requests.get(
+                url, headers={"User-Agent": "Mozilla/5.0"}, stream=True, timeout=60
+            ) as response:
+                response.raise_for_status()
+                with open(temporary_path, "wb") as output:
+                    for chunk in response.iter_content(chunk_size=65536):
+                        if chunk:
+                            output.write(chunk)
+            if os.path.getsize(temporary_path) == 0:
+                return None
+            os.replace(temporary_path, path)
+            self._logger.info(f"[stream-prepare] recovered {video_id} through stream resolver")
+            return path
+        except requests.RequestException as error:
+            self._logger.warning(
+                f"[stream-prepare] resolver download failed for {video_id}: {error}"
+            )
+            return None
+        except OSError as error:
+            self._logger.warning(
+                f"[stream-prepare] could not save resolved audio for {video_id}: {error}"
+            )
+            return None
+        finally:
+            try:
+                os.remove(temporary_path)
+            except OSError:
+                pass
 
     # ── Progressive streaming proxy ──────────────────────────────────────────
     # Range-forwarding proxy so the Rust audio core can stream a song (fast
@@ -549,9 +596,7 @@ class StreamService:
         for the lifetime of the process.
         """
         expired = [
-            video_id
-            for video_id, (_url, expiry) in self._audio_url_cache.items()
-            if expiry <= now
+            video_id for video_id, (_url, expiry) in self._audio_url_cache.items() if expiry <= now
         ]
         for video_id in expired:
             del self._audio_url_cache[video_id]
