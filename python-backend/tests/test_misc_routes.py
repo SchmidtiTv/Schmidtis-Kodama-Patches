@@ -7,8 +7,9 @@ from route_test_support import FakeUpstream, RouteTestCase
 class MiscRouteTests(RouteTestCase):
     def test_imgproxy_news_feedback_clientlog_and_shutdown(self) -> None:
         image_response = FakeUpstream(status_code=200, content=b"img", content_type="image/jpeg")
-        with patch("src.routes.root.imgproxy.config_dirs", self.cache_dirs), patch(
-            "src.routes.root.imgproxy.requests.get", return_value=image_response
+        with (
+            patch("src.routes.root.imgproxy.config_dirs", self.cache_dirs),
+            patch("src.routes.root.imgproxy.requests.get", return_value=image_response),
         ):
             proxied = self.client.get("/imgproxy?url=https://example.test/image.jpg")
         self.assertEqual(proxied.status_code, 200)
@@ -28,9 +29,22 @@ class MiscRouteTests(RouteTestCase):
         self.app.extensions["feedback_webhook_url"] = "https://hooks.example.test"
         webhook = SimpleNamespace(status_code=204)
         with patch("src.routes.feedback.requests.post", return_value=webhook) as post:
-            feedback = self.client.post("/feedback", json={"title": "Bug", "description": "Details", "includeLogs": False})
+            feedback = self.client.post(
+                "/feedback",
+                json={
+                    "title": "Bug",
+                    "description": "Details",
+                    "includeLogs": False,
+                    "appearance": {"theme": "Grove", "highContrast": True, "uiZoom": 1.1},
+                },
+            )
         self.assertEqual(feedback.json, {"ok": True})
         self.assertEqual(post.call_count, 1)
+        fields = post.call_args.kwargs["json"]["embeds"][0]["fields"]
+        self.assertIn(
+            {"name": "Appearance", "value": "Grove · high contrast · zoom 110%", "inline": False},
+            fields,
+        )
 
         self.assertEqual(self.client.open("/clientlog", method="OPTIONS").status_code, 204)
         with patch("builtins.print"):

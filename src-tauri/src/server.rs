@@ -59,14 +59,14 @@ pub fn kill_existing_server(child: &mut Option<Child>) {
         {
             let text = String::from_utf8_lossy(&out.stdout);
             for line in text.lines() {
-                // :9847 = the Python server itself; :4416 = its bgutil PO-token Node child.
-                // If the Python side was force-killed (its /shutdown never ran), the Node child
-                // is orphaned and keeps a lock on node.exe — which then makes the NSIS updater
-                // fail with "Error opening file for writing: ...\node.exe". Kill whatever still
-                // listens on either port, targeted (won't touch the user's own node processes).
-                if (line.contains(":9847") || line.contains(":4416")) && line.contains("LISTENING")
-                {
-                    let parts: Vec<&str> = line.split_whitespace().collect();
+                // The local address must end in an exact Kodama port. The empty foreign address
+                // identifies a listener without relying on netstat's localized state column.
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                let is_kodama_listener = parts.len() >= 5
+                    && parts[0] == "TCP"
+                    && (parts[2] == "0.0.0.0:0" || parts[2] == "[::]:0")
+                    && (parts[1].ends_with(":9847") || parts[1].ends_with(":4416"));
+                if is_kodama_listener {
                     if let Some(pid) = parts.last() {
                         let _ = std::process::Command::new("taskkill")
                             .args(["/F", "/T", "/PID", pid])

@@ -11,6 +11,17 @@ from ._services import metadata_cache, music_session
 from src.type_defs import RouteResponse
 
 
+def is_video_thumbnail(item: dict[str, object]) -> bool:
+    """Classify unresolved home-feed video thumbnails without localized metadata."""
+    thumbnails = item.get("thumbnails", [])
+    if not isinstance(thumbnails, list):
+        return False
+    return any(
+        isinstance(thumbnail, dict) and "ytimg.com" in str(thumbnail.get("url", ""))
+        for thumbnail in thumbnails
+    )
+
+
 @blueprint.route("/home")
 def get_home() -> RouteResponse:
     try:
@@ -45,7 +56,12 @@ def get_home() -> RouteResponse:
             resolved_songs = iter(resolved_songs_list)
             for item in section.get("contents", []):
                 if item.get("videoId") and not is_podcast:
-                    items.append(song_result(next(resolved_songs)))
+                    resolved_song = next(resolved_songs)
+                    song = song_result(resolved_song)
+                    song["isVideo"] = resolved_song.get("videoId") == item.get(
+                        "videoId"
+                    ) and is_video_thumbnail(item)
+                    items.append(song)
                 elif item.get("videoId"):
                     items.append(
                         {
@@ -54,7 +70,9 @@ def get_home() -> RouteResponse:
                             "browseId": item.get("browseId", ""),
                             "title": item.get("title", ""),
                             "subtitle": item.get("description", "") or item.get("date", ""),
-                            "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                            "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                                item.get("thumbnails", [])
+                            ),
                         }
                     )
                 elif item.get("playlistId"):
@@ -65,7 +83,9 @@ def get_home() -> RouteResponse:
                             "title": item.get("title", ""),
                             "subtitle": item.get("description", "")
                             or ", ".join(artist["name"] for artist in item.get("artists", [])),
-                            "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                            "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                                item.get("thumbnails", [])
+                            ),
                         }
                     )
                 elif item.get("podcastId"):
@@ -77,7 +97,9 @@ def get_home() -> RouteResponse:
                             "browseId": item.get("browseId", ""),
                             "title": item.get("title", ""),
                             "subtitle": author.get("name", "") if isinstance(author, dict) else "",
-                            "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                            "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                                item.get("thumbnails", [])
+                            ),
                         }
                     )
                 elif item.get("browseId"):
@@ -96,7 +118,9 @@ def get_home() -> RouteResponse:
                         "title": item.get("title", ""),
                         "subtitle": ", ".join(artist["name"] for artist in item.get("artists", []))
                         or item.get("year", ""),
-                        "thumbnail": YoutubeResponseMapper.select_thumbnail(item.get("thumbnails", [])),
+                        "thumbnail": YoutubeResponseMapper.select_thumbnail(
+                            item.get("thumbnails", [])
+                        ),
                     }
                     if playlist_id:
                         entry["playlistId"] = playlist_id

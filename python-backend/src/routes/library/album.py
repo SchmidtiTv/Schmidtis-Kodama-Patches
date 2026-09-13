@@ -3,7 +3,7 @@
 from flask import jsonify, request
 
 from src.lib import AlbumDetailsError, YoutubeResponseMapper
-from src.lib.music.audio_versions import prefer_audio_versions
+from src.lib.music.audio_versions import prefer_album_audio_playlist, prefer_audio_versions
 
 from . import blueprint
 from ._services import (
@@ -31,6 +31,7 @@ def get_album(browse_id: str) -> RouteResponse:
         client = session.get_active_client()
         album = client.get_album(browse_id)
         raw_tracks = [track for track in album.get("tracks", []) if track.get("videoId")]
+        raw_tracks = prefer_album_audio_playlist(session.get_system_client(), album, raw_tracks)
         raw_tracks = prefer_audio_versions(
             session.get_system_client(), None, raw_tracks, metadata_cache()
         )
@@ -68,6 +69,7 @@ def get_album(browse_id: str) -> RouteResponse:
             "year": album.get("year", ""),
             "thumbnail": YoutubeResponseMapper.select_thumbnail(album.get("thumbnails", [])),
             "tracks": tracks,
+            "audioResolved": True,
         }
         if cache_flags["albums"]:
             cache.save_album_disk(browse_id, result)

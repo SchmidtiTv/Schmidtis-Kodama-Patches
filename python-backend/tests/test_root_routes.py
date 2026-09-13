@@ -43,17 +43,67 @@ class RootMusicRouteTests(RouteTestCase):
             [item["title"] for item in sections[0]["items"]], ["A1-resolved", "A2-resolved"]
         )
         self.assertEqual([item["title"] for item in sections[1]["items"]], ["B1-resolved"])
+
+    def test_home_marks_only_unresolved_ytimg_entries_as_videos(self) -> None:
+        self.music_session.client.get_home = lambda limit=15: [
+            {
+                "title": "Quick picks",
+                "contents": [
+                    {
+                        "videoId": "video",
+                        "title": "Video",
+                        "artists": [],
+                        "thumbnails": [{"url": "https://i.ytimg.com/vi/video/hqdefault.jpg"}],
+                    },
+                    {
+                        "videoId": "resolved-video",
+                        "title": "Resolved video",
+                        "artists": [],
+                        "thumbnails": [{"url": "https://i.ytimg.com/vi/resolved/hqdefault.jpg"}],
+                    },
+                ],
+            }
+        ]
+
+        def fake_prefer_audio_versions(client, playlist_id, tracks, counterpart_cache=None):
+            return [
+                tracks[0],
+                {**tracks[1], "videoId": "audio", "videoType": "MUSIC_VIDEO_TYPE_ATV"},
+            ]
+
+        with patch(
+            "src.routes.root.home.prefer_audio_versions", side_effect=fake_prefer_audio_versions
+        ):
+            response = self.client.get("/home")
+
+        self.assertTrue(response.json["sections"][0]["items"][0]["isVideo"])
+        self.assertFalse(response.json["sections"][0]["items"][1]["isVideo"])
+
     def test_root_music_routes(self) -> None:
         self.assertEqual(self.client.get("/status").json["ok"], True)
         self.assertEqual(self.client.get("/search").json, {"results": []})
         self.assertEqual(self.client.get("/search?q=song").json["results"][0]["type"], "song")
-        self.assertEqual(self.client.get("/search?q=artist&filter=artists").json["results"][0]["type"], "artist")
-        self.assertEqual(self.client.get("/search?q=album&filter=albums").json["results"][0]["type"], "album")
+        self.assertEqual(
+            self.client.get("/search?q=artist&filter=artists").json["results"][0]["type"], "artist"
+        )
+        self.assertEqual(
+            self.client.get("/search?q=album&filter=albums").json["results"][0]["type"], "album"
+        )
         all_results = self.client.get("/search?q=anything&filter=all").json["results"]
-        self.assertEqual({result["type"] for result in all_results}, {"song", "artist", "album", "playlist"})
-        self.assertEqual(next(result for result in all_results if result["type"] == "artist")["title"], "Artist")
-        self.assertEqual(next(result for result in all_results if result["type"] == "artist")["browseId"], "UCartist")
-        self.assertEqual(next(result for result in all_results if result["type"] == "playlist")["playlistId"], "PLtest")
+        self.assertEqual(
+            {result["type"] for result in all_results}, {"song", "artist", "album", "playlist"}
+        )
+        self.assertEqual(
+            next(result for result in all_results if result["type"] == "artist")["title"], "Artist"
+        )
+        self.assertEqual(
+            next(result for result in all_results if result["type"] == "artist")["browseId"],
+            "UCartist",
+        )
+        self.assertEqual(
+            next(result for result in all_results if result["type"] == "playlist")["playlistId"],
+            "PLtest",
+        )
         top_artist = next(result for result in all_results if result.get("browseId") == "UCtop")
         self.assertEqual(top_artist["title"], "Top Artist")
         shelf_song = next(result for result in all_results if result.get("videoId") == "shelf")
@@ -65,7 +115,12 @@ class RootMusicRouteTests(RouteTestCase):
         )
         self.assertEqual(self.client.get("/search/suggestions?q=x").json, {"suggestions": []})
         self.assertEqual(self.client.get("/home").json["sections"][0]["items"][0]["videoId"], "vid")
-        self.assertEqual(self.client.get("/artist_albums?channelId=UCartist&params=abc").json["albums"][0]["title"], "Album")
+        self.assertEqual(
+            self.client.get("/artist_albums?channelId=UCartist&params=abc").json["albums"][0][
+                "title"
+            ],
+            "Album",
+        )
         self.assertEqual(self.client.get("/artist_albums").status_code, 400)
 
         liked = self.client.get("/liked")
@@ -85,7 +140,14 @@ class RootMusicRouteTests(RouteTestCase):
         self.profile_repository.local_profiles.add("default")
         local_like = self.client.post(
             "/like/local",
-            json={"rating": "LIKE", "title": "Local", "artists": "Artist", "album": "Album", "thumbnail": "", "duration": "1:00"},
+            json={
+                "rating": "LIKE",
+                "title": "Local",
+                "artists": "Artist",
+                "album": "Album",
+                "thumbnail": "",
+                "duration": "1:00",
+            },
         )
         self.assertEqual(local_like.json, {"ok": True, "rating": "LIKE"})
         self.assertEqual(self.client.get("/liked/ids").json, {"ids": ["local"]})

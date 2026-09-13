@@ -27,7 +27,11 @@ class Album:
             data = None
         if data is not None:
             tracks = cast(list[dict[str, object]], data.get("tracks", []))
-            return None if tracks and "isExplicit" not in tracks[0] else data
+            return (
+                None
+                if tracks and ("isExplicit" not in tracks[0] or not data.get("audioResolved"))
+                else data
+            )
 
         path = self.album_disk_path(browse_id)
         if not os.path.exists(path):
@@ -39,7 +43,7 @@ class Album:
                 data = cast(dict[str, object], json.load(f))
             # Invalidate old caches that don't have isExplicit yet
             tracks = cast(list[dict[str, object]], data.get("tracks", []))
-            if tracks and "isExplicit" not in tracks[0]:
+            if tracks and ("isExplicit" not in tracks[0] or not data.get("audioResolved")):
                 return None
             self._metadata_cache.put("albums", browse_id, data)
             try:

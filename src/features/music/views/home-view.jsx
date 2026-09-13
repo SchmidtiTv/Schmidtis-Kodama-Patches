@@ -236,7 +236,8 @@ export function HomeView({
     tl(s).includes("quick pick") ||
     tl(s).includes("speed dial") ||
     tl(s).includes("schnellzugriff");
-  const isAllSongsSection = (s) => s.items.length > 0 && s.items.every((x) => x.type === "song");
+  const isSong = (item) => item.type === "song" && !item.isVideo;
+  const isAllSongsSection = (s) => s.items.length > 0 && s.items.every(isSong);
 
   const allSections = sections
     .map((s) => ({
@@ -247,12 +248,14 @@ export function HomeView({
 
   const discoverSection = allSections.find(isDiscover);
   const listenAgainSection = allSections.find(isListenAgain);
-  // Speed Dial source = "Quick picks" (YTMusic's recommendations grid). Fall back to
-  // the first all-songs section that isn't Discover/Listen again.
-  const speedDialSection =
-    allSections.find(isQuickPicks) ||
-    allSections.find((s) => isAllSongsSection(s) && !isDiscover(s) && !isListenAgain(s));
-  const speedDialItems = showSpeedDial ? speedDialSection?.items || [] : [];
+  const songsIn = (section) => (section?.items || []).filter(isSong);
+  const speedDialSection = [
+    allSections.find(isQuickPicks),
+    ...allSections.filter(
+      (section) => isAllSongsSection(section) && !isDiscover(section) && !isListenAgain(section)
+    ),
+  ].find((section) => songsIn(section).length >= 3);
+  const speedDialItems = showSpeedDial ? songsIn(speedDialSection) : [];
 
   // Left column: up to 2 carousel sections. Prefer Listen again + Daily Discover,
   // then fill from remaining (non-song-grid) sections so the column reliably

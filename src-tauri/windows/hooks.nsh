@@ -8,8 +8,12 @@
   ; before we write. This runs in the NEW installer, so it fixes updates FROM an older build
   ; whose graceful shutdown didn't yet kill these children. From the fixed builds onward they
   ; are already terminated by the time the installer runs, so this is just a safety net.
-  nsExec::Exec 'taskkill /F /T /IM node.exe'
+  ; kodama-server.exe is ours by name; /T takes its Node children with it.
   nsExec::Exec 'taskkill /F /T /IM kodama-server.exe'
+  ; Node is shared with other applications, so stop only Kodama's copies. Win32_Process provides
+  ; executable paths even when this 32-bit installer runs beside a 64-bit Node process.
+  System::Call 'Kernel32::SetEnvironmentVariable(t "KODAMA_INSTDIR", t "$INSTDIR")'
+  nsExec::Exec `powershell -NoProfile -NonInteractive -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $$_.Name -eq 'node.exe' -and $$_.ExecutablePath -and ($$_.ExecutablePath.StartsWith($$env:KODAMA_INSTDIR + '\', [StringComparison]::OrdinalIgnoreCase) -or $$_.ExecutablePath -like '*\dev.kodama.music\runtime\*') } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
   Sleep 500
 !macroend
 

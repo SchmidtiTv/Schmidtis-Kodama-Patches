@@ -21,6 +21,9 @@ class WatchPlaylistClient(Protocol):
         self, query: str, filter: str = "songs", limit: int = 20
     ) -> list[dict[str, object]]: ...
 
+    def get_playlist(self, playlistId: str, limit: int | None = None) -> dict[str, object]: ...
+
+
 _VIDEO_TITLE_MARKER = re.compile(
     r"\s*[\[(](?:(?:official\s+)?(?:hd\s+)?(?:music|lyric)\s+video|"
     r"official\s+video|(?:official\s+)?audio|(?:official\s+)?visualizer|preview|"
@@ -55,7 +58,9 @@ def _artist_names(track: dict[str, object]) -> set[str]:
     if not isinstance(artists, list):
         return set()
     return {
-        _normalized_text(re.sub(r"\s+-\s+topic$", "", str(artist.get("name", "")), flags=re.IGNORECASE))
+        _normalized_text(
+            re.sub(r"\s+-\s+topic$", "", str(artist.get("name", "")), flags=re.IGNORECASE)
+        )
         for artist in artists
         if isinstance(artist, dict) and artist.get("name")
     }
@@ -77,6 +82,52 @@ def _normalized_title(track: dict[str, object]) -> str:
     ):
         title = remainder
     return re.sub(r"[^\w]+", " ", title.casefold()).strip()
+
+
+def prefer_album_audio_playlist(
+    client: WatchPlaylistClient, album: dict[str, object], tracks: list[dict[str, object]]
+) -> list[dict[str, object]]:
+    """Prefer exact song counterparts from an album's audio playlist when available."""
+    if not any(is_video_variant(track) for track in tracks):
+        return tracks
+    audio_playlist_id = album.get("audioPlaylistId")
+    if not isinstance(audio_playlist_id, str) or not audio_playlist_id:
+        return tracks
+    try:
+        payload = client.get_playlist(audio_playlist_id, limit=None)
+    except Exception as error:
+        print(f"[album] audio playlist {audio_playlist_id} failed: {error}", flush=True)
+        return tracks
+    candidates = payload.get("tracks", [])
+    if not isinstance(candidates, list):
+        return tracks
+    audio_tracks = [
+        track
+        for track in candidates
+        if isinstance(track, dict)
+        and track.get("videoId")
+        and track.get("videoType") == "MUSIC_VIDEO_TYPE_ATV"
+    ]
+    by_title = {_normalized_title(track): track for track in audio_tracks}
+    resolved = list(tracks)
+    for index, track in enumerate(tracks):
+        if not is_video_variant(track):
+            continue
+        title = _normalized_title(track)
+        candidate = (
+            audio_tracks[index]
+            if index < len(audio_tracks) and _normalized_title(audio_tracks[index]) == title
+            else by_title.get(title)
+        )
+        if candidate is None:
+            continue
+        resolved[index] = {
+            **track,
+            "videoId": candidate["videoId"],
+            "duration": candidate.get("duration") or track.get("duration", ""),
+            "videoType": candidate["videoType"],
+        }
+    return resolved
 
 
 def _artists(track: dict[str, object]) -> set[str]:
@@ -177,16 +228,13 @@ def _audio_match_score(video: dict[str, object], candidate: dict[str, object]) -
         duration_score = max(0.0, 1.0 - (abs(video_duration - candidate_duration) / 180))
 
     if video_artists and candidate_artists:
-        artist_score = len(video_artists & candidate_artists) / len(video_artists | candidate_artists)
+        artist_score = len(video_artists & candidate_artists) / len(
+            video_artists | candidate_artists
+        )
     else:
         artist_score = 0.5
     feature_penalty = 0.04 if _feature_credits(video) != _feature_credits(candidate) else 0.0
-    return (
-        (title_score * 0.75)
-        + (artist_score * 0.20)
-        + (duration_score * 0.05)
-        - feature_penalty
-    )
+    return (title_score * 0.75) + (artist_score * 0.20) + (duration_score * 0.05) - feature_penalty
 
 
 def _search_query(track: dict[str, object]) -> str:
@@ -240,15 +288,16 @@ def _watch_playlist_candidates(
         response = client.get_watch_playlist(playlistId=playlist_id, limit=max(25, track_count))
         candidates = response.get("tracks", [])
     except Exception as error:
-        print(f"[playlist] audio counterpart lookup failed playlist_id={playlist_id}: {error}", flush=True)
+        print(
+            f"[playlist] audio counterpart lookup failed playlist_id={playlist_id}: {error}",
+            flush=True,
+        )
         return []
 
     return candidates if isinstance(candidates, list) else []
 
 
-def _cached_counterpart(
-    cache: MetadataCache | None, video_id: str
-) -> dict[str, object] | None:
+def _cached_counterpart(cache: MetadataCache | None, video_id: str) -> dict[str, object] | None:
     if cache is None or not video_id:
         return None
     try:
@@ -310,7 +359,11 @@ def _resolve_audio_batch(
         if cached_audio is not None:
             _delete_counterpart(counterpart_cache, video_id)
         audio = candidates[offset + batch_index] if offset + batch_index < len(candidates) else None
-        if isinstance(audio, dict) and audio.get("videoType") == "MUSIC_VIDEO_TYPE_ATV" and _same_song(video, audio):
+        if (
+            isinstance(audio, dict)
+            and audio.get("videoType") == "MUSIC_VIDEO_TYPE_ATV"
+            and _same_song(video, audio)
+        ):
             resolved[batch_index] = audio
             replacement_count += 1
             _store_counterpart(counterpart_cache, video_id, audio)
@@ -371,7 +424,7 @@ def iter_preferred_audio_versions(
     variant_flags = [is_video_variant(track) for track in tracks]
     if not any(variant_flags):
         for index in range(0, len(tracks), batch_size):
-            yield tracks[index:index + batch_size]
+            yield tracks[index : index + batch_size]
         return
 
     candidates = _watch_playlist_candidates(client, playlist_id, len(tracks)) if playlist_id else []
@@ -381,7 +434,7 @@ def iter_preferred_audio_versions(
         batch, replacements = _resolve_audio_batch(
             client,
             candidates,
-            tracks[index:index + batch_size],
+            tracks[index : index + batch_size],
             index,
             counterpart_cache,
         )

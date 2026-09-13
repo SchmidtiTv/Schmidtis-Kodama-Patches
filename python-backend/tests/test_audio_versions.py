@@ -2,7 +2,11 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from src.lib.music.audio_versions import iter_preferred_audio_versions, prefer_audio_versions
+from src.lib.music.audio_versions import (
+    iter_preferred_audio_versions,
+    prefer_album_audio_playlist,
+    prefer_audio_versions,
+)
 from src.lib.runtime.metadata_cache import MetadataCache
 
 
@@ -22,6 +26,9 @@ class FakeWatchPlaylistClient:
 
     def search(self, query, filter="songs", limit=20):
         return []
+
+    def get_playlist(self, playlistId, limit=None):
+        return {"tracks": []}
 
 
 class SearchFallbackClient(FakeWatchPlaylistClient):
@@ -52,6 +59,35 @@ class SearchOnlyClient(SearchFallbackClient):
 
 
 class AudioVersionTests(unittest.TestCase):
+    def test_album_audio_playlist_resolves_matching_video_tracks_before_search(self) -> None:
+        class AlbumClient(FakeWatchPlaylistClient):
+            def get_playlist(self, playlistId, limit=None):
+                self.playlist_id = playlistId
+                return {
+                    "tracks": [
+                        {
+                            "videoId": "album-audio-id",
+                            "title": "Take On Me",
+                            "duration": "3:45",
+                            "videoType": "MUSIC_VIDEO_TYPE_ATV",
+                        }
+                    ]
+                }
+
+        video = {
+            "videoId": "video-id",
+            "title": "Take On Me (Official Video)",
+            "duration": "4:00",
+            "videoType": "MUSIC_VIDEO_TYPE_OMV",
+        }
+        client = AlbumClient()
+
+        resolved = prefer_album_audio_playlist(client, {"audioPlaylistId": "OLAK-audio"}, [video])
+
+        self.assertEqual(client.playlist_id, "OLAK-audio")
+        self.assertEqual(resolved[0]["videoId"], "album-audio-id")
+        self.assertEqual(resolved[0]["duration"], "3:45")
+
     def test_video_is_replaced_by_position_matched_audio_counterpart(self) -> None:
         video = {
             "videoId": "video-id",
@@ -112,16 +148,19 @@ class AudioVersionTests(unittest.TestCase):
 
         for video_title, audio_title, artist in cases:
             with self.subTest(video_title=video_title):
+
                 class LabelClient(SearchFallbackClient):
                     def search(self, query, filter="songs", limit=20):
-                        return [{
-                            "videoId": "label-audio-id",
-                            "title": audio_title,
-                            "artists": [{"name": artist}],
-                            "duration_seconds": 180,
-                            "resultType": "song",
-                            "videoType": "MUSIC_VIDEO_TYPE_ATV",
-                        }]
+                        return [
+                            {
+                                "videoId": "label-audio-id",
+                                "title": audio_title,
+                                "artists": [{"name": artist}],
+                                "duration_seconds": 180,
+                                "resultType": "song",
+                                "videoType": "MUSIC_VIDEO_TYPE_ATV",
+                            }
+                        ]
 
                 video = {
                     "videoId": "video-id",
@@ -138,14 +177,16 @@ class AudioVersionTests(unittest.TestCase):
     def test_search_tolerates_feature_credit_title_differences(self) -> None:
         class FeatureCreditClient(SearchFallbackClient):
             def search(self, query, filter="songs", limit=20):
-                return [{
-                    "videoId": "feature-audio-id",
-                    "title": "Somebody That I Used To Know (feat. Kimbra)",
-                    "artists": [{"name": "Gotye"}],
-                    "duration_seconds": 245,
-                    "resultType": "song",
-                    "videoType": "MUSIC_VIDEO_TYPE_ATV",
-                }]
+                return [
+                    {
+                        "videoId": "feature-audio-id",
+                        "title": "Somebody That I Used To Know (feat. Kimbra)",
+                        "artists": [{"name": "Gotye"}],
+                        "duration_seconds": 245,
+                        "resultType": "song",
+                        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+                    }
+                ]
 
         video = {
             "videoId": "video-id",
@@ -196,14 +237,16 @@ class AudioVersionTests(unittest.TestCase):
     def test_search_rejects_a_cover_despite_an_exact_title(self) -> None:
         class CoverClient(SearchFallbackClient):
             def search(self, query, filter="songs", limit=20):
-                return [{
-                    "videoId": "cover-id",
-                    "title": "Take On Me",
-                    "artists": [{"name": "Cover Band"}],
-                    "duration_seconds": 223,
-                    "resultType": "song",
-                    "videoType": "MUSIC_VIDEO_TYPE_ATV",
-                }]
+                return [
+                    {
+                        "videoId": "cover-id",
+                        "title": "Take On Me",
+                        "artists": [{"name": "Cover Band"}],
+                        "duration_seconds": 223,
+                        "resultType": "song",
+                        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+                    }
+                ]
 
         video = {
             "videoId": "video-id",
@@ -269,14 +312,16 @@ class AudioVersionTests(unittest.TestCase):
     def test_search_accepts_a_matching_non_primary_artist(self) -> None:
         class FeaturedArtistClient(SearchFallbackClient):
             def search(self, query, filter="songs", limit=20):
-                return [{
-                    "videoId": "featured-audio-id",
-                    "title": "Take On Me",
-                    "artists": [{"name": "Guest"}, {"name": "a-ha"}],
-                    "duration_seconds": 230,
-                    "resultType": "song",
-                    "videoType": "MUSIC_VIDEO_TYPE_ATV",
-                }]
+                return [
+                    {
+                        "videoId": "featured-audio-id",
+                        "title": "Take On Me",
+                        "artists": [{"name": "Guest"}, {"name": "a-ha"}],
+                        "duration_seconds": 230,
+                        "resultType": "song",
+                        "videoType": "MUSIC_VIDEO_TYPE_ATV",
+                    }
+                ]
 
         video = {
             "videoId": "video-id",
@@ -327,7 +372,9 @@ class AudioVersionTests(unittest.TestCase):
             for index in range(3)
         ]
 
-        batches = list(iter_preferred_audio_versions(SearchFallbackClient(), "playlist-id", tracks, 2))
+        batches = list(
+            iter_preferred_audio_versions(SearchFallbackClient(), "playlist-id", tracks, 2)
+        )
 
         self.assertEqual([len(batch) for batch in batches], [2, 1])
         self.assertEqual(
@@ -392,6 +439,4 @@ class AudioVersionTests(unittest.TestCase):
             resolved = prefer_audio_versions(SearchOnlyClient(), None, [video], cache)
 
             self.assertEqual(resolved[0]["videoId"], "search-audio-id")
-            self.assertEqual(
-                cache.get_audio_counterpart("video-id")["videoId"], "search-audio-id"
-            )
+            self.assertEqual(cache.get_audio_counterpart("video-id")["videoId"], "search-audio-id")

@@ -23,6 +23,7 @@ import { Bug, CheckCircle, Info, ImageSquare, PaperPlaneTilt } from "@/shared/ic
 import { Toggle } from "@/shared/ui/settings-controls.jsx";
 import { API } from "@/shared/api/client.js";
 import { getConsoleErrors } from "@/app/diagnostics/error-capture.js";
+import { appearanceChips, appearanceSnapshot } from "@/app/diagnostics/appearance-report.js";
 import { useZoom } from "@/features/settings/display-context.jsx";
 import { useAnimatedClose } from "@/shared/hooks/use-animated-close.js";
 
@@ -116,6 +117,7 @@ export function BugReportModal({ onClose, screenshot, t, version, currentTrack }
               ? { videoId: currentTrack.videoId, title: currentTrack.title || "" }
               : undefined,
           consoleErrors: includeDiag ? getConsoleErrors() : undefined,
+          appearance: appearanceSnapshot(),
           screenshot: includeShot && screenshot ? screenshot : undefined,
         }),
       });
@@ -146,6 +148,7 @@ export function BugReportModal({ onClose, screenshot, t, version, currentTrack }
     if (n) c.push(`${n} Console-Errors`);
     return c;
   })();
+  const lookChips = appearanceChips();
 
   const fieldLabel = "text-t10 font-bold uppercase tracking-[0.08em] text-muted";
   const Chips = ({ items, value, onPick }) => (
@@ -301,6 +304,16 @@ export function BugReportModal({ onClose, screenshot, t, version, currentTrack }
                         ))}
                       </div>
                     )}
+                    <div className="flex flex-wrap gap-1.5 mt-2.5">
+                      {lookChips.map((chip) => (
+                        <span
+                          key={chip}
+                          className="text-t11 font-mono px-2 py-0.5 rounded-md bg-surface border border-border text-secondary"
+                        >
+                          {chip}
+                        </span>
+                      ))}
+                    </div>
                   </div>
                   {screenshot && (
                     <div className="rounded-xl bg-elevated px-4 py-3">

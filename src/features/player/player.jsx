@@ -264,19 +264,17 @@ export function Player({
 
   const fetchUrl = useCallback(
     async (videoId) => {
-      const cached = urlCacheGet(videoId);
-      if (cached) return cached;
       // Prefer locally cached song (served via backend, works for both Rust & HTML5)
       try {
         const cr = await fetch(`${API}/song/cached/${videoId}`, { method: "HEAD" });
         if (cr.ok) {
-          const cachedUrl = `${API}/song/cached/${videoId}`;
-          urlCachePut(videoId, cachedUrl);
-          return cachedUrl;
+          return `${API}/song/cached/${videoId}`;
         }
       } catch {
         /* intentionally ignored */
       }
+      const cached = urlCacheGet(videoId);
+      if (cached) return cached;
       const useRust = audioRef.current && audioRef.current._fallback === false;
       // Progressive (default): hand the Rust core the range-streaming proxy URL so it starts
       // playing as soon as the header is fetched, instead of waiting for a full yt-dlp download.

@@ -8,6 +8,7 @@ from src.type_defs import RouteResponse
 
 blueprint = Blueprint("feedback", __name__)
 
+
 @blueprint.route("/feedback", methods=["POST"])
 def submit_feedback() -> RouteResponse:
     webhook_url = current_app.extensions.get("feedback_webhook_url", "")
@@ -22,11 +23,16 @@ def submit_feedback() -> RouteResponse:
     os_info = (data.get("os") or "?").strip()
     reporter = (data.get("reporter") or "").strip()
     include_logs = bool(data.get("includeLogs", True))
+    appearance = data.get("appearance") if isinstance(data.get("appearance"), dict) else {}
     if not title and not description:
         return jsonify({"error": "empty"}), 400
 
-    color = {"Bug": 0xE24B4A, "Absturz": 0xA32D2D, "UI / Design": 0x378ADD,
-             "Vorschlag": 0x1D9E75}.get(category, 0x888780)
+    color = {
+        "Bug": 0xE24B4A,
+        "Absturz": 0xA32D2D,
+        "UI / Design": 0x378ADD,
+        "Vorschlag": 0x1D9E75,
+    }.get(category, 0x888780)
     fields = [
         {"name": "Category", "value": category or "—", "inline": True},
         {"name": "Version", "value": version, "inline": True},
@@ -34,6 +40,24 @@ def submit_feedback() -> RouteResponse:
     ]
     if severity:
         fields.append({"name": "Severity", "value": severity, "inline": True})
+    if appearance:
+        look = [str(appearance.get("theme") or "?")[:60]]
+        if appearance.get("highContrast") is True:
+            look.append("high contrast")
+        if appearance.get("sharpCorners") is True:
+            look.append("sharp corners")
+        if appearance.get("rtl") is True:
+            look.append("RTL")
+        try:
+            ui_zoom = float(appearance.get("uiZoom") or 1)
+            font_scale = float(appearance.get("fontScale") or 1)
+            if ui_zoom != 1:
+                look.append(f"zoom {round(ui_zoom * 100)}%")
+            if font_scale != 1:
+                look.append(f"font {round(font_scale * 100)}%")
+        except (TypeError, ValueError):
+            pass
+        fields.append({"name": "Appearance", "value": " · ".join(look), "inline": False})
     embed = {
         "title": (title or "(no title)")[:240],
         "description": (description or "—")[:3900],
@@ -49,6 +73,7 @@ def submit_feedback() -> RouteResponse:
     if shot:
         try:
             import base64
+
             if "," in shot and shot.strip().startswith("data:"):
                 shot = shot.split(",", 1)[1]
             png = base64.b64decode(shot)
@@ -63,9 +88,9 @@ def submit_feedback() -> RouteResponse:
         files["file_log"] = ("backend-log.txt", log_text.encode("utf-8"), "text/plain")
     try:
         if files:
-            resp = requests.post(webhook_url,
-                                 data={"payload_json": json.dumps(payload)},
-                                 files=files, timeout=15)
+            resp = requests.post(
+                webhook_url, data={"payload_json": json.dumps(payload)}, files=files, timeout=15
+            )
         else:
             resp = requests.post(webhook_url, json=payload, timeout=12)
         if resp.status_code >= 300:
