@@ -1,7 +1,6 @@
 import { useFullscreenPlayer } from "./hooks/use-fullscreen-player.js";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { AmbientBackdrop } from "@/shared/ui/ambient-backdrop.jsx";
-import { TitleBar } from "@/shared/ui/title-bar.jsx";
 import { IS_MAC } from "@/shared/lib/platform.js";
 import { Sidebar } from "./Sidebar.jsx";
 import { SelectionActionBar } from "@/features/music/components/selection-action-bar.jsx";
@@ -747,7 +746,6 @@ export const AppShell = memo(function AppShell({
         }}
       >
         <AmbientBackdrop thumbnail={ambientBackground ? currentTrack?.thumbnail : null} />
-        {!fullscreen && !IS_MAC && <TitleBar />}
         <div
           ref={sidebarPaneRef}
           style={{
