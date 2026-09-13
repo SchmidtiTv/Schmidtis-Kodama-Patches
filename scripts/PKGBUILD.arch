@@ -1,0 +1,32 @@
+pkgname=kodama
+pkgver=${KODAMA_PKGVER:?KODAMA_PKGVER must be set}
+pkgrel=1
+pkgdesc='Kodama YouTube Music client'
+arch=('x86_64')
+url='https://github.com/SchmidtiTv/Kodama'
+license=('GPL-3.0-or-later')
+depends=('gtk3' 'libappindicator' 'webkit2gtk-4.1')
+options=('!debug')
+
+package() {
+  local root_dir=${KODAMA_ROOT_DIR:?KODAMA_ROOT_DIR must be set}
+  local target=${KODAMA_TARGET:?KODAMA_TARGET must be set}
+  local release_dir="$root_dir/src-tauri/target/$target/release"
+  local sidecar="$root_dir/src-tauri/binaries/kodama-server-$target"
+
+  install -Dm755 "$release_dir/kodama" "$pkgdir/usr/bin/kodama"
+  install -Dm755 "$sidecar" "$pkgdir/usr/bin/kodama-server"
+  install -Dm644 "$root_dir/src-tauri/icons/32x32.png" \
+    "$pkgdir/usr/share/icons/hicolor/32x32/apps/kodama.png"
+  install -Dm644 "$root_dir/src-tauri/icons/128x128.png" \
+    "$pkgdir/usr/share/icons/hicolor/128x128/apps/kodama.png"
+  install -Dm644 "$root_dir/src-tauri/icons/128x128@2x.png" \
+    "$pkgdir/usr/share/icons/hicolor/256x256/apps/kodama.png"
+  install -Dm644 "$root_dir/src-tauri/icons/128x128@2x.png" \
+    "$pkgdir/usr/share/icons/hicolor/256x256@2/apps/kodama.png"
+  install -Dm644 "$root_dir/scripts/kodama.desktop" \
+    "$pkgdir/usr/share/applications/Kodama.desktop"
+
+  install -dm755 "$pkgdir/usr/lib/Kodama/App-Icons"
+  install -m644 "$root_dir"/public/App-Icons/*.png "$pkgdir/usr/lib/Kodama/App-Icons/"
+}

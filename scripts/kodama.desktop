@@ -1,0 +1,10 @@
+[Desktop Entry]
+Categories=AudioVideo;Player;
+Comment=Kodama - YouTube Music Client
+Exec=kodama
+StartupWMClass=kodama
+Icon=kodama
+Name=Kodama
+Terminal=false
+Type=Application
+MimeType=x-scheme-handler/kodama;
