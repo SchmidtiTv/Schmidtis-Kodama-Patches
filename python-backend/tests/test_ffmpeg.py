@@ -69,6 +69,14 @@ class FFmpegTests(unittest.TestCase):
             timeout=10,
         )
 
+    def test_version_accepts_arch_development_version_prefix(self) -> None:
+        ffmpeg = FFmpeg()
+        with patch.object(ffmpeg, "exe_path", return_value="ffmpeg"), patch(
+            "subprocess.run"
+        ) as run:
+            run.return_value.stdout = "ffmpeg version n9.0.1 Copyright (c) the FFmpeg developers"
+            self.assertEqual(ffmpeg.version(), "9.0.1")
+
     def test_macos_download_installs_executable_atomically(self) -> None:
         response = MagicMock()
         response.headers = {"content-length": "1000000"}

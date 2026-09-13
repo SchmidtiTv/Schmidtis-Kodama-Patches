@@ -107,7 +107,7 @@ class FFmpeg:
             return None
         try:
             out = subprocess.run([exe, "-version"], capture_output=True, text=True, timeout=10).stdout or ""
-            m = re.search(r"version\s+(\d+(?:\.\d+)+)", out)
+            m = re.search(r"version\s+(?:n)?(\d+(?:\.\d+)+)", out)
             return m.group(1) if m else None
         except Exception:
             return None
