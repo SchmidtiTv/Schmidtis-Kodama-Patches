@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import { thumb } from "@/shared/api/thumbnails.js";
 import { RetryingImage } from "@/shared/ui/retrying-image.jsx";
@@ -62,7 +62,6 @@ export function CoverView({
   vizConfig,
   coverSize = 260,
   compact = false,
-  narrow = false,
   isActive = true,
   ambientBackground = false,
   playbackOrigin = null,
@@ -76,6 +75,18 @@ export function CoverView({
   const playingRef = useRef(isPlaying);
   const cfgRef = useRef(null);
   const coverColorRef = useRef(null);
+  const rootRef = useRef(null);
+  const [roomForInfo, setRoomForInfo] = useState(true);
+  useEffect(() => {
+    const element = rootRef.current;
+    if (!element || compact || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => {
+      const height = entry.contentRect.height;
+      setRoomForInfo((visible) => (visible ? height >= 520 : height > 550));
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [compact]);
   useLayoutEffect(() => {
     playingRef.current = isPlaying;
     cfgRef.current = { ...VIZ_DEFAULTS, ...(vizConfig || {}) };
@@ -181,13 +192,10 @@ export function CoverView({
 
       const src = audioLevels.bands || [],
         srcN = src.length || 48;
-      // In a narrow (split) pane the linear spectrum is only a fraction of the window width —
-      // scale the bar count by that fraction so the per-bar spacing matches the full view
-      // (and adapts as the split is resized) instead of cramming the bars together.
       let n = Math.max(8, cfg.barCount | 0 || 48);
-      if (narrow && cfg.shape === "linear") {
-        const frac = Math.min(1, w / (window.innerWidth || w));
-        n = Math.max(8, Math.round(n * frac));
+      if (cfg.shape === "linear") {
+        const fullWidth = Math.max(320, window.screen?.availWidth || window.innerWidth || w);
+        n = Math.max(8, Math.round(n * Math.min(1, w / fullWidth)));
       }
       const resp = Math.max(0, Math.min(1, cfg.responsiveness != null ? cfg.responsiveness : 0.75));
       const rel = (1 - resp) * 0.95; // 0 = instant, 0.95 = very floaty
@@ -439,10 +447,11 @@ export function CoverView({
       cancelAnimationFrame(raf);
       if (cover) cover.style.transform = "";
     };
-  }, [ambientVisualizer, isActive, isPlaying, narrow]);
+  }, [ambientVisualizer, isActive, isPlaying]);
 
   return (
     <div
+      ref={rootRef}
       style={{
         width: "100%",
         height: "100%",
@@ -562,7 +571,7 @@ export function CoverView({
         </div>
 
         {/* Track info */}
-        <div style={{ textAlign: "center", maxWidth: compact ? 360 : 520 }}>
+        {roomForInfo && <div style={{ textAlign: "center", maxWidth: compact ? 360 : 520 }}>
           <div
             style={{
               fontSize: compact ? 17 : "var(--t22)",
@@ -602,7 +611,7 @@ export function CoverView({
               {t("trackOfTotal", { n: albumTrackNumber, total: albumOrigin.trackIds.length })}
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

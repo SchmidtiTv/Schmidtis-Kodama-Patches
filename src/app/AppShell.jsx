@@ -433,27 +433,56 @@ export const AppShell = memo(function AppShell({
     return Number.isFinite(saved) ? Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, saved)) : 0.5;
   });
   const [splitResizing, setSplitResizing] = useState(false);
+  const splitLyricsRef = useRef(null);
+  const splitCoverRef = useRef(null);
+  const splitVideoRef = useRef(null);
+  const splitHandleRef = useRef(null);
   const startSplitResize = useCallback(
     (e) => {
       e.preventDefault();
       setSplitResizing(true);
       document.body.style.cursor = "ew-resize";
       document.body.style.userSelect = "none";
+      let latest = null;
+      let frame = 0;
+      const applyWidths = () => {
+        frame = 0;
+        if (latest == null) return;
+        const cover = `${(latest * 100).toFixed(2)}%`;
+        const lyrics = `${((1 - latest) * 100).toFixed(2)}%`;
+        const panes = [
+          [splitLyricsRef.current, lyrics],
+          [splitCoverRef.current, cover],
+          [splitVideoRef.current, cover],
+        ];
+        for (const [pane, width] of panes) {
+          if (pane && pane.style.width !== "100%") pane.style.width = width;
+        }
+        if (splitHandleRef.current) splitHandleRef.current.style.left = cover;
+      };
       const onMove = (ev) => {
         const x = rtlLayout ? window.innerWidth - ev.clientX : ev.clientX;
-        const r = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, x / window.innerWidth));
-        setSplitRatio(r);
+        latest = Math.min(SPLIT_MAX, Math.max(SPLIT_MIN, x / window.innerWidth));
+        if (!frame) frame = requestAnimationFrame(applyWidths);
       };
       const onUp = () => {
+        if (frame) {
+          cancelAnimationFrame(frame);
+          applyWidths();
+        }
         setSplitResizing(false);
         document.body.style.cursor = "";
         document.body.style.userSelect = "";
         window.removeEventListener("mousemove", onMove);
         window.removeEventListener("mouseup", onUp);
-        setSplitRatio((r) => {
-          localStorage.setItem("kiyoshi-split-ratio", String(r));
-          return r;
-        });
+        if (latest != null) {
+          setSplitRatio(latest);
+          try {
+            localStorage.setItem("kiyoshi-split-ratio", String(latest));
+          } catch {
+            // Storage can be unavailable in restricted webviews.
+          }
+        }
       };
       window.addEventListener("mousemove", onMove);
       window.addEventListener("mouseup", onUp);
@@ -1016,6 +1045,10 @@ export const AppShell = memo(function AppShell({
           splitRatio={splitRatio}
           splitResizing={splitResizing}
           startSplitResize={startSplitResize}
+          splitLyricsRef={splitLyricsRef}
+          splitCoverRef={splitCoverRef}
+          splitVideoRef={splitVideoRef}
+          splitHandleRef={splitHandleRef}
           showLyrics={showLyrics}
           showVideoView={showVideoView}
           videoSync={videoSync}

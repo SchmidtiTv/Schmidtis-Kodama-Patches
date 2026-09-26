@@ -472,12 +472,14 @@ fn main() {
                     event: tauri::WindowEvent::CloseRequested { api, .. },
                     ..
                 } if label == "main" => {
+                    api.prevent_close();
                     if app_handle.state::<CloseTray>().0.load(Ordering::Relaxed) {
-                        api.prevent_close();
                         app_handle.state::<PlaybackEngine>().set_ui_visible(false);
                         if let Some(win) = app_handle.get_webview_window("main") {
                             let _ = win.hide();
                         }
+                    } else {
+                        app_handle.exit(0);
                     }
                 }
                 // Echtes Beenden (via Tray-Menü oder quit_app-Command)

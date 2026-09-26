@@ -22,6 +22,10 @@ export const PlayerOverlay = memo(function PlayerOverlay({
   splitRatio,
   splitResizing,
   startSplitResize,
+  splitLyricsRef,
+  splitCoverRef,
+  splitVideoRef,
+  splitHandleRef,
   showLyrics,
   showVideoView,
   videoSync,
@@ -131,6 +135,7 @@ export const PlayerOverlay = memo(function PlayerOverlay({
           return (
             <>
               <div
+                ref={splitLyricsRef}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -192,6 +197,7 @@ export const PlayerOverlay = memo(function PlayerOverlay({
                 />
               </div>
               <div
+                ref={splitCoverRef}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -205,7 +211,6 @@ export const PlayerOverlay = memo(function PlayerOverlay({
                     : coverSplitActive || !showLyrics
                       ? "all"
                       : "none",
-                  borderRight: coverSplitActive ? "1px solid rgba(255,255,255,0.08)" : "none",
                 }}
               >
                 <CoverView
@@ -214,13 +219,13 @@ export const PlayerOverlay = memo(function PlayerOverlay({
                   onClose={() => setOverlayOpen(false)}
                   ambientVisualizer={ambientVisualizer}
                   vizConfig={vizConfig}
-                  narrow={coverSplitActive}
                   isActive={overlayOpen && coverVisible}
                   ambientBackground={ambientBackground}
                   playbackOrigin={playbackOrigin}
                 />
               </div>
               <div
+                ref={splitVideoRef}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -254,6 +259,7 @@ export const PlayerOverlay = memo(function PlayerOverlay({
               {/* Drag handle between the two panes (mirrors the sidebar/queue handles) */}
               {splitActive && (
                 <div
+                  ref={splitHandleRef}
                   onMouseDown={startSplitResize}
                   style={{
                     position: "absolute",
