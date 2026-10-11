@@ -1,3 +1,4 @@
+import { openStoreWeb } from "@/features/store";
 import {
   ArrowClockwise,
   ArrowsClockwise,
@@ -135,6 +136,15 @@ export function VisualizerSettingsTab({
           <CaretDown size={13} />
         </button>
       )}
+      <div className="flex justify-end mb-3">
+        <Button
+          size="sm"
+          variant="secondary"
+          onPress={() => openStoreWeb("visualizer").catch(() => {})}
+        >
+          {t("eqBrowsePresets")}
+        </Button>
+      </div>
       {/* Presets — save / apply / import / export named visualizer configs. */}
       <div className="mb-5">
         <div
@@ -258,9 +268,7 @@ export function VisualizerSettingsTab({
       </SettingRow>
       <SettingRow
         label={t("canvasArtwork") || "Animated cover"}
-        description={
-          t("canvasArtworkDesc") || "Show animated cover artwork in the About Song card"
-        }
+        description={t("canvasArtworkDesc") || "Show animated cover artwork in the About Song card"}
         icon={<MusicNote />}
       >
         <Toggle value={canvasEnabled} onChange={onCanvasEnabledChange} />
@@ -631,6 +639,24 @@ export function VisualizerSettingsTab({
               })
             }
           />
+        </div>
+      </SettingRow>
+      <SettingRow label={t("coverShape")} icon={<MusicNote />}>
+        <div className="flex gap-1.5">
+          <Button
+            variant={vizConfig.coverShape !== "circle" ? "secondary" : "ghost"}
+            size="sm"
+            onPress={() => onUpdateViz({ coverShape: "rounded" })}
+          >
+            {t("coverShapeRounded")}
+          </Button>
+          <Button
+            variant={vizConfig.coverShape === "circle" ? "secondary" : "ghost"}
+            size="sm"
+            onPress={() => onUpdateViz({ coverShape: "circle" })}
+          >
+            {t("coverShapeCircle")}
+          </Button>
         </div>
       </SettingRow>
       <SettingRow label={t("coverPulse") || "Cover pulse"} icon={<Sparkles />}>

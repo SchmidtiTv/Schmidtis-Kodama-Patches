@@ -66,7 +66,7 @@ export function SearchView({
       key={song.videoId}
       track={song}
       isPlaying={isPlaying && currentTrack?.videoId === song.videoId}
-      onPlay={() => handlePlay(song, byType("song"))}
+      onPlay={() => handlePlay(song)}
       onOpenArtist={onOpenArtist}
       onContextMenu={onTrackContextMenu}
     />

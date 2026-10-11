@@ -1,5 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { VIZ_DEFAULTS } from "@/features/player/player-ui.jsx";
+import { VIZ_DEFAULTS, cleanVisualizerConfig } from "@/features/visualizer";
+import {
+  onStoreChanged,
+  readVisualizerPresets,
+  writeVisualizerPresets,
+  announceStoreChange,
+  VIZ_CONFIG_KEY,
+  parseStoreId,
+  uninstallPresetEverywhere,
+} from "@/features/store";
 export function useVisualizerSettingsTab({ t, uiZoom, vizConfig, onUpdateViz }) {
   // Visualizer preview scales with the window height (live on resize) so on short windows it
   // shrinks — both the box AND the cover — leaving room to reach the options below.
@@ -48,20 +57,25 @@ export function useVisualizerSettingsTab({ t, uiZoom, vizConfig, onUpdateViz }) 
 
   // Visualizer presets — save/apply/import/export named snapshots of the config (same pattern as
   // the Overlay Editor's design profiles). Stored locally as { id, name, savedAt, config }.
-  const [vizPresets, setVizPresets] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem("kodama-visualizer-presets") || "[]");
-    } catch {
-      return [];
-    }
-  });
+  const [vizPresets, setVizPresets] = useState(readVisualizerPresets);
+  useEffect(
+    () =>
+      onStoreChanged((kind) => {
+        if (kind !== "visualizer") return;
+        setVizPresets(readVisualizerPresets());
+        try {
+          const saved = JSON.parse(localStorage.getItem(VIZ_CONFIG_KEY) || "null");
+          if (saved) onUpdateViz({ ...VIZ_DEFAULTS, ...cleanVisualizerConfig(saved) });
+        } catch {
+          /* Invalid persisted data leaves the active configuration alone. */
+        }
+      }),
+    [onUpdateViz]
+  );
   const persistVizPresets = (next) => {
+    if (!writeVisualizerPresets(next)) return;
     setVizPresets(next);
-    try {
-      localStorage.setItem("kodama-visualizer-presets", JSON.stringify(next));
-    } catch {
-      /* intentionally ignored */
-    }
+    announceStoreChange("visualizer");
   };
   const [vizPresetName, setVizPresetName] = useState("");
   const vizImportRef = useRef(null);
@@ -83,7 +97,7 @@ export function useVisualizerSettingsTab({ t, uiZoom, vizConfig, onUpdateViz }) 
   const applyVizPreset = (p) =>
     onUpdateViz({
       ...VIZ_DEFAULTS,
-      ...p.config,
+      ...cleanVisualizerConfig(p.config),
     });
   const overwriteVizPreset = (id) =>
     persistVizPresets(
@@ -93,7 +107,11 @@ export function useVisualizerSettingsTab({ t, uiZoom, vizConfig, onUpdateViz }) 
           : preset
       )
     );
-  const deleteVizPreset = (id) => persistVizPresets(vizPresets.filter((p) => p.id !== id));
+  const deleteVizPreset = (id) => {
+    const installed = parseStoreId(id);
+    if (installed) return uninstallPresetEverywhere("visualizer", installed.id);
+    persistVizPresets(vizPresets.filter((preset) => preset.id !== id));
+  };
   const exportVizPreset = async (preset) => {
     const base = (preset.name || "visualizer").replace(/[^\w\s-]/g, "").trim() || "visualizer";
     const { save } = await import("@tauri-apps/plugin-dialog");
@@ -128,7 +146,7 @@ export function useVisualizerSettingsTab({ t, uiZoom, vizConfig, onUpdateViz }) 
                 id: crypto.randomUUID(),
                 name: item.name || t("preset") || "Preset",
                 savedAt: new Date().toISOString(),
-                config: cfg,
+                config: cleanVisualizerConfig(cfg),
               });
             }
           }

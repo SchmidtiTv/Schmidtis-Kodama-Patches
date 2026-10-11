@@ -75,6 +75,20 @@ fn handle_control_event(
     audio_tx: &std::sync::mpsc::SyncSender<AudioCmd>,
     app: &AppHandle,
 ) -> Result<(), String> {
+    if matches!(
+        event,
+        MediaControlEvent::Play
+            | MediaControlEvent::Pause
+            | MediaControlEvent::Toggle
+            | MediaControlEvent::Next
+            | MediaControlEvent::Previous
+            | MediaControlEvent::Stop
+            | MediaControlEvent::SetPosition(_)
+            | MediaControlEvent::Seek(_)
+            | MediaControlEvent::SeekBy(_, _)
+    ) {
+        engine.require_local_transport()?;
+    }
     match event {
         MediaControlEvent::Play => play(engine, audio_tx, app)?,
         MediaControlEvent::Pause => pause(engine, audio_tx, app)?,

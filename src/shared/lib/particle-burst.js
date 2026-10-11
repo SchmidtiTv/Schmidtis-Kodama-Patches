@@ -1,3 +1,4 @@
+import { isMotionReduced } from "./reduced-motion.js";
 // MIUI-style "disintegrate into particles" effect. Call particleBurst(element) right before
 // removing a row/card and it dissolves into a dusty burst of little squares tinted from its
 // own cover art (falls back to the app accent). Dependency-free: one shared fixed canvas + a
@@ -97,7 +98,7 @@ function tick(now) {
 
 export function particleBurst(el, opts = {}) {
   if (!el || typeof window === "undefined") return;
-  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+  if (isMotionReduced()) return;
   const rect = el.getBoundingClientRect();
   if (rect.width < 2 || rect.height < 2) return;
   // Off-screen? skip.
@@ -147,7 +148,7 @@ export function particleBurst(el, opts = {}) {
 // Convenience: burst the element AND fade/shrink it out, then run `done` (e.g. the actual
 // state removal) after the short fade so the element visibly dissolves into the particles.
 export function dissolve(el, done, opts = {}) {
-  const reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const reduce = isMotionReduced();
   if (!el || reduce) {
     if (done) done();
     return;

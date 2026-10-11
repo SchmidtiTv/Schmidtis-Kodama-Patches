@@ -1,12 +1,15 @@
-// Accent-colour helpers extracted from App.jsx: a smooth RAF-driven fade of the global
-// `--accent` CSS variable, and derivation of a vibrant, legible accent hex from a cover image.
-// Pure DOM/canvas/math — no app imports. hexToRgb / rgbToHsl / hslToHex are internal.
-
-// ── Smoothly fade the global --accent from its current value to a target hex ──
 let accentFadeRaf = 0;
 function hexToRgb(str) {
   if (!str) return null;
   str = str.trim();
+  if (/^#?[0-9a-f]{3}$/i.test(str))
+    str =
+      "#" +
+      str
+        .replace(/^#/, "")
+        .split("")
+        .map((char) => char + char)
+        .join("");
   const m = str.match(/^#?([0-9a-fA-F]{6})$/);
   if (m) {
     const n = parseInt(m[1], 16);
@@ -20,11 +23,11 @@ export function setAccentSmooth(toHex, duration = 380) {
   const root = document.documentElement;
   const a = hexToRgb(getComputedStyle(root).getPropertyValue("--accent"));
   const b = hexToRgb(toHex);
-  if (!a || !b) {
+  cancelAnimationFrame(accentFadeRaf);
+  if (!a || !b || duration <= 0) {
     root.style.setProperty("--accent", toHex);
     return;
   }
-  cancelAnimationFrame(accentFadeRaf);
   const t0 = performance.now();
   const hx = (v) => Math.round(v).toString(16).padStart(2, "0");
   const tick = (now) => {
@@ -39,7 +42,6 @@ export function setAccentSmooth(toHex, duration = 380) {
   accentFadeRaf = requestAnimationFrame(tick);
 }
 
-// ── Dynamic accent: derive a vibrant, legible accent hex from a cover image ──
 function rgbToHsl(r, g, b) {
   r /= 255;
   g /= 255;
@@ -121,4 +123,26 @@ export function vibrantAccentFromImage(img, satMin = 0.5, light = 0.6) {
   const [h, s, l] = rgbToHsl(br, bg, bb);
   const L = Math.min(light + 0.08, Math.max(light - 0.08, l)); // keep near the chosen centre
   return hslToHex(h, Math.min(1, Math.max(satMin, s)), Math.min(0.92, Math.max(0.12, L)));
+}
+
+export function readableAccent(hex, background) {
+  const rgb = hexToRgb(hex);
+  const bg = hexToRgb(background);
+  if (!rgb || !bg) return hex;
+  const luminance = (values) =>
+    values
+      .map((value) => value / 255)
+      .map((value) => (value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4))
+      .reduce((sum, value, index) => sum + value * [0.2126, 0.7152, 0.0722][index], 0);
+  const base = luminance(bg);
+  const contrast = (values) =>
+    (Math.max(luminance(values), base) + 0.05) / (Math.min(luminance(values), base) + 0.05);
+  if (contrast(rgb) >= 4.5) return hex;
+  const target = base < 0.18 ? 255 : 0;
+  for (let step = 1; step <= 100; step++) {
+    const adjusted = rgb.map((value) => Math.round(value + ((target - value) * step) / 100));
+    if (contrast(adjusted) >= 4.5)
+      return "#" + adjusted.map((value) => value.toString(16).padStart(2, "0")).join("");
+  }
+  return target ? "#ffffff" : "#000000";
 }

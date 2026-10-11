@@ -93,20 +93,33 @@ function QueueRow({
   // Defaults to {} so a call site that forgets to pass it loses the row action buttons'
   // accessible names — which the console already warns about — instead of crashing the app.
   labels = {},
+  roomRemove,
+  addedBy,
 }) {
   return (
     <div
       data-queue-idx={globalIdx}
       onClick={onPlay}
-      onContextMenu={isDraggable ? (e) => { e.preventDefault(); onOpenMenu({ x: e.clientX, y: e.clientY, globalIdx }); } : undefined}
+      onContextMenu={
+        isDraggable
+          ? (e) => {
+              e.preventDefault();
+              onOpenMenu({ x: e.clientX, y: e.clientY, globalIdx });
+            }
+          : undefined
+      }
       onPointerDown={isDraggable ? (e) => onPointerDown(e, globalIdx) : undefined}
       style={{ height: QUEUE_ROW_H }}
       className={`group/qrow relative flex items-center gap-2 pl-2.5 pr-3 rounded-[var(--r-md)] cursor-default select-none transition-[background-color,opacity] ${
         isActive ? "bg-accent-dim" : "bg-transparent hover:bg-[var(--fill-subtle)]"
       } ${isBeingDragged ? "opacity-30" : dimmed ? "opacity-45 hover:opacity-100" : ""}`}
     >
-      {dropBefore && <div className="absolute -top-px inset-x-0 h-0.5 rounded-full bg-accent pointer-events-none" />}
-      {dropAfter && <div className="absolute -bottom-px inset-x-0 h-0.5 rounded-full bg-accent pointer-events-none" />}
+      {dropBefore && (
+        <div className="absolute -top-px inset-x-0 h-0.5 rounded-full bg-accent pointer-events-none" />
+      )}
+      {dropAfter && (
+        <div className="absolute -bottom-px inset-x-0 h-0.5 rounded-full bg-accent pointer-events-none" />
+      )}
       {/* Drag handle (the whole row is draggable; this is just the affordance) */}
       <div
         className={`shrink-0 px-px py-0.5 touch-none transition-opacity ${isDraggable ? "cursor-grab opacity-40 group-hover/qrow:opacity-100" : "opacity-0"}`}
@@ -130,6 +143,7 @@ function QueueRow({
           {track.isExplicit && <ExplicitBadge />}
         </div>
         <div className="text-t11 text-secondary truncate">{track.artists}</div>
+        {addedBy}
       </div>
 
       {/* Custom-crossfade indicator (set via right-click) */}
@@ -164,15 +178,19 @@ function QueueRow({
       </span>
 
       {/* Queue actions */}
-      {isDraggable && (
+      {(isDraggable || roomRemove) && (
         <span
           className="shrink-0 inline-flex"
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
         >
           <QueueIconButton
-            label={labels.more}
+            label={roomRemove ? labels.remove : labels.more}
             onClick={(event) => {
+              if (roomRemove) {
+                roomRemove(track);
+                return;
+              }
               const rect = event.currentTarget.getBoundingClientRect();
               onOpenMenu({ x: rect.left, y: rect.bottom + 4, globalIdx });
             }}
@@ -194,9 +212,14 @@ export function QueuePanel({
   onOpenArtist,
   canvasEnabled,
   canvasSource,
+  together,
 }) {
-  const { track: currentTrack, playbackOrigin } = usePlaybackStatus();
-  const { queue } = useQueueState();
+  const { track: playerTrack, playbackOrigin } = usePlaybackStatus();
+  const { queue: playerQueue } = useQueueState();
+  const currentTrack = together?.listener ? together.currentTrack : playerTrack;
+  const queue = together?.listener
+    ? [currentTrack, ...together.queue].filter(Boolean)
+    : playerQueue;
   const { crossfade = 0, crossfadeOverrides = {} } = usePlaybackConfig();
   const { setQueue, setTrack, setCrossfadeOverride, removeCrossfadeOverride } = usePlayerActions();
   const t = useLang();
@@ -205,10 +228,20 @@ export function QueuePanel({
   // Built once here rather than a translation hook per row — a queued playlist can be
   // thousands of them.
   const rowLabels = useMemo(
-    () => ({ like: t("like"), unlike: t("unlike"), remove: t("removeFromQueue"), more: t("rowMoreActions") }),
+    () => ({
+      like: t("like"),
+      unlike: t("unlike"),
+      remove: t("removeFromQueue"),
+      more: t("rowMoreActions"),
+    }),
     [t]
   );
   const [panelTab, setPanelTab] = useState("queue");
+  useEffect(() => {
+    const open = () => setPanelTab("queue");
+    window.addEventListener("kodama:open-room", open);
+    return () => window.removeEventListener("kodama:open-room", open);
+  }, []);
   // Keep the list mounted briefly during the dock slide-out, then stop rendering
   // hidden queue rows so large queues do not keep doing work off-screen.
   const [mountList, setMountList] = useState(visible);
@@ -285,21 +318,55 @@ export function QueuePanel({
   const { items, offsets, nowPlayingOffset } = useMemo(() => {
     const list = [];
     if (currentIdx > 0) {
-      list.push({ kind: "header", key: "played-header", label: t("previouslyPlayed"), section: "played" });
+      list.push({
+        kind: "header",
+        key: "played-header",
+        label: t("previouslyPlayed"),
+        section: "played",
+      });
       for (let index = 0; index < currentIdx; index += 1) {
-        list.push({ kind: "row", key: `played-${queue[index].videoId || index}`, track: queue[index], globalIdx: index, dimmed: true });
+        list.push({
+          kind: "row",
+          key: `played-${queue[index].videoId || index}`,
+          track: queue[index],
+          globalIdx: index,
+          dimmed: true,
+        });
       }
     }
     let nowOffset = 0;
     if (currentTrack && currentIdx >= 0) {
-      list.push({ kind: "header", key: "now-header", label: t("nowPlaying"), marksNowPlaying: true });
-      list.push({ kind: "row", key: `now-${currentTrack.videoId}`, track: currentTrack, globalIdx: currentIdx, active: true, dimmed: true });
+      list.push({
+        kind: "header",
+        key: "now-header",
+        label: t("nowPlaying"),
+        marksNowPlaying: true,
+      });
+      list.push({
+        kind: "row",
+        key: `now-${currentTrack.videoId}`,
+        track: currentTrack,
+        globalIdx: currentIdx,
+        active: true,
+        dimmed: true,
+      });
     }
     const upNextCount = queue.length - currentIdx - 1;
     if (upNextCount > 0) {
-      list.push({ kind: "header", key: "next-header", label: t("upNext"), count: upNextCount, section: "next" });
+      list.push({
+        kind: "header",
+        key: "next-header",
+        label: t("upNext"),
+        count: upNextCount,
+        section: "next",
+      });
       for (let index = currentIdx + 1; index < queue.length; index += 1) {
-        list.push({ kind: "row", key: `next-${queue[index].videoId || index}`, track: queue[index], globalIdx: index });
+        list.push({
+          kind: "row",
+          key: `next-${queue[index].videoId || index}`,
+          track: queue[index],
+          globalIdx: index,
+        });
       }
     }
     const nextOffsets = [];
@@ -345,11 +412,14 @@ export function QueuePanel({
     [setQueue]
   );
 
-  const removeWithEffect = useCallback((globalIdx, videoId) => {
-    const row = listRef.current?.querySelector(`[data-queue-idx="${globalIdx}"]`);
-    if (anim && row) dissolve(row, () => removeTrack(videoId));
-    else removeTrack(videoId);
-  }, [anim, removeTrack]);
+  const removeWithEffect = useCallback(
+    (globalIdx, videoId) => {
+      const row = listRef.current?.querySelector(`[data-queue-idx="${globalIdx}"]`);
+      if (anim && row) dissolve(row, () => removeTrack(videoId));
+      else removeTrack(videoId);
+    },
+    [anim, removeTrack]
+  );
 
   const handlePointerDown = useCallback(
     (e, globalIdx) => {
@@ -368,7 +438,11 @@ export function QueuePanel({
         }
         const container = listRef.current;
         if (!isDragging.current || !container) return;
-        const y = me.clientY - container.getBoundingClientRect().top + container.scrollTop - (albumOrigin && albumTrackNumber > 0 ? QUEUE_CONTEXT_H : 0);
+        const y =
+          me.clientY -
+          container.getBoundingClientRect().top +
+          container.scrollTop -
+          (albumOrigin && albumTrackNumber > 0 ? QUEUE_CONTEXT_H : 0);
         let offset = null;
         for (let index = 0; index < items.length; index += 1) {
           const item = items[index];
@@ -437,8 +511,13 @@ export function QueuePanel({
             className="flex-1"
           >
             <ToggleButton id="queue" className="flex-1">
-              {t("queue")}
+              {t(together?.active ? "togetherRoomTab" : "queue")}
             </ToggleButton>
+            {together?.active && (
+              <ToggleButton id="people" className="flex-1">
+                {t("togetherPeopleTab")}
+              </ToggleButton>
+            )}
             <ToggleButton id="about" className="flex-1">
               {t("aboutSong")}
             </ToggleButton>
@@ -449,6 +528,7 @@ export function QueuePanel({
               variant="ghost"
               size="sm"
               isIconOnly
+              isDisabled={together?.listener}
               onPress={() => setQueue([])}
               className={`shrink-0 rounded-[var(--r-md)] text-muted hover:text-[var(--status-danger)]! ${panelTab === "queue" ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"}`}
             >
@@ -457,6 +537,10 @@ export function QueuePanel({
           </Tooltip>
         </div>
       </div>
+
+      {together?.active && panelTab === "queue" && together.header}
+      {together?.active && panelTab === "people" && together.people}
+      {together?.active && panelTab === "queue" && together.suggestions}
 
       {/* About Song tab */}
       {panelTab === "about" && (
@@ -522,15 +606,31 @@ export function QueuePanel({
                 return (
                   <div
                     key={item.key}
-                    style={{ position: "absolute", top: 0, left: 0, width: "100%", transform: `translateY(${virtualItem.start}px)` }}
+                    style={{
+                      position: "absolute",
+                      top: 0,
+                      left: 0,
+                      width: "100%",
+                      transform: `translateY(${virtualItem.start}px)`,
+                    }}
                   >
                     {item.kind === "header" ? (
                       <div className="group/qsec flex h-[34px] items-center justify-between px-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted">
                         <span>{item.label}</span>
-                        {item.count != null && <ChipRoot size="sm" variant="soft"><ChipLabel>{item.count}</ChipLabel></ChipRoot>}
-                        {item.section === "played" && (
+                        {item.count != null && (
+                          <ChipRoot size="sm" variant="soft">
+                            <ChipLabel>{item.count}</ChipLabel>
+                          </ChipRoot>
+                        )}
+                        {item.section === "played" && !together?.listener && (
                           <Tooltip text={t("clearPlayed")}>
-                            <Button variant="ghost" size="sm" isIconOnly onPress={() => setQueue((q) => q.slice(currentIdx))} className="shrink-0 h-6 min-w-6 rounded-[var(--r-sm)] text-muted opacity-0 group-hover/qsec:opacity-100 hover:text-[var(--status-danger)]!">
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              isIconOnly
+                              onPress={() => setQueue((q) => q.slice(currentIdx))}
+                              className="shrink-0 h-6 min-w-6 rounded-[var(--r-sm)] text-muted opacity-0 group-hover/qsec:opacity-100 hover:text-[var(--status-danger)]!"
+                            >
                               <Trash size={11} />
                             </Button>
                           </Tooltip>
@@ -541,21 +641,33 @@ export function QueuePanel({
                         labels={rowLabels}
                         track={item.track}
                         globalIdx={item.globalIdx}
-                        isDraggable={!item.active}
+                        isDraggable={!item.active && !together?.listener}
+                        roomRemove={
+                          together?.listener && together.canRemove?.(item.track)
+                            ? together.onRemove
+                            : undefined
+                        }
+                        addedBy={together?.renderAddedBy?.(item.track.addedBy)}
                         dimmed={item.dimmed}
                         isActive={item.active}
                         isBeingDragged={dragIndex === item.globalIdx}
                         dropBefore={dropOffset === item.globalIdx}
-                        dropAfter={dropOffset === item.globalIdx + 1 && item.globalIdx === queue.length - 1}
+                        dropAfter={
+                          dropOffset === item.globalIdx + 1 && item.globalIdx === queue.length - 1
+                        }
                         onPointerDown={handlePointerDown}
                         onPlay={() => {
-                          if (!suppressClickRef.current) setTrack(item.track);
+                          if (!suppressClickRef.current && !together?.listener)
+                            setTrack(item.track);
                         }}
                         isLiked={likedIds?.has(item.track.videoId)}
                         onToggleLike={onToggleLike}
                         onOpenMenu={setRowMenu}
                         menuOpen={rowMenu?.globalIdx === item.globalIdx}
-                        fadeSecs={crossfadeOverrides[fadeKey(item.track, queue[item.globalIdx + 1])]?.secs ?? null}
+                        fadeSecs={
+                          crossfadeOverrides[fadeKey(item.track, queue[item.globalIdx + 1])]
+                            ?.secs ?? null
+                        }
                       />
                     )}
                   </div>
@@ -596,7 +708,9 @@ export function QueuePanel({
                 onPress={() => {
                   const container = listRef.current;
                   container?.scrollTo({
-                    top: nowPlayingOffsetRef.current + (albumOrigin && albumTrackNumber > 0 ? QUEUE_CONTEXT_H : 0),
+                    top:
+                      nowPlayingOffsetRef.current +
+                      (albumOrigin && albumTrackNumber > 0 ? QUEUE_CONTEXT_H : 0),
                     behavior: "smooth",
                   });
                 }}
@@ -609,39 +723,40 @@ export function QueuePanel({
           document.body
         )}
 
-      {rowMenu && (() => {
-        const track = queue[rowMenu.globalIdx];
-        if (!track) return null;
-        return (
-          <ContextMenu
-            x={rowMenu.x}
-            y={rowMenu.y}
-            zoom={zoom}
-            onClose={() => setRowMenu(null)}
-            ariaLabel={t("rowMoreActions")}
-          >
-            {queue[rowMenu.globalIdx + 1] && (
+      {rowMenu &&
+        (() => {
+          const track = queue[rowMenu.globalIdx];
+          if (!track) return null;
+          return (
+            <ContextMenu
+              x={rowMenu.x}
+              y={rowMenu.y}
+              zoom={zoom}
+              onClose={() => setRowMenu(null)}
+              ariaLabel={t("rowMoreActions")}
+            >
+              {queue[rowMenu.globalIdx + 1] && (
+                <CtxItem
+                  icon={Sliders}
+                  label={t("crossfade")}
+                  onSelect={() => {
+                    openFadeEdit(rowMenu.globalIdx);
+                    setRowMenu(null);
+                  }}
+                />
+              )}
               <CtxItem
-                icon={Sliders}
-                label={t("crossfade")}
+                icon={Trash}
+                label={t("removeFromQueue")}
+                danger
                 onSelect={() => {
-                  openFadeEdit(rowMenu.globalIdx);
+                  removeWithEffect(rowMenu.globalIdx, track.videoId);
                   setRowMenu(null);
                 }}
               />
-            )}
-            <CtxItem
-              icon={Trash}
-              label={t("removeFromQueue")}
-              danger
-              onSelect={() => {
-                removeWithEffect(rowMenu.globalIdx, track.videoId);
-                setRowMenu(null);
-              }}
-            />
-          </ContextMenu>
-        );
-      })()}
+            </ContextMenu>
+          );
+        })()}
 
       {fadeEdit && (
         <FadeEditorModal

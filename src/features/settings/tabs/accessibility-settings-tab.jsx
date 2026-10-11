@@ -1,7 +1,15 @@
-import { CardRoot, cn } from "@heroui/react";
+import { CardRoot, ToggleButton, ToggleButtonGroupRoot, cn } from "@heroui/react";
 import { Check, CircleHalf, Sparkles, X } from "@/shared/icons/icons.jsx";
 import { SettingRow, SettingsSectionLabel, Toggle } from "@/shared/ui/settings-controls.jsx";
 export function AccessibilitySettingsTab({
+  reduceMotionPref = "system",
+  onReduceMotionChange,
+  monoAudio = false,
+  onToggleMonoAudio,
+  accentContrast = false,
+  onToggleAccentContrast,
+  announceTracks = true,
+  onToggleAnnounceTracks,
   ambientBackground,
   appFont,
   closeTray,
@@ -37,6 +45,34 @@ export function AccessibilitySettingsTab({
           <Toggle value={highContrast} onChange={onToggleHighContrast} />
         </SettingRow>
         <SettingRow
+          label={t("reduceMotion")}
+          description={t("reduceMotionDesc")}
+          icon={<Sparkles />}
+        >
+          <ToggleButtonGroupRoot
+            aria-label={t("reduceMotion")}
+            selectionMode="single"
+            disallowEmptySelection
+            size="sm"
+            selectedKeys={[reduceMotionPref]}
+            onSelectionChange={(keys) => {
+              const value = [...keys][0];
+              if (value) onReduceMotionChange?.(value);
+            }}
+          >
+            <ToggleButton id="system">{t("reduceMotionSystem")}</ToggleButton>
+            <ToggleButton id="on">{t("reduceMotionOn")}</ToggleButton>
+            <ToggleButton id="off">{t("reduceMotionOff")}</ToggleButton>
+          </ToggleButtonGroupRoot>
+        </SettingRow>
+        <SettingRow
+          label={t("accentContrast")}
+          description={t("accentContrastDesc")}
+          icon={<CircleHalf />}
+        >
+          <Toggle value={accentContrast} onChange={onToggleAccentContrast} />
+        </SettingRow>
+        <SettingRow
           label={t("ambientBackground")}
           description={t("ambientBackgroundDesc")}
           icon={<Sparkles />}
@@ -61,6 +97,15 @@ export function AccessibilitySettingsTab({
             <CardRoot
               key={f.id}
               onClick={() => onAppFontChange(f.id)}
+              role="button"
+              tabIndex={0}
+              aria-pressed={appFont === f.id}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onAppFontChange(f.id);
+                }
+              }}
               variant="secondary"
               className={cn(
                 "flex flex-row items-center justify-between gap-3 px-4 py-3.5 cursor-default border-2 transition-colors",
@@ -109,8 +154,21 @@ export function AccessibilitySettingsTab({
         >
           {t("behaviour")}
         </SettingsSectionLabel>
+        <SettingRow label={t("announceTracks")} description={t("announceTracksDesc")}>
+          <Toggle value={announceTracks} onChange={onToggleAnnounceTracks} />
+        </SettingRow>
         <SettingRow label={t("closeTray")} description={t("closeTrayDesc")} icon={<X />}>
           <Toggle value={closeTray} onChange={onCloseTrayChange} />
+        </SettingRow>
+      </div>
+      <div
+        id="set-sec-acc-hearing"
+        data-settings-section="acc-hearing"
+        style={{ scrollMarginTop: 8 }}
+      >
+        <SettingsSectionLabel>{t("accHearing")}</SettingsSectionLabel>
+        <SettingRow label={t("monoAudio")} description={t("monoAudioDesc")}>
+          <Toggle value={monoAudio} onChange={onToggleMonoAudio} />
         </SettingRow>
       </div>
     </>

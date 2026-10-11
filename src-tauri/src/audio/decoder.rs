@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
 pub struct SampleRing {
@@ -186,6 +186,73 @@ impl SampleRing {
     }
 }
 
+// Playback rate for ListenTogether: a listener a little behind plays a few per mille faster
+// until it has caught up, instead of jumping (a jump rebuilds the sink and is heard as a click).
+// One value for every source; 1.0 everywhere else. Stored as f32 bits.
+static RATE: AtomicU32 = AtomicU32::new(0x3f80_0000);
+
+pub fn set_rate(rate: f32) {
+    let r = if rate.is_finite() {
+        rate.clamp(0.9, 1.1)
+    } else {
+        1.0
+    };
+    RATE.store(r.to_bits(), Ordering::Relaxed);
+}
+fn rate() -> f64 {
+    f32::from_bits(RATE.load(Ordering::Relaxed)) as f64
+}
+
+/// Resamples frame by frame at `rate()`, by 4-point Hermite interpolation: near 1.0 that keeps
+/// the treble, where a straight line between two samples would dull it in a way that comes and
+/// goes with the fraction. At exactly 1.0 the output is the input, sample for sample.
+struct Resampler {
+    hist: Vec<f32>, // four frames, oldest first; the output lies between the 2nd and 3rd
+    frac: f64,
+    out: Vec<f32>,
+    out_i: usize,
+    primed: bool,
+    src_pos: f64, // source frames advanced, in output frames' terms
+    emitted: u64,
+    pad: usize,          // frames held at the end of the stream
+    fade_in_left: usize, // frames of the fade-in still to go
+    fade_out: Arc<AtomicBool>,
+    fade_out_left: Option<usize>,
+    skew: Arc<AtomicU64>, // (source position - output position) in seconds, as f64 bits
+}
+
+impl Default for Resampler {
+    fn default() -> Self {
+        Resampler {
+            hist: Vec::new(),
+            frac: 0.0,
+            out: Vec::new(),
+            out_i: 0,
+            primed: false,
+            src_pos: 0.0,
+            emitted: 0,
+            pad: 0,
+            fade_in_left: 0,
+            fade_out: Arc::new(AtomicBool::new(false)),
+            fade_out_left: None,
+            skew: Arc::new(AtomicU64::new(0)),
+        }
+    }
+}
+
+#[inline]
+fn hermite(x0: f32, x1: f32, x2: f32, x3: f32, t: f32) -> f32 {
+    let c1 = 0.5 * (x2 - x0);
+    let c2 = x0 - 2.5 * x1 + 2.0 * x2 - 0.5 * x3;
+    let c3 = 0.5 * (x3 - x0) + 1.5 * (x1 - x2);
+    ((c3 * t + c2) * t + c1) * t + x1
+}
+
+// A seek no longer stops the old sound and waits in silence for the new: the old plays on until
+// the new is ready, then the two cross over in this long. Short enough not to be heard as a fade,
+// long enough that the jump between them is no click.
+const SEEK_FADE_MS: usize = 30;
+
 pub struct StreamingSource {
     ring: Arc<SampleRing>,
     channels: u16,
@@ -194,6 +261,8 @@ pub struct StreamingSource {
     analysis: Option<Arc<super::analyzer::AnalysisBuffer>>,
     eq: Option<super::eq::EqChain>,
     tap_pos: u64,
+    mono: super::eq::MonoFold,
+    rs: Resampler,
     consumer_registered: bool,
 }
 
@@ -602,8 +671,8 @@ pub fn spawn_decoder_streaming(
 const PREBUFFER_MS: usize = 2000;
 const PREBUFFER_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6);
 
-fn prebuffer_ring(ring: &SampleRing, sample_rate: u32, channels: u16) {
-    let want = ((sample_rate as usize) * (channels as usize) * PREBUFFER_MS / 1000)
+fn prebuffer_ring(ring: &SampleRing, sample_rate: u32, channels: u16, prebuffer_ms: usize) {
+    let want = ((sample_rate as usize) * (channels as usize) * prebuffer_ms / 1000)
         .min(ring.capacity().saturating_sub(1));
     let deadline = std::time::Instant::now() + PREBUFFER_TIMEOUT;
     while ring.write_pos() < want && !ring.is_done() && std::time::Instant::now() < deadline {
@@ -629,7 +698,7 @@ impl StreamingSource {
             info.channels, info.sample_rate
         );
 
-        prebuffer_ring(&ring, info.sample_rate, info.channels);
+        prebuffer_ring(&ring, info.sample_rate, info.channels, PREBUFFER_MS);
 
         Ok(StreamingSource {
             ring,
@@ -639,6 +708,8 @@ impl StreamingSource {
             analysis: None,
             eq: None,
             tap_pos: 0,
+            mono: Default::default(),
+            rs: Resampler::default(),
             consumer_registered: false,
         })
     }
@@ -648,6 +719,14 @@ impl StreamingSource {
     pub fn new_streaming(
         source: Box<dyn symphonia::core::io::MediaSource>,
         seek_to_secs: f64,
+    ) -> Result<Self, String> {
+        Self::new_streaming_prebuffered(source, seek_to_secs, PREBUFFER_MS)
+    }
+
+    pub fn new_streaming_prebuffered(
+        source: Box<dyn symphonia::core::io::MediaSource>,
+        seek_to_secs: f64,
+        prebuffer_ms: usize,
     ) -> Result<Self, String> {
         let ring_cap = 48000usize * 2 * 12; // ~12 s stereo buffer (generous; exact rate unknown yet)
         let ring = Arc::new(SampleRing::new(ring_cap));
@@ -663,7 +742,7 @@ impl StreamingSource {
             "[Audio] Streaming(HTTP) decoder started: {}ch, {}Hz, seek={seek_to_secs:.1}s",
             info.channels, info.sample_rate
         );
-        prebuffer_ring(&ring, info.sample_rate, info.channels);
+        prebuffer_ring(&ring, info.sample_rate, info.channels, prebuffer_ms);
         Ok(StreamingSource {
             ring,
             channels: info.channels,
@@ -672,12 +751,139 @@ impl StreamingSource {
             analysis: None,
             eq: None,
             tap_pos: 0,
+            mono: Default::default(),
+            rs: Resampler::default(),
             consumer_registered: false,
         })
     }
 
     // Attach a visualizer analysis buffer (filled with the left-channel samples as they
     // are pulled by the output). Returns a handle for the analysis thread to read.
+    /// How far the source has run ahead of what the sink counted, in seconds, while the rate
+    /// was not 1.0. The sink's position plus this is the position in the song.
+    pub fn skew_handle(&self) -> Arc<AtomicU64> {
+        Arc::clone(&self.rs.skew)
+    }
+
+    /// Start silent and come up over SEEK_FADE_MS (the new side of a seek).
+    pub fn seek_fade_in(&mut self) {
+        self.rs.fade_in_left = self.fade_len();
+    }
+
+    /// Set to true, the source fades out over SEEK_FADE_MS and then ends (the old side of a seek).
+    pub fn fade_out_handle(&self) -> Arc<AtomicBool> {
+        Arc::clone(&self.rs.fade_out)
+    }
+
+    fn fade_len(&self) -> usize {
+        (self.sample_rate as usize * SEEK_FADE_MS / 1000).max(1)
+    }
+
+    // One sample from the decoder, waiting while it catches up; None at the end.
+    fn pop_wait(&self) -> Option<f32> {
+        self.ring.pop_or_underrun()
+    }
+
+    // The next output frame into `rs.out`. False at the end of the stream.
+    fn next_frame(&mut self) -> bool {
+        let ch = self.channels.max(1) as usize;
+        if !self.rs.primed {
+            // The first frame twice (there is nothing before it), then the two after it.
+            let mut first = Vec::with_capacity(ch);
+            for _ in 0..ch {
+                match self.pop_wait() {
+                    Some(x) => first.push(x),
+                    None => return false,
+                }
+            }
+            self.rs.hist = [first.clone(), first].concat();
+            for _ in 0..2 {
+                let previous = self.rs.hist.len() - ch;
+                let mut complete = true;
+                for c in 0..ch {
+                    match self.pop_wait() {
+                        Some(sample) => self.rs.hist.push(sample),
+                        None => {
+                            self.rs.hist.push(self.rs.hist[previous + c]);
+                            complete = false;
+                        }
+                    }
+                }
+                if !complete {
+                    self.rs.pad += 1;
+                }
+            }
+            self.rs.out = vec![0.0; ch];
+            self.rs.primed = true;
+        }
+        // The frame the output stands on (the 2nd) is padding: the song is over.
+        if self.rs.pad >= 3 {
+            return false;
+        }
+        let fl = self.fade_len();
+        let mut gain = 1.0f32;
+        if self.rs.fade_out.load(Ordering::Relaxed) {
+            let left = *self.rs.fade_out_left.get_or_insert(fl);
+            if left == 0 {
+                return false;
+            }
+            gain = left as f32 / fl as f32;
+            self.rs.fade_out_left = Some(left - 1);
+        }
+        if self.rs.fade_in_left > 0 {
+            gain *= 1.0 - self.rs.fade_in_left as f32 / fl as f32;
+            self.rs.fade_in_left -= 1;
+        }
+        let mut r = rate();
+        if r == 1.0 && self.rs.frac != 0.0 {
+            // Back at normal speed: drop the leftover fraction of a frame (well under a
+            // millisecond) so the output is the input again.
+            self.rs.src_pos -= self.rs.frac;
+            self.rs.frac = 0.0;
+        }
+        let t = self.rs.frac as f32;
+        let h = &self.rs.hist;
+        for c in 0..ch {
+            self.rs.out[c] = if t == 0.0 {
+                h[ch + c]
+            } else {
+                hermite(h[c], h[ch + c], h[2 * ch + c], h[3 * ch + c], t)
+            };
+        }
+        if gain != 1.0 {
+            for x in self.rs.out.iter_mut() {
+                *x *= gain;
+            }
+        }
+        if !r.is_finite() {
+            r = 1.0;
+        }
+        self.rs.frac += r;
+        self.rs.src_pos += r;
+        self.rs.emitted += 1;
+        let skew = (self.rs.src_pos - self.rs.emitted as f64) / self.sample_rate.max(1) as f64;
+        self.rs.skew.store(skew.to_bits(), Ordering::Relaxed);
+        while self.rs.frac >= 1.0 {
+            self.rs.hist.copy_within(ch..4 * ch, 0);
+            let mut complete = true;
+            for c in 0..ch {
+                match self.pop_wait() {
+                    Some(sample) => self.rs.hist[3 * ch + c] = sample,
+                    None => {
+                        self.rs.hist[3 * ch + c] = self.rs.hist[2 * ch + c];
+                        complete = false;
+                    }
+                }
+            }
+            if !complete {
+                self.rs.pad += 1;
+            }
+            self.rs.frac -= 1.0;
+        }
+        self.rs.out_i = 0;
+        true
+    }
+
     pub fn enable_analysis(
         &mut self,
         enabled: Arc<std::sync::atomic::AtomicBool>,
@@ -704,7 +910,12 @@ impl Iterator for StreamingSource {
             self.ring.register_consumer();
             self.consumer_registered = true;
         }
-        let sample = self.ring.pop_or_underrun()?;
+        if self.rs.out_i >= self.rs.out.len() && !self.next_frame() {
+            return None;
+        }
+        let sample = self.rs.out[self.rs.out_i];
+        self.rs.out_i += 1;
+        let sample = self.mono.process(sample, self.channels as usize);
         let sample = self
             .eq
             .get_or_insert_with(|| super::eq::EqChain::new(self.sample_rate, self.channels))
@@ -737,7 +948,7 @@ impl rodio::Source for StreamingSource {
 
 #[cfg(test)]
 mod tests {
-    use super::{SampleRing, StreamingSource};
+    use super::{Resampler, SampleRing, StreamingSource};
     use std::sync::Arc;
     use std::time::Duration;
 
@@ -784,11 +995,52 @@ mod tests {
             analysis: None,
             eq: None,
             tap_pos: 0,
+            mono: Default::default(),
+            rs: Resampler::default(),
             consumer_registered: false,
         };
 
         drop(source);
 
         assert!(ring.is_cancelled());
+    }
+}
+
+#[cfg(test)]
+mod resampling_tests {
+    use super::*;
+    #[test]
+    fn normal_rate_preserves_even_single_frame_streams() {
+        for frames in 1..8 {
+            let ring = Arc::new(SampleRing::new(32));
+            let expected: Vec<f32> = (0..frames * 2).map(|value| value as f32 / 20.0).collect();
+            for sample in &expected {
+                assert!(ring.push(*sample));
+            }
+            ring.set_done();
+            let mut source = StreamingSource {
+                ring,
+                channels: 2,
+                sample_rate: 48000,
+                total_duration: None,
+                analysis: None,
+                eq: None,
+                tap_pos: 0,
+                mono: Default::default(),
+                rs: Default::default(),
+                consumer_registered: false,
+            };
+            let mut samples = Vec::new();
+            while source.next_frame() {
+                samples.extend_from_slice(&source.rs.out);
+            }
+            assert_eq!(samples, expected);
+        }
+    }
+    #[test]
+    fn hermite_interpolation_hits_frame_endpoints() {
+        assert_eq!(hermite(0.0, 1.0, 2.0, 3.0, 0.0), 1.0);
+        assert_eq!(hermite(0.0, 1.0, 2.0, 3.0, 1.0), 2.0);
+        assert_eq!(hermite(0.0, 1.0, 2.0, 3.0, 0.5), 1.5);
     }
 }

@@ -1,9 +1,11 @@
+import { TogetherDebug } from "@/features/together/index.js";
 import { Button } from "@heroui/react";
 import { DebugTab } from "../settings-support.jsx";
 import { EyeSlash } from "@/shared/icons/icons.jsx";
 export function DebugSettingsTab({ setDebugUnlocked, setTab, t }) {
   return (
     <>
+      <TogetherDebug />
       <DebugTab t={t} />
       <div className="mt-6">
         <Button

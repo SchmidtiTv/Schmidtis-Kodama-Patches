@@ -37,7 +37,11 @@ pub struct EqConfig {
 
 impl EqConfig {
     pub const fn flat() -> Self {
-        EqConfig { enabled: false, preamp_db: 0.0, gains_db: [0.0; BANDS] }
+        EqConfig {
+            enabled: false,
+            preamp_db: 0.0,
+            gains_db: [0.0; BANDS],
+        }
     }
     /// Nothing to do: switched off, or switched on but with every control at zero.
     fn is_noop(&self) -> bool {
@@ -59,7 +63,10 @@ pub fn set_config(cfg: EqConfig) {
 }
 
 pub fn config() -> EqConfig {
-    CONFIG.lock().map(|c| *c).unwrap_or_else(|e| *e.into_inner())
+    CONFIG
+        .lock()
+        .map(|c| *c)
+        .unwrap_or_else(|e| *e.into_inner())
 }
 
 /// One peaking filter's coefficients, already normalised by a0.
@@ -98,7 +105,13 @@ fn peaking(freq: f32, gain_db: f32, q: f32, sample_rate: f32) -> Coeffs {
     let a1 = -2.0 * cos_w0;
     let a2 = 1.0 - alpha / a;
 
-    Coeffs { b0: b0 / a0, b1: b1 / a0, b2: b2 / a0, a1: a1 / a0, a2: a2 / a0 }
+    Coeffs {
+        b0: b0 / a0,
+        b1: b1 / a0,
+        b2: b2 / a0,
+        a1: a1 / a0,
+        a2: a2 / a0,
+    }
 }
 
 /// Per-source filter bank. Interleaved samples arrive one at a time, so it keeps its own
@@ -235,7 +248,11 @@ mod tests {
     }
 
     fn chain_with(preamp: f32, gains: [f32; BANDS]) -> EqChain {
-        set_config(EqConfig { enabled: true, preamp_db: preamp, gains_db: gains });
+        set_config(EqConfig {
+            enabled: true,
+            preamp_db: preamp,
+            gains_db: gains,
+        });
         EqChain::new(44100, 1)
     }
 
@@ -246,7 +263,10 @@ mod tests {
         g[5] = 6.0; // 1 kHz
         let mut c = chain_with(0.0, g);
         let at_1k = gain_at(&mut c, 1000.0, 44100.0);
-        assert!((at_1k - 6.0).abs() < 0.4, "1 kHz should be about +6 dB, was {at_1k}");
+        assert!(
+            (at_1k - 6.0).abs() < 0.4,
+            "1 kHz should be about +6 dB, was {at_1k}"
+        );
     }
 
     #[test]
@@ -267,7 +287,10 @@ mod tests {
         g[2] = -8.0; // 125 Hz
         let mut c = chain_with(0.0, g);
         let at_125 = gain_at(&mut c, 125.0, 44100.0);
-        assert!((at_125 + 8.0).abs() < 0.4, "125 Hz should be about -8 dB, was {at_125}");
+        assert!(
+            (at_125 + 8.0).abs() < 0.4,
+            "125 Hz should be about -8 dB, was {at_125}"
+        );
     }
 
     #[test]
@@ -276,24 +299,39 @@ mod tests {
         let mut c = chain_with(-6.0, [0.0; BANDS]);
         // Preamp alone is not a no-op even with every band flat.
         let at_1k = gain_at(&mut c, 1000.0, 44100.0);
-        assert!((at_1k + 6.0).abs() < 0.1, "preamp should be about -6 dB, was {at_1k}");
+        assert!(
+            (at_1k + 6.0).abs() < 0.1,
+            "preamp should be about -6 dB, was {at_1k}"
+        );
     }
 
     #[test]
     fn disabled_is_bit_identical() {
         let _g = lock();
-        set_config(EqConfig { enabled: false, preamp_db: 9.0, gains_db: [9.0; BANDS] });
+        set_config(EqConfig {
+            enabled: false,
+            preamp_db: 9.0,
+            gains_db: [9.0; BANDS],
+        });
         let mut c = EqChain::new(44100, 2);
         for i in 0..1000 {
             let x = (i as f32 * 0.01).sin() * 0.5;
-            assert_eq!(c.process(x), x, "switched off, the sample must come back untouched");
+            assert_eq!(
+                c.process(x),
+                x,
+                "switched off, the sample must come back untouched"
+            );
         }
     }
 
     #[test]
     fn flat_and_enabled_is_bit_identical() {
         let _g = lock();
-        set_config(EqConfig { enabled: true, preamp_db: 0.0, gains_db: [0.0; BANDS] });
+        set_config(EqConfig {
+            enabled: true,
+            preamp_db: 0.0,
+            gains_db: [0.0; BANDS],
+        });
         let mut c = EqChain::new(44100, 2);
         for i in 0..1000 {
             let x = (i as f32 * 0.01).sin() * 0.5;
@@ -306,18 +344,25 @@ mod tests {
         let _g = lock();
         let mut g = [0.0; BANDS];
         g[5] = 12.0;
-        set_config(EqConfig { enabled: true, preamp_db: 0.0, gains_db: g });
+        set_config(EqConfig {
+            enabled: true,
+            preamp_db: 0.0,
+            gains_db: g,
+        });
         let mut stereo = EqChain::new(44100, 2);
         // Left carries a sine, right is silent. If the two shared filter memory, the silent
         // channel would leak the other one's ringing.
         let mut worst_right = 0.0f32;
         for i in 0..8000 {
             let x = (2.0 * std::f32::consts::PI * 1000.0 * i as f32 / 44100.0).sin() * 0.5;
-            stereo.process(x);              // left
-            let r = stereo.process(0.0);    // right
+            stereo.process(x); // left
+            let r = stereo.process(0.0); // right
             worst_right = worst_right.max(r.abs());
         }
-        assert!(worst_right < 1e-6, "silence on the right leaked {worst_right}");
+        assert!(
+            worst_right < 1e-6,
+            "silence on the right leaked {worst_right}"
+        );
     }
 
     #[test]
@@ -325,11 +370,61 @@ mod tests {
         let _g = lock();
         let mut g = [0.0; BANDS];
         g[9] = 6.0; // 16 kHz, above Nyquist at 22.05 kHz
-        set_config(EqConfig { enabled: true, preamp_db: 0.0, gains_db: g });
+        set_config(EqConfig {
+            enabled: true,
+            preamp_db: 0.0,
+            gains_db: g,
+        });
         let mut c = EqChain::new(22050, 1);
         for i in 0..4000 {
             let y = c.process((i as f32 * 0.05).sin() * 0.3);
             assert!(y.is_finite(), "filter blew up at a low sample rate");
         }
+    }
+}
+
+static MONO: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn set_mono(on: bool) {
+    MONO.store(on, Ordering::Relaxed);
+}
+
+/// Folds a stereo stream to mono, one interleaved sample at a time. The left sample goes out as
+/// the previous frame's mix and the right one as this frame's: one sample between the ears
+/// (about 20 microseconds), far below anything audible, and no buffering. The channel cursor
+/// counts all the time, so switching it on mid-song lands on the right channel.
+#[derive(Default)]
+pub struct MonoFold {
+    ch: usize,
+    left: f32,
+    last: f32,
+}
+
+impl MonoFold {
+    #[inline]
+    pub fn process(&mut self, sample: f32, channels: usize) -> f32 {
+        let channels = channels.max(1);
+        let ch = self.ch;
+        self.ch = (self.ch + 1) % channels;
+        if channels != 2 || !MONO.load(Ordering::Relaxed) {
+            return sample;
+        }
+        if ch == 0 {
+            self.left = sample;
+            self.last
+        } else {
+            let m = (self.left + sample) * 0.5;
+            self.last = m;
+            m
+        }
+    }
+}
+
+#[cfg(test)]
+mod mono_tests {
+    #[test]
+    fn a_mono_source_is_unchanged() {
+        let mut fold = super::MonoFold::default();
+        assert_eq!(fold.process(0.7, 1), 0.7);
     }
 }

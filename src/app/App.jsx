@@ -1,3 +1,8 @@
+import { useStoreLinks } from "./hooks/use-store-links.js";
+import { useListenTogether } from "./hooks/use-listen-together.js";
+import { useTogetherSync } from "@/features/together/index.js";
+import { TrackAnnouncement } from "@/features/player/track-announcement.jsx";
+import { useAccessibility } from "@/features/settings/hooks/use-accessibility.js";
 import { applyShape, applyTheme } from "@/shared/lib/theme.js";
 import {
   lazy,
@@ -22,7 +27,7 @@ import {
   SplashScreen,
 } from "./startup-screens.jsx";
 import { storageCodecs, usePersistedState } from "@/shared/hooks/use-persisted-state.js";
-import { setAccentSmooth, vibrantAccentFromImage } from "@/shared/lib/accent.js";
+import { setAccentSmooth, vibrantAccentFromImage, readableAccent } from "@/shared/lib/accent.js";
 import {
   assignShortcut as resolveShortcutAssignment,
   CODE_DISPLAY_FALLBACK,
@@ -89,6 +94,19 @@ const DevMenu = import.meta.env.DEV ? lazy(() => import("./dev-menu.jsx")) : nul
 const ICON_CONTEXT_VALUE = { weight: "bold" };
 
 export default function App() {
+  const accessibility = useAccessibility();
+  const [lyricsEngine, setLyricsEngine] = usePersistedState("kodama-lyrics-engine", "braccato", {
+    deserialize: (raw) => {
+      const value = JSON.parse(raw);
+      if (!["braccato", "legacy"].includes(value)) throw new TypeError("Invalid lyrics engine");
+      return value;
+    },
+  });
+  const [braccatoLetterWave, setBraccatoLetterWave] = usePersistedState(
+    "kodama-braccato-letter-wave",
+    true,
+    storageCodecs.boolean
+  );
   const [showSplash, setShowSplash] = useState(true);
   const finishSplash = useCallback(() => setShowSplash(false), []);
 
@@ -129,26 +147,29 @@ export default function App() {
     else toast(message, { timeout: 3500 });
   }, []);
 
-  const togglePin = useCallback((pl) => {
-    const stored = (() => {
+  const togglePin = useCallback(
+    (pl) => {
+      const stored = (() => {
+        try {
+          return JSON.parse(localStorage.getItem(profileKey("kiyoshi-pinned")) || "[]");
+        } catch {
+          return [];
+        }
+      })();
+      const id = itemId(pl);
+      const already = stored.find((p) => itemId(p) === id);
+      const next = already ? stored.filter((p) => itemId(p) !== id) : [pl, ...stored];
       try {
-        return JSON.parse(localStorage.getItem(profileKey("kiyoshi-pinned")) || "[]");
+        localStorage.setItem(profileKey("kiyoshi-pinned"), JSON.stringify(next));
       } catch {
-        return [];
+        addToast("Could not save the pinned item because local storage is full.", "error");
+        return;
       }
-    })();
-    const id = itemId(pl);
-    const already = stored.find((p) => itemId(p) === id);
-    const next = already ? stored.filter((p) => itemId(p) !== id) : [pl, ...stored];
-    try {
-      localStorage.setItem(profileKey("kiyoshi-pinned"), JSON.stringify(next));
-    } catch {
-      addToast("Could not save the pinned item because local storage is full.", "error");
-      return;
-    }
-    setPinnedIds(next.map((p) => itemId(p)));
-    window.dispatchEvent(new Event("kiyoshi-pins-updated"));
-  }, [addToast]);
+      setPinnedIds(next.map((p) => itemId(p)));
+      window.dispatchEvent(new Event("kiyoshi-pins-updated"));
+    },
+    [addToast]
+  );
 
   const reconcileSidebarPlaylists = useCallback((liveIds) => {
     if (!liveIds.length) return;
@@ -183,7 +204,7 @@ export default function App() {
       }
     }
     try {
-      localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...live])]))
+      localStorage.setItem(seenKey, JSON.stringify([...new Set([...seen, ...live])]));
     } catch {
       // Reconciliation remains best-effort when browser storage is unavailable.
     }
@@ -199,7 +220,9 @@ export default function App() {
     return () => window.removeEventListener("kodama-library-playlists", handleLibraryPlaylists);
   }, [reconcileSidebarPlaylists]);
 
-  const [accentCustom, setAccentCustom] = useState(() => localStorage.getItem("kiyoshi-accent") !== null);
+  const [accentCustom, setAccentCustom] = useState(
+    () => localStorage.getItem("kiyoshi-accent") !== null
+  );
   const [accent, setAccent] = useState(() => {
     const saved = localStorage.getItem("kiyoshi-accent");
     if (saved) document.documentElement.style.setProperty("--accent", saved);
@@ -315,34 +338,41 @@ export default function App() {
     localStorage.removeItem("kiyoshi-accent");
     document.documentElement.style.removeProperty("--accent");
     setAccentCustom(false);
-    const themedAccent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
+    const themedAccent = getComputedStyle(document.documentElement)
+      .getPropertyValue("--accent")
+      .trim();
     if (themedAccent) setAccent(themedAccent);
   }, []);
 
-  const handleThemeChange = useCallback((t) => {
-    setTheme(t);
-    applyTheme(t);
-    localStorage.setItem("kiyoshi-theme", t);
-    if (!accentCustom) {
-      const themedAccent = getComputedStyle(document.documentElement).getPropertyValue("--accent").trim();
-      if (themedAccent) setAccent(themedAccent);
-    }
-    if (t === "light") {
-      const now = Date.now();
-      if (now - lightClickRef.current.lastTime < 700) {
-        lightClickRef.current.count++;
-        if (lightClickRef.current.count >= 4) {
-          lightClickRef.current.count = 0;
-          flashbangTriggerRef.current?.();
-        }
-      } else {
-        lightClickRef.current.count = 1;
+  const handleThemeChange = useCallback(
+    (t) => {
+      setTheme(t);
+      applyTheme(t);
+      localStorage.setItem("kiyoshi-theme", t);
+      if (!accentCustom) {
+        const themedAccent = getComputedStyle(document.documentElement)
+          .getPropertyValue("--accent")
+          .trim();
+        if (themedAccent) setAccent(themedAccent);
       }
-      lightClickRef.current.lastTime = now;
-    } else {
-      lightClickRef.current.count = 0;
-    }
-  }, [accentCustom]);
+      if (t === "light") {
+        const now = Date.now();
+        if (now - lightClickRef.current.lastTime < 700) {
+          lightClickRef.current.count++;
+          if (lightClickRef.current.count >= 4) {
+            lightClickRef.current.count = 0;
+            flashbangTriggerRef.current?.();
+          }
+        } else {
+          lightClickRef.current.count = 1;
+        }
+        lightClickRef.current.lastTime = now;
+      } else {
+        lightClickRef.current.count = 0;
+      }
+    },
+    [accentCustom]
+  );
 
   useEffect(() => {
     applyTheme(theme);
@@ -381,7 +411,9 @@ export default function App() {
     remoteEnabled: false,
   });
   const lastfm = useLastfmClient();
+  const roomIntentRef = useRef(null);
   const player = usePlayerController({
+    roomIntentRef,
     addToast,
     resetLyricsSessionRef,
     integrationsRef: playerIntegrationRef,
@@ -412,7 +444,9 @@ export default function App() {
     try {
       const config = JSON.parse(localStorage.getItem("kodama-equalizer"));
       if (Array.isArray(config?.gainsDb) && config.gainsDb.length === 10) {
-        native.setAudioEqualizer(!!config.enabled, Number(config.preampDb) || 0, config.gainsDb).catch(() => {});
+        native
+          .setAudioEqualizer(!!config.enabled, Number(config.preampDb) || 0, config.gainsDb)
+          .catch(() => {});
       }
     } catch {
       // Equalizer preferences are optional and the native default is flat.
@@ -450,14 +484,29 @@ export default function App() {
   );
 
   useEffect(() => {
+    const readable = (hex) =>
+      accessibility.accentContrast
+        ? readableAccent(
+            hex,
+            getComputedStyle(document.documentElement).getPropertyValue("--bg-base").trim() ||
+              "#121212"
+          )
+        : hex;
     if (!accentDynamic) {
-      if (accentCustom) document.documentElement.style.setProperty("--accent", accent);
-      else document.documentElement.style.removeProperty("--accent");
+      if (accentCustom) document.documentElement.style.setProperty("--accent", readable(accent));
+      else {
+        document.documentElement.style.removeProperty("--accent");
+        if (accessibility.accentContrast)
+          document.documentElement.style.setProperty(
+            "--accent",
+            readable(getComputedStyle(document.documentElement).getPropertyValue("--accent").trim())
+          );
+      }
       return;
     }
     const url = currentTrack?.thumbnail ? thumb(currentTrack.thumbnail) : null;
     if (!url) {
-      document.documentElement.style.setProperty("--accent", accent);
+      document.documentElement.style.setProperty("--accent", readable(accent));
       return;
     }
     let cancelled = false;
@@ -466,19 +515,38 @@ export default function App() {
     img.onload = () => {
       if (cancelled) return;
       try {
-        setAccentSmooth(vibrantAccentFromImage(img, accentSat, accentLight));
+        setAccentSmooth(
+          readable(vibrantAccentFromImage(img, accentSat, accentLight)),
+          accessibility.reduceMotion ? 0 : 380
+        );
       } catch {
-        document.documentElement.style.setProperty("--accent", accent);
+        document.documentElement.style.setProperty("--accent", readable(accent));
       }
     };
     img.onerror = () => {
-      if (!cancelled) document.documentElement.style.setProperty("--accent", accent);
+      if (!cancelled) document.documentElement.style.setProperty("--accent", readable(accent));
     };
     img.src = url;
     return () => {
       cancelled = true;
     };
-  }, [accentCustom, accentDynamic, currentTrack?.thumbnail, accent, accentSat, accentLight]);
+  }, [
+    theme,
+    accessibility.accentContrast,
+    accessibility.reduceMotion,
+    accentCustom,
+    accentDynamic,
+    currentTrack?.thumbnail,
+    accent,
+    accentSat,
+    accentLight,
+  ]);
+
+  const installedThemesRevision = useStoreLinks({
+    setVizConfig,
+    setTheme: handleThemeChange,
+    addToast,
+  });
 
   const usageSecRef = useRef(Number(localStorage.getItem("kiyoshi-total-usage") || 0));
   const playtimeSecRef = useRef(Number(localStorage.getItem("kiyoshi-total-playtime") || 0));
@@ -818,6 +886,14 @@ export default function App() {
     stopPlayback,
   });
 
+  useTogetherSync({ currentTrack: player.currentTrack, queue: player.queue });
+  useListenTogether({
+    player,
+    profile: profile.profiles?.find((item) => item.active),
+    addToast,
+    roomIntentRef,
+  });
+
   const {
     profiles,
     showLogin,
@@ -907,6 +983,8 @@ export default function App() {
         setAnimations(v);
         localStorage.setItem("kiyoshi-animations", v);
       },
+      installedThemesRevision,
+      ...accessibility,
       highContrast,
       onToggleHighContrast: () => {
         const next = !highContrast;
@@ -973,6 +1051,8 @@ export default function App() {
       onPlayerBarControlToggle: handlePlayerBarControlToggle,
     }),
     [
+      accessibility,
+      installedThemesRevision,
       accent,
       accentCustom,
       handleAccentChange,
@@ -1083,6 +1163,10 @@ export default function App() {
 
   const lyricsSettings = useMemo(
     () => ({
+      lyricsEngine,
+      onLyricsEngineChange: setLyricsEngine,
+      braccatoLetterWave,
+      onToggleBraccatoLetterWave: () => setBraccatoLetterWave((value) => !value),
       lyricsFontSize,
       onLyricsFontSizeChange: (v) => {
         setLyricsFontSize(v);
@@ -1129,6 +1213,10 @@ export default function App() {
       },
     }),
     [
+      lyricsEngine,
+      setLyricsEngine,
+      braccatoLetterWave,
+      setBraccatoLetterWave,
       lyricsFontSize,
       lyricsTranslationFontSize,
       lyricsRomajiFontSize,
@@ -1325,17 +1413,20 @@ export default function App() {
   );
   const appShellAppearancePrefs = useMemo(
     () => ({
-      animations,
+      animations: animations && !accessibility.reduceMotion,
       appIconCustomizationAvailable,
       hideExplicit,
       ambientBackground,
       ambientVisualizer,
-      vizConfig,
+      vizConfig: accessibility.reduceMotion
+        ? { ...vizConfig, coverPulse: false, blobs: false }
+        : vizConfig,
       instrumentalViz,
       canvasEnabled,
       canvasSource,
     }),
     [
+      accessibility.reduceMotion,
       animations,
       appIconCustomizationAvailable,
       hideExplicit,
@@ -1349,6 +1440,8 @@ export default function App() {
   );
   const appShellLyricsPrefs = useMemo(
     () => ({
+      braccatoLyrics: lyricsEngine === "braccato",
+      braccatoLetterWave: braccatoLetterWave && !accessibility.reduceMotion,
       lyricsFontSize,
       lyricsProviders,
       showLyricsTranslation,
@@ -1360,9 +1453,12 @@ export default function App() {
       lyricsRomajiFontSize,
       showAgentTags,
       syllableZoom,
-      fluidLyrics,
+      fluidLyrics: fluidLyrics && !accessibility.reduceMotion,
     }),
     [
+      lyricsEngine,
+      braccatoLetterWave,
+      accessibility.reduceMotion,
       lyricsFontSize,
       lyricsProviders,
       showLyricsTranslation,
@@ -1451,7 +1547,7 @@ export default function App() {
       <IconContext.Provider value={ICON_CONTEXT_VALUE}>
         <LangContext.Provider value={language}>
           <TrackNumberContext.Provider value={showTrackNumbers}>
-            <AnimationContext.Provider value={animations}>
+            <AnimationContext.Provider value={animations && !accessibility.reduceMotion}>
               <FontScaleContext.Provider value={appFontScale}>
                 <ZoomContext.Provider value={uiZoom}>
                   <ProfileProvider controller={profile}>
@@ -1505,6 +1601,10 @@ export default function App() {
                             {DevMenu && <DevMenu player={player} addToast={addToast} />}
                           </Suspense>
 
+                          <TrackAnnouncement
+                            enabled={accessibility.announceTracks}
+                            track={currentTrack}
+                          />
                           <AppShell
                             language={language}
                             addToast={addToast}

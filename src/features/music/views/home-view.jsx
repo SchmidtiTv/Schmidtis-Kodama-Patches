@@ -1,3 +1,4 @@
+import { isMotionReduced } from "@/shared/lib/reduced-motion.js";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import {
   Button,
@@ -33,6 +34,26 @@ import { Carousel } from "../components/carousel.jsx";
 import { usePlayerActions } from "../../player/player-context.jsx";
 import { useAnimations } from "@/features/settings/display-context.jsx";
 import { shuffleTracks } from "@/features/music/shuffle-tracks.js";
+
+const MOOD_COLORS = [
+  "#7c4dff",
+  "#e53935",
+  "#00acc1",
+  "#fb8c00",
+  "#d81b60",
+  "#43a047",
+  "#3949ab",
+  "#8e24aa",
+  "#00897b",
+  "#f4511e",
+  "#5e35b1",
+  "#c2185b",
+];
+function moodColor(title) {
+  let h = 0;
+  for (const ch of String(title || "")) h = (h * 31 + ch.codePointAt(0)) >>> 0;
+  return MOOD_COLORS[h % MOOD_COLORS.length];
+}
 
 // Keep responses in memory across profile/app-shell remounts while still allowing the sidebar's
 // explicit refresh action to request new data. Primary-view navigation normally keeps Home mounted.
@@ -72,6 +93,9 @@ export function HomeView({
   const [moodLoading, setMoodLoading] = useState(false);
   const [podcastLoading, setPodcastLoading] = useState(null); // playlistId being fetched
   const [speedDialPage, setSpeedDialPage] = useState(0);
+  const sdTrackRef = useRef(null);
+  const sdDotsRef = useRef(null);
+  const [moodShowAll, setMoodShowAll] = useState(false);
   const t = useLang();
   const homeCancelledRef = useRef(false);
   const headerRef = useRef(null);
@@ -80,7 +104,7 @@ export function HomeView({
 
   useLayoutEffect(() => {
     const header = headerRef.current;
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = isMotionReduced();
     if (!header || !animations || reducedMotion) return undefined;
     const context = gsap.context(() => {
       gsap
@@ -285,8 +309,12 @@ export function HomeView({
     }
     if (item.type === "song") {
       const tracks = (section?.items || []).filter((x) => x.type === "song");
-      const queue = shuffle ? shuffleTracks(tracks) : tracks;
-      handlePlay(shuffle ? queue[0] : item, queue);
+      if (!shuffle) {
+        handlePlay(item);
+        return;
+      }
+      const queue = shuffleTracks(tracks);
+      if (queue.length) handlePlay(queue[0], queue);
       return;
     }
     if (item.type === "album") {
@@ -340,12 +368,9 @@ export function HomeView({
     }
   };
 
-  const handleCardClick = (item, section) => {
+  const handleCardClick = (item) => {
     if (item.type === "song") {
-      handlePlay(
-        item,
-        (section?.items || []).filter((x) => x.type === "song")
-      );
+      handlePlay(item);
       return;
     }
     if (item.type === "podcast" || item.type === "podcast_episode") {
@@ -722,18 +747,37 @@ export function HomeView({
       {/* ── Top row: left stack (carousels) + Speed Dial (right) ── */}
       {(leftSections.length > 0 || speedDialItems.length > 0) &&
         (() => {
-          const PER_PAGE = 9;
+          const PER_PAGE = 8;
+          const ROW_H = 52;
           const pages = [];
           for (let i = 0; i < speedDialItems.length; i += PER_PAGE)
             pages.push(speedDialItems.slice(i, i + PER_PAGE));
           const curPage = Math.min(speedDialPage, Math.max(0, pages.length - 1));
           const hasSpeedDial = speedDialItems.length > 0;
           const hasLeft = leftSections.length > 0;
-          const goPage = (dir) =>
-            setSpeedDialPage((p) => {
-              const cur = Math.min(p, pages.length - 1);
-              return Math.max(0, Math.min(pages.length - 1, cur + dir));
+          const showPage = (page) => {
+            const track = sdTrackRef.current;
+            const target = Math.max(0, Math.min(pages.length - 1, page));
+            if (track)
+              track.scrollTo({
+                left: target * track.clientWidth,
+                behavior: animations ? "smooth" : "auto",
+              });
+            else setSpeedDialPage(target);
+          };
+          const goPage = (direction) => showPage(curPage + direction);
+          const pageOf = (track) => Math.round(track.scrollLeft / Math.max(1, track.clientWidth));
+          const onTrackScroll = (event) => {
+            const page = pageOf(event.currentTarget);
+            Array.from(sdDotsRef.current?.children || []).forEach((dot, index) => {
+              dot.style.width = index === page ? "18px" : "7px";
+              dot.style.background =
+                index === page
+                  ? "var(--accent)"
+                  : "color-mix(in srgb, var(--text-muted) 55%, transparent)";
             });
+          };
+          const onTrackRest = (event) => setSpeedDialPage(pageOf(event.currentTarget));
 
           return (
             <div
@@ -844,153 +888,152 @@ export function HomeView({
                     )}
                   </div>
                   <div
+                    ref={sdTrackRef}
+                    className="sd-track"
+                    onScroll={onTrackScroll}
+                    onScrollEnd={onTrackRest}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      gap: 10,
-                      padding: "0 16px 12px",
+                      display: "flex",
+                      overflowX: "auto",
+                      scrollSnapType: "x mandatory",
+                      scrollbarWidth: "none",
+                      overscrollBehaviorX: "contain",
                     }}
                   >
-                    {Array.from({
-                      length: pages.length > 1 ? PER_PAGE : pages[0]?.length || 0,
-                    }).map((_, i) => {
-                      const item = (pages[curPage] || [])[i];
-                      // Empty placeholder keeps the grid at a constant 3-row height on the last page
-                      if (!item)
-                        return (
-                          <div key={i} aria-hidden style={{ minWidth: 0, aspectRatio: "1 / 1" }} />
-                        );
-                      return (
-                        <CardRoot
-                          key={i}
-                          data-track-id={item.videoId}
-                          variant="transparent"
-                          className="home-card p-0! gap-0! rounded-none! shadow-none!"
-                          onClick={() => handlePlay(item, speedDialItems)}
-                          onContextMenu={(e) => {
-                            e.preventDefault();
-                            onTrackContextMenu?.(e, item);
-                          }}
-                          style={{ cursor: "default", minWidth: 0 }}
-                        >
-                          <div
-                            className="home-card-media"
-                            style={{
-                              position: "relative",
-                              width: "100%",
-                              aspectRatio: "1 / 1",
-                              borderRadius: "var(--r-lg)",
-                              overflow: "hidden",
-                              background: "var(--bg-elevated)",
-                            }}
-                          >
-                            {item.thumbnail ? (
-                              <RetryingImage
-                                className="home-card-img"
-                                src={thumbHi(item.thumbnail, 480)}
-                                alt=""
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  objectFit: "cover",
-                                  transition: "transform 0.25s",
-                                }}
-                              />
-                            ) : (
+                    {pages.map((page, pi) => (
+                      <div
+                        key={pi}
+                        style={{
+                          flex: "0 0 100%",
+                          minWidth: 0,
+                          scrollSnapAlign: "start",
+                          display: "flex",
+                          flexDirection: "column",
+                          gap: 2,
+                          padding: "0 8px 10px",
+                        }}
+                      >
+                        {Array.from({ length: pages.length > 1 ? PER_PAGE : page.length }).map(
+                          (_, i) => {
+                            const item = page[i];
+                            // An empty row keeps every page at the same height.
+                            if (!item)
+                              return (
+                                <div key={i} aria-hidden style={{ height: ROW_H, flexShrink: 0 }} />
+                              );
+                            return (
                               <div
-                                style={{
-                                  width: "100%",
-                                  height: "100%",
-                                  background: "var(--placeholder-gradient)",
+                                key={i}
+                                data-track-id={item.videoId}
+                                className="sd-row"
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter" || event.key === " ") {
+                                    event.preventDefault();
+                                    handlePlay(item);
+                                  }
                                 }}
-                              />
-                            )}
-                            {/* Gradient + title/artist overlay (bottom-left) */}
-                            <div
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                background:
-                                  "linear-gradient(to top, rgba(0,0,0,0.85) 0%, rgba(0,0,0,0.45) 32%, transparent 60%)",
-                                pointerEvents: "none",
-                              }}
-                            />
-                            <div
-                              style={{
-                                position: "absolute",
-                                left: 8,
-                                right: 8,
-                                bottom: 7,
-                                pointerEvents: "none",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  fontSize: "var(--t11)",
-                                  fontWeight: 700,
-                                  color: "#fff",
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  textShadow: "0 1px 3px rgba(0,0,0,0.6)",
+                                onClick={() => handlePlay(item)}
+                                onContextMenu={(e) => {
+                                  e.preventDefault();
+                                  onTrackContextMenu?.(e, item);
                                 }}
-                              >
-                                {item.title}
-                              </div>
-                              <div
                                 style={{
-                                  fontSize: "var(--t10)",
-                                  color: "rgba(255,255,255,0.78)",
-                                  whiteSpace: "nowrap",
-                                  overflow: "hidden",
-                                  textOverflow: "ellipsis",
-                                  marginTop: 1,
-                                  textShadow: "0 1px 3px rgba(0,0,0,0.6)",
-                                }}
-                              >
-                                {item.artists}
-                              </div>
-                            </div>
-                            <div
-                              className="home-card-play"
-                              style={{
-                                position: "absolute",
-                                inset: 0,
-                                opacity: 0,
-                                transition: "opacity 0.2s",
-                                background: "rgba(0,0,0,0.4)",
-                                display: "flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                pointerEvents: "none",
-                              }}
-                            >
-                              <div
-                                style={{
-                                  width: 32,
-                                  height: 32,
-                                  borderRadius: "50%",
-                                  background: "var(--accent)",
+                                  height: ROW_H,
                                   display: "flex",
                                   alignItems: "center",
-                                  justifyContent: "center",
+                                  gap: 10,
+                                  padding: "0 8px",
+                                  borderRadius: "var(--r-lg)",
+                                  cursor: "default",
+                                  minWidth: 0,
                                 }}
                               >
-                                <Play
-                                  size={13}
-                                  weight="fill"
-                                  style={{ color: "white", marginLeft: 2 }}
-                                />
+                                <div
+                                  style={{
+                                    position: "relative",
+                                    width: 40,
+                                    height: 40,
+                                    borderRadius: "var(--r-md)",
+                                    overflow: "hidden",
+                                    flexShrink: 0,
+                                    background: "var(--bg-elevated)",
+                                  }}
+                                >
+                                  {item.thumbnail ? (
+                                    <RetryingImage
+                                      src={thumbHi(item.thumbnail, 120)}
+                                      alt=""
+                                      decoding="async"
+                                      style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                                    />
+                                  ) : (
+                                    <div
+                                      style={{
+                                        width: "100%",
+                                        height: "100%",
+                                        background: "var(--placeholder-gradient)",
+                                      }}
+                                    />
+                                  )}
+                                  <div
+                                    className="sd-play"
+                                    style={{
+                                      position: "absolute",
+                                      inset: 0,
+                                      background: "rgba(0,0,0,0.45)",
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      opacity: 0,
+                                      transition: "opacity .15s",
+                                    }}
+                                  >
+                                    <Play
+                                      size={13}
+                                      weight="fill"
+                                      style={{ color: "white", marginLeft: 2 }}
+                                    />
+                                  </div>
+                                </div>
+                                <div style={{ minWidth: 0, flex: 1 }}>
+                                  <div
+                                    style={{
+                                      fontSize: "var(--t13)",
+                                      fontWeight: 600,
+                                      color: "var(--text-primary)",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                    }}
+                                  >
+                                    {item.title}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: "var(--t11)",
+                                      color: "var(--text-muted)",
+                                      whiteSpace: "nowrap",
+                                      overflow: "hidden",
+                                      textOverflow: "ellipsis",
+                                      marginTop: 1,
+                                    }}
+                                  >
+                                    {item.artists}
+                                  </div>
+                                </div>
                               </div>
-                            </div>
-                          </div>
-                        </CardRoot>
-                      );
-                    })}
+                            );
+                          }
+                        )}
+                      </div>
+                    ))}
                   </div>
                   {/* Pagination dots */}
                   {pages.length > 1 && (
                     <div
+                      ref={sdDotsRef}
                       style={{
                         display: "flex",
                         justifyContent: "center",
@@ -1001,7 +1044,9 @@ export function HomeView({
                       {pages.map((_, pi) => (
                         <button
                           key={pi}
-                          onClick={() => setSpeedDialPage(pi)}
+                          onClick={() => showPage(pi)}
+                          aria-label={`${t("speedDial")} ${pi + 1}`}
+                          aria-current={pi === curPage ? "page" : undefined}
                           style={{
                             width: pi === curPage ? 18 : 7,
                             height: 7,
@@ -1048,101 +1093,139 @@ export function HomeView({
         </div>
       ))}
 
-      {/* ── Moods & Genres (full grid, tabbed) ── */}
-      {Object.keys(moodGroups).length > 0 && (
-        <div style={{ paddingLeft: 28, paddingRight: 28, marginTop: 8 }}>
-          <CardRoot variant="secondary" className="overflow-hidden gap-0! p-0!">
-            {/* Header + group selector (HeroUI segmented ToggleButtonGroup) */}
-            <div
-              style={{
-                padding: "16px 20px 14px",
-                borderBottom: "1.5px solid var(--border-subtle, var(--bg-elevated))",
-              }}
-            >
-              <div style={{ fontSize: "var(--t16)", fontWeight: 700, marginBottom: 12 }}>
-                {t("moodsGenres")}
-              </div>
-              <ToggleButtonGroupRoot
-                selectionMode="single"
-                disallowEmptySelection
-                size="sm"
-                selectedKeys={[activeMoodTab]}
-                onSelectionChange={(keys) => {
-                  const k = [...keys][0];
-                  if (k != null) {
-                    setActiveMoodTab(String(k));
-                    setActiveMoodChip(null);
-                    setMoodPlaylists([]);
-                  }
-                }}
-              >
-                {Object.keys(moodGroups).map((tabKey) => (
-                  <ToggleButton key={tabKey} id={tabKey}>
-                    {tabKey}
-                  </ToggleButton>
-                ))}
-              </ToggleButtonGroupRoot>
-            </div>
-
-            {/* Genre/mood toggle buttons */}
-            <div style={{ padding: "16px 20px", display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {(moodGroups[activeMoodTab] || []).map((chip, i) => {
-                const active = activeMoodChip?.params === chip.params;
-                return (
-                  <ToggleButton
-                    key={i}
-                    size="md"
-                    variant="default"
-                    isSelected={active}
-                    onChange={() => handleMoodChipClick(chip)}
-                  >
-                    {chip.title}
-                  </ToggleButton>
-                );
-              })}
-            </div>
-
-            {/* Mood / genre results */}
-            {activeMoodChip && (
+      {/* ── Moods & Genres: a section like the others, its categories as large coloured cards ── */}
+      {Object.keys(moodGroups).length > 0 &&
+        (() => {
+          const chips = moodGroups[activeMoodTab] || [];
+          const MOOD_FIRST = 8; // two rows on a usual window; the rest behind "Show all"
+          const shown = moodShowAll ? chips : chips.slice(0, MOOD_FIRST);
+          return (
+            <div style={{ paddingLeft: 28, paddingRight: 28, marginTop: 8, marginBottom: 32 }}>
               <div
                 style={{
-                  borderTop: "1.5px solid var(--border-subtle, var(--bg-elevated))",
-                  padding: "14px 20px 18px",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 12,
+                  marginBottom: 12,
+                  flexWrap: "wrap",
                 }}
               >
-                <div style={{ fontSize: "var(--t14)", fontWeight: 700, marginBottom: 14 }}>
-                  {activeMoodChip.title}
-                </div>
-                {moodLoading ? (
-                  <div style={{ display: "flex", gap: 14 }}>
-                    {[1, 2, 3, 4].map((i) => (
-                      <div key={i} style={{ flexShrink: 0, width: 148 }}>
-                        <Skeleton className="w-[148px] h-[148px] rounded-[10px]" />
-                        <Skeleton className="h-[11px] w-[72%] rounded mt-2.5" />
-                      </div>
-                    ))}
-                  </div>
-                ) : moodPlaylists.length === 0 ? (
-                  <div style={{ fontSize: "var(--t13)", color: "var(--text-muted)" }}>
-                    {t("noSuggestions")}
-                  </div>
-                ) : (
-                  <Carousel style={{ gap: 14, paddingBottom: 4 }}>
-                    {moodPlaylists.map((item, i) => (
-                      <MediaCard
-                        key={i}
-                        item={item}
-                        section={{ items: moodPlaylists }}
-                        size={148}
-                      />
-                    ))}
-                  </Carousel>
-                )}
+                <span style={{ fontSize: "var(--t16)", fontWeight: 700 }}>{t("moodsGenres")}</span>
+                <ToggleButtonGroupRoot
+                  aria-label={t("moodsGenres")}
+                  selectionMode="single"
+                  disallowEmptySelection
+                  size="sm"
+                  selectedKeys={[activeMoodTab]}
+                  onSelectionChange={(keys) => {
+                    const k = [...keys][0];
+                    if (k != null) {
+                      setActiveMoodTab(String(k));
+                      setActiveMoodChip(null);
+                      setMoodPlaylists([]);
+                      setMoodShowAll(false);
+                    }
+                  }}
+                >
+                  {Object.keys(moodGroups).map((tabKey) => (
+                    <ToggleButton key={tabKey} id={tabKey}>
+                      {tabKey}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroupRoot>
               </div>
-            )}
-          </CardRoot>
-        </div>
-      )}
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fill, minmax(168px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                {shown.map((chip, i) => {
+                  const active = activeMoodChip?.params === chip.params;
+                  const c = moodColor(chip.title);
+                  return (
+                    <button
+                      key={chip.params || i}
+                      type="button"
+                      className="mood-card"
+                      onClick={() => handleMoodChipClick(chip)}
+                      aria-pressed={active}
+                      style={{
+                        height: 84,
+                        border: "none",
+                        padding: "10px 14px",
+                        borderRadius: "var(--r-xl)",
+                        cursor: "default",
+                        display: "flex",
+                        alignItems: "flex-end",
+                        textAlign: "left",
+                        // The colour glows from the corner the name sits in and fades into the card's grey.
+                        background: `radial-gradient(130% 150% at 0% 100%, ${c} 0%, color-mix(in srgb, ${c} 45%, var(--bg-elevated)) 32%, var(--bg-elevated) 72%)`,
+                        boxShadow: active ? "inset 0 0 0 2px rgba(255,255,255,0.9)" : "none",
+                        color: "#fff",
+                        fontSize: "var(--t14)",
+                        fontWeight: 700,
+                        lineHeight: 1.2,
+                        textShadow: "0 1px 3px rgba(0,0,0,0.35)",
+                      }}
+                    >
+                      {chip.title}
+                    </button>
+                  );
+                })}
+              </div>
+              {chips.length > MOOD_FIRST && (
+                <div style={{ display: "flex", justifyContent: "center", marginTop: 12 }}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    className="rounded-[var(--r-full)]"
+                    onPress={() => setMoodShowAll((v) => !v)}
+                  >
+                    {moodShowAll ? t("showLess") : t("showAll")}
+                  </Button>
+                </div>
+              )}
+
+              {/* The picked category's playlists, as a section of their own below */}
+              {activeMoodChip && (
+                <div style={{ marginTop: 22 }}>
+                  <div style={{ fontSize: "var(--t16)", fontWeight: 700, marginBottom: 12 }}>
+                    {activeMoodChip.title}
+                  </div>
+                  {moodLoading ? (
+                    <div style={{ display: "flex", gap: 14 }}>
+                      {[1, 2, 3, 4].map((i) => (
+                        <div key={i} style={{ flexShrink: 0, width: 148 }}>
+                          <Skeleton className="w-[148px] h-[148px] rounded-[var(--r-lg)]" />
+                          <Skeleton className="h-[11px] w-[72%] rounded-sm mt-2.5" />
+                        </div>
+                      ))}
+                    </div>
+                  ) : moodPlaylists.length === 0 ? (
+                    <div style={{ fontSize: "var(--t13)", color: "var(--text-muted)" }}>
+                      {t("noSuggestions")}
+                    </div>
+                  ) : (
+                    <Carousel style={{ gap: 14, paddingBottom: 4 }}>
+                      {moodPlaylists.map((item, i) => (
+                        <MediaCard
+                          key={i}
+                          item={item}
+                          section={{ items: moodPlaylists }}
+                          size={148}
+                        />
+                      ))}
+                    </Carousel>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })()}
     </div>
   );
 }

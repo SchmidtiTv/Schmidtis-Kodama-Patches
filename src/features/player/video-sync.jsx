@@ -14,6 +14,7 @@ import { fetchLyrics } from "@/features/lyrics/fetch.js";
 import { DEFAULT_LYRICS_PROVIDERS } from "@/features/lyrics/providers.js";
 import { parseDurationToSeconds } from "@/features/lyrics/parse.js";
 import { paintLineWords } from "@/features/lyrics/paint.js";
+import { repeatsLine, BraccatoStageView } from "@/features/lyrics";
 import { sustainedWordScale } from "@/features/lyrics/sustained-line.js";
 import { hasJapaneseText, isRtlLang, translate } from "@/shared/i18n/i18n.js";
 
@@ -187,6 +188,8 @@ function useCaptionLine(
   const [trailingLine, setTrailingLine] = useState(null);
   const [currentTranslation, setCurrentTranslation] = useState("");
   const [currentRomaji, setCurrentRomaji] = useState("");
+  const [translationResult, setTranslationResult] = useState(null);
+  const [romajiResult, setRomajiResult] = useState(null);
   const [lines, setLines] = useState([]);
   const [source, setSource] = useState("");
   const [submitterName, setSubmitterName] = useState(null);
@@ -257,11 +260,11 @@ function useCaptionLine(
       .then((d) => {
         if (cancelled) return;
         translationsRef.current = d.translations || null;
+        setTranslationResult({ lines, language: translationLang, values: translationsRef.current });
         // Translation can arrive after the active line already settled — correct it retroactively.
         const idx = curIdxRef.current;
         const tr = idx >= 0 ? translationsRef.current?.[idx] : null;
-        const lineText = idx >= 0 ? linesRef.current[idx]?.text : null;
-        setCurrentTranslation(tr && tr !== lineText ? tr : "");
+        setCurrentTranslation(tr && !repeatsLine(linesRef.current[idx], tr) ? tr : "");
       })
       .catch(() => {});
     return () => {
@@ -282,10 +285,12 @@ function useCaptionLine(
       .then((payload) => {
         if (cancelled) return;
         romajisRef.current = payload.romanizations || null;
+        setRomajiResult({ lines, values: romajisRef.current });
         const index = curIdxRef.current;
         const romanization = index >= 0 ? romajisRef.current?.[index] : null;
-        const lineText = index >= 0 ? linesRef.current[index]?.text : null;
-        setCurrentRomaji(romanization && romanization !== lineText ? romanization : "");
+        setCurrentRomaji(
+          romanization && !repeatsLine(linesRef.current[index], romanization) ? romanization : ""
+        );
       })
       .catch(() => {});
     return () => {
@@ -349,9 +354,9 @@ function useCaptionLine(
         const line = idx >= 0 ? lns[idx] : null;
         setMainLine(line);
         const tr = idx >= 0 ? translationsRef.current?.[idx] : null;
-        setCurrentTranslation(tr && tr !== line?.text ? tr : "");
+        setCurrentTranslation(tr && !repeatsLine(line, tr) ? tr : "");
         const romanization = idx >= 0 ? romajisRef.current?.[idx] : null;
-        setCurrentRomaji(romanization && romanization !== line?.text ? romanization : "");
+        setCurrentRomaji(romanization && !repeatsLine(line, romanization) ? romanization : "");
       }
       if (trailingIdx !== trailingIdxRef.current) {
         trailingIdxRef.current = trailingIdx;
@@ -386,6 +391,12 @@ function useCaptionLine(
     translation: currentTranslation,
     romaji: currentRomaji,
     timeRef,
+    snapRef,
+    translationsAll:
+      translationResult?.lines === lines && translationResult?.language === translationLang
+        ? translationResult.values
+        : null,
+    romajiAll: romajiResult?.lines === lines ? romajiResult.values : null,
     lines,
     source,
     submitterName,
@@ -510,6 +521,11 @@ function CaptionOverlay({
   track,
   audioRef,
   fluid = false,
+  braccato = true,
+  braccatoLetterWave = true,
+  fontSize = 30,
+  translationFontSize = 19,
+  romajiFontSize = 18,
   showTranslation = false,
   translationLang = "DE",
   showRomaji = false,
@@ -519,13 +535,35 @@ function CaptionOverlay({
   offsetRef,
   applyRef,
 }) {
-  const { mainLine, trailingLine, translation, romaji, timeRef, lines, source, submitterName, applyLyrics } =
-    useCaptionLine(track, audioRef, true, showTranslation, translationLang, showRomaji, offsetRef);
+  const {
+    mainLine,
+    trailingLine,
+    translation,
+    romaji,
+    timeRef,
+    snapRef,
+    lines,
+    source,
+    submitterName,
+    applyLyrics,
+    translationsAll,
+    romajiAll,
+  } = useCaptionLine(
+    track,
+    audioRef,
+    true,
+    showTranslation,
+    translationLang,
+    showRomaji,
+    offsetRef
+  );
   // Reported upward rather than decided per visible line: a button that appears and
   // disappears as the song moves through Latin passages would be worse than none.
   useEffect(() => {
     onRomanizableChange?.(
-      lines.some((l) => hasJapaneseText(l.wordSync ? (l.words || []).map((w) => w.text).join("") : l.text))
+      lines.some((l) =>
+        hasJapaneseText(l.wordSync ? (l.words || []).map((w) => w.text).join("") : l.text)
+      )
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines]);
@@ -556,6 +594,21 @@ function CaptionOverlay({
     setShownRomaji(romaji);
     setAnimKey((key) => key + 1);
   }, [mainLine, translation, romaji]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  if (braccato)
+    return (
+      <BraccatoStageView
+        lines={lines}
+        translations={showTranslation ? translationsAll : null}
+        romaji={showRomaji ? romajiAll : null}
+        translationLang={translationLang}
+        fontSize={fontSize}
+        translationFontSize={translationFontSize}
+        romajiFontSize={romajiFontSize}
+        letterWave={braccatoLetterWave}
+        clock={() => ({ t: timeRef.current, playing: snapRef.current.playing })}
+      />
+    );
 
   if (!shownMain) return null;
 
@@ -598,8 +651,8 @@ function CaptionOverlay({
             timeRef={timeRef}
             fluid={fluid}
             syllableZoom={false}
-            mainFontSize={22}
-            bgFontSize={15}
+            mainFontSize={Math.round(fontSize * 0.73)}
+            bgFontSize={Math.round(fontSize * 0.5)}
           />
         </div>
       )}
@@ -623,8 +676,8 @@ function CaptionOverlay({
           timeRef={timeRef}
           fluid={fluid}
           syllableZoom={syllableZoom}
-          mainFontSize={30}
-          bgFontSize={20}
+          mainFontSize={fontSize}
+          bgFontSize={Math.round((fontSize * 2) / 3)}
         />
       </div>
       {shownRomaji && (
@@ -633,7 +686,7 @@ function CaptionOverlay({
           style={{
             color: "rgba(255,255,255,0.6)",
             fontWeight: 500,
-            fontSize: 18,
+            fontSize: romajiFontSize,
             textAlign: "center",
             lineHeight: 1.35,
             maxWidth: 900,
@@ -656,7 +709,7 @@ function CaptionOverlay({
           style={{
             color: "rgba(255,255,255,0.72)",
             fontWeight: 500,
-            fontSize: 19,
+            fontSize: translationFontSize,
             textAlign: "center",
             lineHeight: 1.35,
             maxWidth: 900,
@@ -686,6 +739,11 @@ export function VideoSyncView({
   captionsTranslationLang = "DE",
   captionsRomaji = false,
   captionsSyllableZoom = false,
+  braccatoCaptions = true,
+  braccatoLetterWave = true,
+  captionsFontSize = 30,
+  captionsTranslationFontSize = 19,
+  captionsRomajiFontSize = 18,
   language = "en",
 }) {
   return (
@@ -734,6 +792,11 @@ export function VideoSyncView({
           track={track}
           audioRef={audioRef}
           fluid={fluidCaptions}
+          braccato={braccatoCaptions}
+          braccatoLetterWave={braccatoLetterWave}
+          fontSize={captionsFontSize}
+          translationFontSize={captionsTranslationFontSize}
+          romajiFontSize={captionsRomajiFontSize}
           showTranslation={captionsTranslation}
           translationLang={captionsTranslationLang}
           showRomaji={captionsRomaji}

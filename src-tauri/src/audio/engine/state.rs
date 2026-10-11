@@ -42,6 +42,7 @@ pub(super) struct EngineState {
     pub failed_crossfade_from: Option<String>,
     pub integrations: PlaybackIntegrationSettings,
     pub current_track_liked: bool,
+    pub together: super::together::TogetherState,
 }
 
 impl Default for EngineState {
@@ -53,6 +54,7 @@ impl Default for EngineState {
             failed_crossfade_from: None,
             integrations: PlaybackIntegrationSettings::default(),
             current_track_liked: false,
+            together: super::together::TogetherState::default(),
         }
     }
 }
@@ -105,7 +107,9 @@ impl PlaybackEngine {
     ) -> Result<PlaybackSnapshot, String> {
         let settings = settings.normalize()?;
         self.mutate(|state| {
+            let invite = state.integrations.together_invite_url.clone();
             state.integrations = settings;
+            state.integrations.together_invite_url = invite;
             Ok(())
         })
     }

@@ -8,9 +8,9 @@ import { useAppearanceSettings } from "@/features/settings/settings-context.jsx"
 import { useLang } from "@/shared/i18n/context.jsx";
 import { useLyricsSettings } from "../settings/settings-context.jsx";
 import {
-  registerAudio as bpRegisterAudio,
-  registerPlayerCommands as bpRegisterCommands,
-  setNowPlaying as bpSetNowPlaying,
+  registerAudio as playerRegisterAudio,
+  registerPlayerCommands as playerRegisterCommands,
+  setNowPlaying as playerSetNowPlaying,
 } from "@/features/player/player-bridge.js";
 import { emitNowPlaying, EV_HELLO, EV_SHOW_MAIN } from "./miniplayer/bridge.js";
 import { PlayerControls } from "./player-controls.jsx";
@@ -71,7 +71,13 @@ export function Player({
   const { track, isPlaying, audioRef, restoredTrackId, playbackOrigin } = usePlaybackStatus();
   const { playerBarControls } = useAppearanceSettings();
   const { queue } = useQueueState();
-  const { crossfade, crossfadeOverrides, playbackProgressive, mixTransitionsEnabled, mixTempoLockEnabled } = usePlaybackConfig();
+  const {
+    crossfade,
+    crossfadeOverrides,
+    playbackProgressive,
+    mixTransitionsEnabled,
+    mixTempoLockEnabled,
+  } = usePlaybackConfig();
   const { setQueue, setTrack, setIsPlaying, startSongRadio } = usePlayerActions();
   // Cached/downloading id sets + download/export/premium-detected actions come from
   // DownloadContext rather than props.
@@ -536,9 +542,7 @@ export function Player({
 
   const toggleShuffle = () => {
     if (!shuffle) {
-      setQueue((currentQueue) =>
-        shuffleQueueAfterCurrent(currentQueue, trackRef.current?.videoId)
-      );
+      setQueue((currentQueue) => shuffleQueueAfterCurrent(currentQueue, trackRef.current?.videoId));
     }
     if (nativeAvailable) {
       setNativeShuffle(!shuffle);
@@ -588,7 +592,7 @@ export function Player({
   };
   runPlaybackActionRef.current = runPlaybackAction;
 
-  // The mini player lives in a separate webview, so it cannot use Big Picture's in-process
+  // The mini player lives in a separate webview, so it cannot use fullscreen player's in-process
   // bridge. It receives a timestamped snapshot and uses the existing media-control channel
   // for commands, keeping this window the sole owner of the playback engine.
   useEffect(() => {
@@ -623,14 +627,14 @@ export function Player({
       unlistenShowMain();
     };
   }, []);
-  // Big Picture bridge: expose playback commands (re-registered each render so they close over
+  // Player bridge: expose playback commands (re-registered each render so they close over
   // current state) + push a formatted now-playing snapshot to the in-process store.
   useEffect(() => {
-    bpRegisterCommands({
+    playerRegisterCommands({
       action: runPlaybackAction,
       seek: seekTo,
     });
-    bpRegisterAudio(audioRef.current); // hand the IpcAudio clock to Big Picture's lyrics view
+    playerRegisterAudio(audioRef.current); // hand the IpcAudio clock to fullscreen player's lyrics view
   });
   useEffect(() => {
     const tr = track;
@@ -650,11 +654,11 @@ export function Player({
       hasTrack: !!tr,
       shuffle: !!shuffle,
       repeat: repeat || "none",
-      track: tr || null, // raw track object so Big Picture's lyrics view can fetch for it
+      track: tr || null, // raw track object so fullscreen player's lyrics view can fetch for it
       at: Date.now(),
     };
     latestNowPlayingRef.current = snapshot;
-    bpSetNowPlaying(snapshot);
+    playerSetNowPlaying(snapshot);
     emitNowPlaying(snapshot);
   }, [track, isPlaying, progress, duration, shuffle, repeat]);
 

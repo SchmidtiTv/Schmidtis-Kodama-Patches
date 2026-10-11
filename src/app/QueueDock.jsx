@@ -1,3 +1,4 @@
+import { useTogetherQueueAdapter } from "@/features/together/index.js";
 import { QueuePanel } from "@/features/player/player-ui.jsx";
 
 export function QueueDock({
@@ -17,6 +18,7 @@ export function QueueDock({
   canvasEnabled,
   canvasSource,
 }) {
+  const together = useTogetherQueueAdapter();
   return (
     <div
       style={{
@@ -95,6 +97,7 @@ export function QueueDock({
         </div>
       )}
       <QueuePanel
+        together={together}
         likedIds={likedIds}
         onToggleLike={handleToggleLike}
         visible={queueOpen}

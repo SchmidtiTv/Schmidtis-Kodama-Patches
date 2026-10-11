@@ -129,6 +129,8 @@ export const AppShell = memo(function AppShell({
     showAgentTags,
     syllableZoom,
     fluidLyrics,
+    braccatoLyrics,
+    braccatoLetterWave,
   } = lyricsPrefs;
   const {
     showLogin,
@@ -547,6 +549,11 @@ export const AppShell = memo(function AppShell({
     },
     [setQueueOpenState]
   );
+  useEffect(() => {
+    const showRoom = () => setQueueOpen(true);
+    window.addEventListener("kodama:open-room", showRoom);
+    return () => window.removeEventListener("kodama:open-room", showRoom);
+  }, [setQueueOpen]);
   const { fullscreen, playerVisible, toggleFullscreen, playerBarProps } = useFullscreenPlayer();
   const handleToggleFullscreen = useCallback(async () => {
     const next = await toggleFullscreen();
@@ -1078,6 +1085,8 @@ export const AppShell = memo(function AppShell({
           showAgentTags={showAgentTags}
           ambientVisualizer={ambientVisualizer}
           syllableZoom={syllableZoom}
+          braccatoLyrics={braccatoLyrics}
+          braccatoLetterWave={braccatoLetterWave}
           fluidLyrics={fluidLyrics}
           playerVisible={playerVisible}
           handleInstrumentalChange={handleInstrumentalChange}

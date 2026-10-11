@@ -23,6 +23,9 @@ import { useLyricOffset } from "@/features/lyrics/lyric-offset.js";
 import { openComposer } from "./composer-window.js";
 import { sustainedWordScale } from "./sustained-line.js";
 
+import { BraccatoLyricsView } from "./braccato-view.jsx";
+import { repeatsLine } from "./same-text.js";
+
 const FLUID_DRIFT_WINDOW = 6;
 // How much the active line grows in fluid mode. Needed as a constant because a translation
 // aligned to the growing edge has to be pulled back by exactly this amount.
@@ -62,6 +65,8 @@ function LyricsOverlayContent({
   ambientVisualizer = true,
   syllableZoom = false,
   fluidLyrics = false,
+  braccatoLyrics = true,
+  braccatoLetterWave = true,
   ambientBackground = false,
   fullscreen = false,
   playerBarVisible = false,
@@ -738,6 +743,28 @@ function LyricsOverlayContent({
   }, [track, refetchKey, forcedProvider, customLyricsKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const lyricsSynced = !!(lyrics && lyrics.some((l) => (l.time ?? -1) >= 0));
+  const braccatoOn = braccatoLyrics && lyricsSynced;
+  const braccatoResumeRef = useRef(null);
+  const braccatoClock = useCallback(() => {
+    const { ct, pt, playing } = audioSnapRef.current;
+    return {
+      t: Math.max(0, (playing ? ct + (performance.now() - pt) / 1000 : ct) - offsetRef.current),
+      playing,
+    };
+  }, [offsetRef]);
+  const braccatoSeek = useCallback(
+    (timeS) => {
+      if (audioRef.current) audioRef.current.currentTime = Math.max(0, timeS + offsetRef.current);
+    },
+    [audioRef, offsetRef]
+  );
+  const braccatoUserScrolling = useCallback(
+    (value) => {
+      userScrollingRef.current = value;
+      setUserScrollingTrackId(value ? track?.videoId || null : null);
+    },
+    [track?.videoId]
+  );
 
   // Unique agents in order of first appearance (only when ≥2 distinct named agents)
   const lyricsAgents = useMemo(() => {
@@ -776,7 +803,7 @@ function LyricsOverlayContent({
   }, [activeIdx]);
 
   useEffect(() => {
-    if (userScrolling || activeIdx < 0 || !containerRef.current) return;
+    if (braccatoOn || userScrolling || activeIdx < 0 || !containerRef.current) return;
     const container = containerRef.current;
     let correctionFrame = 0;
     // Fluid wraps each line in a will-change:transform div (its own offsetParent), so the
@@ -829,14 +856,14 @@ function LyricsOverlayContent({
       cancelAnimationFrame(frame);
       cancelAnimationFrame(correctionFrame);
     };
-  }, [activeIdx, fluidLyrics, userScrolling]);
+  }, [activeIdx, fluidLyrics, userScrolling, braccatoOn, fullscreen, playerBarVisible]);
 
   useEffect(() => {
     userScrollingRef.current = false;
   }, [track?.videoId]);
 
   useEffect(() => {
-    if (!fluidLyrics || !isActive || !isPlaying) return;
+    if (braccatoOn || !fluidLyrics || !isActive || !isPlaying) return;
     const container = containerRef.current;
     if (!container) return;
     const wraps = container.querySelectorAll("[data-lyricdrift]");
@@ -954,10 +981,10 @@ function LyricsOverlayContent({
         w.style.transform = "";
       });
     };
-  }, [fluidLyrics, isActive, isPlaying, lyrics]);
+  }, [fluidLyrics, isActive, isPlaying, lyrics, braccatoOn, track?.videoId]);
 
   useEffect(() => {
-    if (fluidLyrics) return;
+    if (fluidLyrics || braccatoOn) return;
     const container = containerRef.current;
     if (!container) return;
     const onUserScroll = () => {
@@ -972,11 +999,12 @@ function LyricsOverlayContent({
       container.removeEventListener("wheel", onUserScroll);
       container.removeEventListener("touchmove", onUserScroll);
     };
-  }, [fluidLyrics, track?.videoId]);
+  }, [fluidLyrics, track?.videoId, braccatoOn]);
 
   const resumeAutoscroll = useCallback(() => {
     userScrollingRef.current = false;
     setUserScrollingTrackId(null);
+    braccatoResumeRef.current?.();
   }, []);
 
   return (
@@ -1087,7 +1115,12 @@ function LyricsOverlayContent({
         }}
       >
         {lyricsSynced && (
-          <OffsetChips language={language} offset={offset} adjustOffset={adjustOffset} neighbourRight />
+          <OffsetChips
+            language={language}
+            offset={offset}
+            adjustOffset={adjustOffset}
+            neighbourRight
+          />
         )}
         {lyrics && (
           <LyricsToolChips
@@ -1203,27 +1236,29 @@ function LyricsOverlayContent({
           position: "relative",
           zIndex: 1,
           flex: 1,
-          ...(lyrics
-            ? {
-                overflowY: "auto",
-                padding: "40vh 80px 40vh",
-                ...(fluidLyrics
-                  ? {
-                      maskImage:
-                        "linear-gradient(to bottom, transparent 0, #000 110px, #000 calc(100% - 110px), transparent 100%)",
-                      WebkitMaskImage:
-                        "linear-gradient(to bottom, transparent 0, #000 110px, #000 calc(100% - 110px), transparent 100%)",
-                    }
-                  : {}),
-              }
-            : {
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                overflow: "hidden",
-                padding: "0 80px",
-              }),
+          ...(lyrics && braccatoOn
+            ? { overflowY: "auto", padding: "0 80px", scrollPaddingBottom: chipBottomLift }
+            : lyrics
+              ? {
+                  overflowY: "auto",
+                  padding: "40vh 80px 40vh",
+                  ...(fluidLyrics
+                    ? {
+                        maskImage:
+                          "linear-gradient(to bottom, transparent 0, #000 110px, #000 calc(100% - 110px), transparent 100%)",
+                        WebkitMaskImage:
+                          "linear-gradient(to bottom, transparent 0, #000 110px, #000 calc(100% - 110px), transparent 100%)",
+                      }
+                    : {}),
+                }
+              : {
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  overflow: "hidden",
+                  padding: "0 80px",
+                }),
         }}
       >
         {loading && (
@@ -1330,7 +1365,26 @@ function LyricsOverlayContent({
             </button>
           </div>
         )}
+        {lyrics && braccatoOn && (
+          <BraccatoLyricsView
+            lines={lyrics}
+            translations={translations}
+            romaji={romajiLines}
+            translationLang={translationLang}
+            fontSize={fontSize}
+            translationFontSize={translationFontSize}
+            romajiFontSize={romajiFontSize}
+            letterWave={braccatoLetterWave}
+            active={isActive}
+            clock={braccatoClock}
+            onSeek={braccatoSeek}
+            scrollRef={containerRef}
+            onUserScrolling={braccatoUserScrolling}
+            resumeRef={braccatoResumeRef}
+          />
+        )}
         {lyrics &&
+          !braccatoOn &&
           lyrics.map((line, i) => {
             const isActive = i === activeIdx;
             const isTrailing = i === trailingIdx; // previous line still playing while new one is active
@@ -1560,7 +1614,7 @@ function LyricsOverlayContent({
                     </div>
                   )}
                 </div>
-                {showRomaji && romajiLines?.[i] && (
+                {showRomaji && romajiLines?.[i] && !repeatsLine(line, romajiLines[i]) && (
                   <div
                     style={{
                       fontSize: romajiFontSize,
@@ -1575,7 +1629,7 @@ function LyricsOverlayContent({
                     {romajiLines[i]}
                   </div>
                 )}
-                {showTranslation && translations?.[i] && translations[i] !== lineText && (
+                {showTranslation && translations?.[i] && !repeatsLine(line, translations[i]) && (
                   <div
                     dir={isRtlLang(translationLang) ? "rtl" : "ltr"}
                     style={{
@@ -1588,8 +1642,10 @@ function LyricsOverlayContent({
                       textAlign: trAlign,
                       // Percentage padding resolves against the same width the scale acts on,
                       // so the two cancel exactly, at any window size or zoom level.
-                      paddingRight: trAlign === "right" && textAlign !== "right" ? zoomPull : undefined,
-                      paddingLeft: trAlign === "left" && textAlign !== "left" ? zoomPull : undefined,
+                      paddingRight:
+                        trAlign === "right" && textAlign !== "right" ? zoomPull : undefined,
+                      paddingLeft:
+                        trAlign === "left" && textAlign !== "left" ? zoomPull : undefined,
                       // Follows the zoom rather than snapping while the line is still growing.
                       transition: "padding 0.25s ease-out",
                     }}

@@ -21,6 +21,9 @@ export const nativeCommand = {
 };
 
 export const native = {
+  setAudioMono: (enabled) => invoke("audio_set_mono", { enabled }),
+  setPlayerTogether: (args) => invoke("player_set_together", args),
+  syncPlayerTogether: (args) => invoke("player_together_sync", args),
   /** @param {boolean} fullscreen @returns {Promise<void>} @example await native.setFullscreen(true) */
   setFullscreen: (fullscreen) => invoke("set_fullscreen", { fullscreen }),
   /** @param {{profileName: string, confirmLabel: string, switchHint: string}} args @returns {Promise<void>} @example await native.openLoginWindow({ profileName: "default", confirmLabel: "Use account", switchHint: "Switch" }) */

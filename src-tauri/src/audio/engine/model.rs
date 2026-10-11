@@ -185,6 +185,8 @@ pub struct PlaybackIntegrationSettings {
     pub overlay_updates_enabled: bool,
     #[serde(default)]
     pub remote_enabled: bool,
+    #[serde(default)]
+    pub together_invite_url: Option<String>,
 }
 
 impl Default for PlaybackIntegrationSettings {
@@ -197,6 +199,7 @@ impl Default for PlaybackIntegrationSettings {
             youtube_history_enabled: false,
             overlay_updates_enabled: false,
             remote_enabled: false,
+            together_invite_url: None,
         }
     }
 }

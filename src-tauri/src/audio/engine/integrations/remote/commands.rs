@@ -20,6 +20,12 @@ pub(super) fn run(
         .get("action")
         .and_then(Value::as_str)
         .unwrap_or_default();
+    if matches!(
+        action,
+        "playpause" | "next" | "prev" | "shuffle" | "repeat" | "seek" | "queueJump"
+    ) {
+        engine.require_local_transport()?;
+    }
     match action {
         "playpause" => toggle_playback(engine, audio_tx, app)?,
         "next" => play_request(engine.select_next()?, "remoteNext", app, audio_tx)?,

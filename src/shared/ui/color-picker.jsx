@@ -200,7 +200,7 @@ function _pushRecent(hex) {
     a.unshift(hex);
     localStorage.setItem(RECENTS_KEY, JSON.stringify(a.slice(0, 8)));
   } catch {
-    // Recent colors are optional when storage is unavailable.
+    /* Storage and EyeDropper availability are best-effort. */
   }
 }
 const PRESETS = [
@@ -230,9 +230,27 @@ const PRESETS = [
 
 // value/onChange are #RRGGBB. `swatch` overrides the trigger's size/style (e.g. a small
 // inline swatch inside a field); default is a standalone 32px chip.
-export function ColorPicker({ value, onChange, swatch }) {
-  const safe = /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000";
+// Grouped controls in the overlay editor: pill on the free ends, a 6px notch where they touch
+// (the editor's hdrCorners, written out here so this shared file does not pull in window code).
+const _grp = (l, r, h = 30) => {
+  const p = h / 2,
+    a = l ? 6 : p,
+    b = r ? 6 : p;
+  return `${a}px ${b}px ${b}px ${a}px`;
+};
+
+// `variant="editor"` draws the popover in the overlay editor's language (the canvas card's
+// surface and radius, notched pill groups, round swatches); the settings keep the default look.
+//
+// `cover` (overlay editor only) adds a second tab with the current cover's colours, each light,
+// normal and dark. Picking one hands onChange a token ("cover:2:dark") instead of a hex value;
+// `cover.resolve` turns a token into the colour it shows right now.
+export function ColorPicker({ value, onChange, swatch, variant, cover }) {
+  const ed = variant === "editor";
+  const isTok = !!cover && typeof value === "string" && value.startsWith("cover:");
+  const safe = isTok ? cover.resolve(value) : /^#[0-9a-fA-F]{6}$/.test(value) ? value : "#000000";
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState(isTok ? "cover" : "own");
   const [hsv, setHsv] = useState(() => _hexToHsv(safe));
   const [mode, setMode] = useState("hex"); // hex | rgb | hsl
   const [fmtOpen, setFmtOpen] = useState(false); // format dropdown
@@ -251,8 +269,9 @@ export function ColorPicker({ value, onChange, swatch }) {
 
   // Reflect external value + format changes into the text field (unless the user is typing).
   useEffect(() => {
-    if (/^#[0-9a-fA-F]{6}$/.test(value)) setHsv(_hexToHsv(value));
-  }, [value]);
+    // A cover colour starts the own-colour tab from what it shows now.
+    if (/^#[0-9a-fA-F]{6}$/.test(safe)) setHsv(_hexToHsv(safe));
+  }, [safe]);
   useEffect(() => {
     if (!editing.current) setValText(_format(currentHex, mode));
   }, [currentHex, mode]);
@@ -261,10 +280,11 @@ export function ColorPicker({ value, onChange, swatch }) {
     const r = triggerRef.current.getBoundingClientRect();
     setPopPos({ top: r.bottom + 8, left: Math.max(8, r.right - 244) });
     setRecents(_loadRecents());
+    setTab(isTok ? "cover" : "own");
     setOpen(true);
   };
   const close = () => {
-    _pushRecent(curHexRef.current);
+    if (!isTok) _pushRecent(curHexRef.current);
     setOpen(false);
     setFmtOpen(false);
   };
@@ -377,10 +397,18 @@ export function ColorPicker({ value, onChange, swatch }) {
               zIndex: 9999,
               width: 244,
               padding: 12,
-              borderRadius: "var(--r-xl)",
-              background: "#1c1c1c",
-              border: "0.5px solid rgba(255,255,255,0.12)",
-              boxShadow: "var(--elevation-4)",
+              ...(ed
+                ? {
+                    borderRadius: "var(--r-2xl)",
+                    background: "#1e1e1e",
+                    boxShadow: "var(--elevation-4)",
+                  }
+                : {
+                    borderRadius: "var(--r-xl)",
+                    background: "var(--bg-elevated)",
+                    border: "0.5px solid rgba(255,255,255,0.12)",
+                    boxShadow: "var(--elevation-4)",
+                  }),
               userSelect: "none",
             }}
           >
@@ -406,10 +434,10 @@ export function ColorPicker({ value, onChange, swatch }) {
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  width: 20,
-                  height: 20,
-                  borderRadius: "var(--r-md)",
-                  background: "none",
+                  width: ed ? 24 : 20,
+                  height: ed ? 24 : 20,
+                  borderRadius: ed ? "var(--r-full)" : "var(--r-md)",
+                  background: ed ? "var(--surface-2)" : "none",
                   border: "none",
                   color: "var(--text-muted)",
                   cursor: "default",
@@ -418,242 +446,411 @@ export function ColorPicker({ value, onChange, swatch }) {
                 <X size={13} />
               </button>
             </div>
-            {/* Gradient square */}
-            <div
-              ref={gradientRef}
-              onPointerDown={onGradientDrag}
-              style={{
-                width: "100%",
-                height: 160,
-                borderRadius: "var(--r-xl)",
-                background: `linear-gradient(to right, #fff, ${hueColor})`,
-                position: "relative",
-                cursor: "crosshair",
-                marginBottom: 10,
-                overflow: "hidden",
-              }}
-            >
+            {cover && (
               <div
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  background: "linear-gradient(to bottom, transparent, #000)",
-                  borderRadius: "var(--r-xl)",
+                  display: "flex",
+                  padding: 2,
+                  marginBottom: 10,
+                  borderRadius: "var(--r-full)",
+                  background: "var(--surface-2)",
                 }}
-              />
-              <div
-                style={{
-                  position: "absolute",
-                  left: `${hsv.s * 100}%`,
-                  top: `${(1 - hsv.v) * 100}%`,
-                  transform: "translate(-50%, -50%)",
-                  width: 14,
-                  height: 14,
-                  borderRadius: "50%",
-                  border: "2px solid #fff",
-                  boxShadow: "var(--elevation-1)",
-                  background: currentHex,
-                  pointerEvents: "none",
-                }}
-              />
-            </div>
-
-            {/* Hue slider */}
-            <div
-              ref={hueRef}
-              onPointerDown={onHueDrag}
-              style={{
-                width: "100%",
-                height: 14,
-                borderRadius: 7,
-                background: "linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)",
-                position: "relative",
-                cursor: "default",
-                marginBottom: 12,
-              }}
-            >
-              <div
-                style={{
-                  position: "absolute",
-                  left: `${(hsv.h / 360) * 100}%`,
-                  top: "50%",
-                  transform: "translate(-50%, -50%)",
-                  width: 18,
-                  height: 18,
-                  borderRadius: "50%",
-                  border: "2.5px solid #fff",
-                  boxShadow: "var(--elevation-1)",
-                  background: hueColor,
-                  pointerEvents: "none",
-                }}
-              />
-            </div>
-
-            {/* Eyedropper + format dropdown + value input */}
-            <div
-              style={{
-                display: "flex",
-                gap: 6,
-                alignItems: "center",
-                marginBottom: swatchGrid.length ? 12 : 0,
-              }}
-            >
-              {window.EyeDropper && (
-                <button
-                  title="Farbpipette"
-                  onClick={async () => {
-                    try {
-                      const dropper = new window.EyeDropper();
-                      const { sRGBHex } = await dropper.open();
-                      applyHex(sRGBHex);
-                    } catch {
-                      // Closing the native picker rejects the request.
-                    }
-                  }}
+              >
+                {[
+                  ["own", cover.text.own],
+                  ["cover", cover.text.cover],
+                ].map(([k, label]) => (
+                  <button
+                    key={k}
+                    type="button"
+                    onClick={() => setTab(k)}
+                    style={{
+                      flex: 1,
+                      height: 26,
+                      border: "none",
+                      borderRadius: "var(--r-full)",
+                      cursor: "default",
+                      background: tab === k ? "var(--surface-3)" : "transparent",
+                      color: tab === k ? "var(--text-primary)" : "var(--text-muted)",
+                      fontSize: "var(--t12)",
+                    }}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {cover && tab === "cover" ? (
+              <div>
+                <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 12 }}>
+                  {cover.src ? (
+                    <img
+                      src={cover.src}
+                      alt=""
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: "var(--r-lg)",
+                        objectFit: "cover",
+                        flexShrink: 0,
+                      }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        width: 44,
+                        height: 44,
+                        borderRadius: "var(--r-lg)",
+                        flexShrink: 0,
+                        background: `linear-gradient(135deg, ${cover.colors.join(", ")})`,
+                      }}
+                    />
+                  )}
+                  <span
+                    style={{ color: "var(--text-muted)", fontSize: "var(--t11)", lineHeight: 1.4 }}
+                  >
+                    {cover.text.hint}
+                  </span>
+                </div>
+                <div
+                  style={{ color: "var(--text-muted)", fontSize: "var(--t11)", marginBottom: 6 }}
+                >
+                  {cover.text.tones}
+                </div>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
+                  {cover.tokens.flat().map((tok) => (
+                    <button
+                      key={tok}
+                      type="button"
+                      title={cover.name(tok)}
+                      aria-label={cover.name(tok)}
+                      onClick={() => onChange(tok)}
+                      style={{
+                        height: 28,
+                        padding: 0,
+                        cursor: "default",
+                        borderRadius: "var(--r-md)",
+                        background: cover.resolve(tok),
+                        border: "none",
+                        boxShadow:
+                          value === tok
+                            ? "0 0 0 2px #1e1e1e, 0 0 0 4px var(--accent)"
+                            : "inset 0 0 0 0.5px rgba(255,255,255,0.15)",
+                      }}
+                    />
+                  ))}
+                </div>
+                <div
                   style={{
-                    width: 30,
-                    height: 30,
-                    flexShrink: 0,
-                    borderRadius: "var(--r-lg)",
-                    background: "var(--bg-elevated)",
-                    border: "0.5px solid rgba(255,255,255,0.12)",
-                    color: "var(--text-muted)",
-                    cursor: "default",
                     display: "flex",
                     alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <Eyedropper size={15} />
-                </button>
-              )}
-              {/* Format dropdown */}
-              <div style={{ position: "relative", flexShrink: 0 }}>
-                <button
-                  onClick={() => setFmtOpen((o) => !o)}
-                  style={{
+                    gap: 8,
                     height: 30,
-                    padding: "0 8px",
-                    borderRadius: "var(--r-lg)",
-                    minWidth: 56,
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: 4,
-                    background: "var(--bg-elevated)",
-                    border: "0.5px solid rgba(255,255,255,0.12)",
-                    color: "var(--text-primary)",
-                    fontSize: "var(--t12)",
-                    cursor: "default",
+                    marginTop: 12,
+                    padding: "0 10px 0 6px",
+                    borderRadius: "var(--r-full)",
+                    background: "var(--surface-2)",
                   }}
                 >
-                  {mode.toUpperCase()}
-                  <span style={{ color: "var(--text-muted)", fontSize: 10 }}>▾</span>
-                </button>
-                {fmtOpen && (
+                  <span
+                    style={{
+                      width: 18,
+                      height: 18,
+                      borderRadius: "var(--r-full)",
+                      background: safe,
+                      flexShrink: 0,
+                      border: "1px solid var(--border)",
+                    }}
+                  />
+                  <span
+                    style={{
+                      color: isTok ? "var(--text-primary)" : "var(--text-muted)",
+                      fontSize: "var(--t12)",
+                    }}
+                  >
+                    {isTok ? cover.name(value) : "—"}
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <>
+                {/* Gradient square */}
+                <div
+                  ref={gradientRef}
+                  onPointerDown={onGradientDrag}
+                  style={{
+                    width: "100%",
+                    height: 160,
+                    borderRadius: ed ? "var(--r-lg)" : "var(--r-xl)",
+                    background: `linear-gradient(to right, #fff, ${hueColor})`,
+                    position: "relative",
+                    cursor: "crosshair",
+                    marginBottom: 10,
+                    overflow: "hidden",
+                  }}
+                >
                   <div
                     style={{
                       position: "absolute",
-                      top: 34,
-                      left: 0,
-                      zIndex: 1,
-                      minWidth: 72,
-                      padding: 4,
-                      borderRadius: "var(--r-lg)",
-                      background: "#242424",
-                      border: "0.5px solid rgba(255,255,255,0.12)",
-                      boxShadow: "var(--elevation-3)",
+                      inset: 0,
+                      background: "linear-gradient(to bottom, transparent, #000)",
+                      borderRadius: ed ? "var(--r-lg)" : "var(--r-xl)",
                     }}
-                  >
-                    {["hex", "rgb", "hsl"].map((f) => (
-                      <button
-                        key={f}
-                        onClick={() => {
-                          setMode(f);
-                          setFmtOpen(false);
-                        }}
+                  />
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${hsv.s * 100}%`,
+                      top: `${(1 - hsv.v) * 100}%`,
+                      transform: "translate(-50%, -50%)",
+                      width: 14,
+                      height: 14,
+                      borderRadius: "var(--r-full)",
+                      border: "2px solid #fff",
+                      boxShadow: "var(--elevation-1)",
+                      background: currentHex,
+                      pointerEvents: "none",
+                    }}
+                  />
+                </div>
+
+                {/* Hue slider */}
+                <div
+                  ref={hueRef}
+                  onPointerDown={onHueDrag}
+                  style={{
+                    width: "100%",
+                    height: 14,
+                    borderRadius: "var(--r-full)",
+                    background: "linear-gradient(to right,#f00,#ff0,#0f0,#0ff,#00f,#f0f,#f00)",
+                    position: "relative",
+                    cursor: "default",
+                    marginBottom: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "absolute",
+                      left: `${(hsv.h / 360) * 100}%`,
+                      top: "50%",
+                      transform: "translate(-50%, -50%)",
+                      width: 18,
+                      height: 18,
+                      borderRadius: "var(--r-full)",
+                      border: "2.5px solid #fff",
+                      boxShadow: "var(--elevation-1)",
+                      background: hueColor,
+                      pointerEvents: "none",
+                    }}
+                  />
+                </div>
+
+                {/* Eyedropper + format dropdown + value input */}
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 6,
+                    alignItems: "center",
+                    marginBottom: swatchGrid.length ? 12 : 0,
+                  }}
+                >
+                  {/* In the editor the three read as one notched group: dropper, format, value. */}
+                  {window.EyeDropper && (
+                    <button
+                      title="Farbpipette"
+                      onClick={async () => {
+                        try {
+                          const dropper = new window.EyeDropper();
+                          const { sRGBHex } = await dropper.open();
+                          applyHex(sRGBHex);
+                        } catch {
+                          /* Storage and EyeDropper availability are best-effort. */
+                        }
+                      }}
+                      style={{
+                        width: 30,
+                        height: 30,
+                        flexShrink: 0,
+                        ...(ed
+                          ? {
+                              borderRadius: _grp(false, true),
+                              background: "var(--surface-2)",
+                              border: "none",
+                              color: "var(--text-secondary)",
+                            }
+                          : {
+                              borderRadius: "var(--r-lg)",
+                              background: "var(--bg-elevated)",
+                              border: "0.5px solid rgba(255,255,255,0.12)",
+                              color: "var(--text-muted)",
+                            }),
+                        cursor: "default",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                      }}
+                    >
+                      <Eyedropper size={15} />
+                    </button>
+                  )}
+                  {/* Format dropdown */}
+                  <div style={{ position: "relative", flexShrink: 0 }}>
+                    <button
+                      onClick={() => setFmtOpen((o) => !o)}
+                      style={{
+                        height: 30,
+                        padding: "0 10px",
+                        minWidth: 56,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 4,
+                        ...(ed
+                          ? {
+                              borderRadius: _grp(!!window.EyeDropper, true),
+                              background: "var(--surface-2)",
+                              border: "none",
+                            }
+                          : {
+                              borderRadius: "var(--r-lg)",
+                              background: "var(--bg-elevated)",
+                              border: "0.5px solid rgba(255,255,255,0.12)",
+                            }),
+                        color: "var(--text-primary)",
+                        fontSize: "var(--t12)",
+                        cursor: "default",
+                      }}
+                    >
+                      {mode.toUpperCase()}
+                      <span style={{ color: "var(--text-muted)", fontSize: 10 }}>▾</span>
+                    </button>
+                    {fmtOpen && (
+                      <div
                         style={{
-                          display: "block",
-                          width: "100%",
-                          textAlign: "left",
-                          padding: "6px 8px",
-                          borderRadius: "var(--r-md)",
-                          background: f === mode ? "rgba(255,255,255,0.08)" : "none",
-                          border: "none",
-                          color: "var(--text-primary)",
-                          fontSize: "var(--t12)",
-                          cursor: "default",
+                          position: "absolute",
+                          top: 34,
+                          left: 0,
+                          zIndex: 1,
+                          minWidth: 72,
+                          padding: 4,
+                          ...(ed
+                            ? {
+                                borderRadius: "var(--r-xl)",
+                                background: "var(--surface-2)",
+                                boxShadow: "var(--elevation-3)",
+                              }
+                            : {
+                                borderRadius: "var(--r-lg)",
+                                background: "var(--bg-hover)",
+                                border: "0.5px solid rgba(255,255,255,0.12)",
+                                boxShadow: "var(--elevation-3)",
+                              }),
                         }}
                       >
-                        {f.toUpperCase()}
-                      </button>
+                        {["hex", "rgb", "hsl"].map((f) => (
+                          <button
+                            key={f}
+                            onClick={() => {
+                              setMode(f);
+                              setFmtOpen(false);
+                            }}
+                            style={{
+                              display: "block",
+                              width: "100%",
+                              textAlign: "left",
+                              padding: "6px 8px",
+                              borderRadius: ed ? "var(--r-full)" : "var(--r-md)",
+                              background:
+                                f === mode
+                                  ? ed
+                                    ? "var(--surface-3)"
+                                    : "rgba(255,255,255,0.08)"
+                                  : "none",
+                              border: "none",
+                              color: "var(--text-primary)",
+                              fontSize: "var(--t12)",
+                              cursor: "default",
+                            }}
+                          >
+                            {f.toUpperCase()}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {/* Value input */}
+                  <input
+                    value={valText}
+                    onFocus={() => {
+                      editing.current = true;
+                    }}
+                    onChange={(e) => {
+                      setValText(e.target.value);
+                      const hex = _parse(e.target.value, mode);
+                      if (hex) applyHex(hex);
+                    }}
+                    onBlur={() => {
+                      editing.current = false;
+                      setValText(_format(curHexRef.current, mode));
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === "Escape") {
+                        editing.current = false;
+                        e.currentTarget.blur();
+                        if (e.key === "Escape") close();
+                      }
+                    }}
+                    style={{
+                      flex: 1,
+                      minWidth: 0,
+                      height: 30,
+                      boxSizing: "border-box",
+                      padding: "0 10px",
+                      ...(ed
+                        ? {
+                            borderRadius: _grp(true, false),
+                            background: "var(--surface-2)",
+                            border: "none",
+                          }
+                        : {
+                            borderRadius: "var(--r-lg)",
+                            background: "var(--bg-elevated)",
+                            border: "0.5px solid rgba(255,255,255,0.12)",
+                          }),
+                      color: "var(--text-primary)",
+                      fontSize: "var(--t12)",
+                      fontFamily: "monospace",
+                      outline: "none",
+                      letterSpacing: "0.03em",
+                    }}
+                  />
+                </div>
+
+                {/* Preset + recent swatches */}
+                {swatchGrid.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6 }}>
+                    {swatchGrid.map((c) => (
+                      <button
+                        key={c}
+                        title={c}
+                        onClick={() => applyHex(c)}
+                        style={{
+                          width: "100%",
+                          aspectRatio: "1",
+                          borderRadius: ed ? "var(--r-full)" : "var(--r-md)",
+                          background: c,
+                          border:
+                            c.toLowerCase() === currentHex.toLowerCase()
+                              ? "2px solid var(--accent)"
+                              : "0.5px solid rgba(255,255,255,0.15)",
+                          cursor: "default",
+                          padding: 0,
+                        }}
+                      />
                     ))}
                   </div>
                 )}
-              </div>
-              {/* Value input */}
-              <input
-                value={valText}
-                onFocus={() => {
-                  editing.current = true;
-                }}
-                onChange={(e) => {
-                  setValText(e.target.value);
-                  const hex = _parse(e.target.value, mode);
-                  if (hex) applyHex(hex);
-                }}
-                onBlur={() => {
-                  editing.current = false;
-                  setValText(_format(curHexRef.current, mode));
-                }}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" || e.key === "Escape") {
-                    editing.current = false;
-                    e.currentTarget.blur();
-                    if (e.key === "Escape") close();
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  minWidth: 0,
-                  height: 30,
-                  boxSizing: "border-box",
-                  padding: "0 10px",
-                  borderRadius: "var(--r-lg)",
-                  background: "var(--bg-elevated)",
-                  border: "0.5px solid rgba(255,255,255,0.12)",
-                  color: "var(--text-primary)",
-                  fontSize: "var(--t12)",
-                  fontFamily: "monospace",
-                  outline: "none",
-                  letterSpacing: "0.03em",
-                }}
-              />
-            </div>
-
-            {/* Preset + recent swatches */}
-            {swatchGrid.length > 0 && (
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(8, 1fr)", gap: 6 }}>
-                {swatchGrid.map((c) => (
-                  <button
-                    key={c}
-                    title={c}
-                    onClick={() => applyHex(c)}
-                    style={{
-                      width: "100%",
-                      aspectRatio: "1",
-                      borderRadius: "var(--r-md)",
-                      background: c,
-                      border:
-                        c.toLowerCase() === currentHex.toLowerCase()
-                          ? "2px solid var(--accent)"
-                          : "0.5px solid rgba(255,255,255,0.15)",
-                      cursor: "default",
-                      padding: 0,
-                    }}
-                  />
-                ))}
-              </div>
+              </>
             )}
           </div>,
           document.body

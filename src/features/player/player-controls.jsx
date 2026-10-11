@@ -1,3 +1,4 @@
+import { isMotionReduced } from "@/shared/lib/reduced-motion.js";
 import { useLayoutEffect, useRef } from "react";
 import { gsap } from "gsap";
 import {
@@ -134,7 +135,7 @@ export function PlayerControls(props) {
 
   useLayoutEffect(() => {
     const root = trackPresentationRef.current;
-    const reducedMotion = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    const reducedMotion = isMotionReduced();
     if (!root || !trackId || !anim || reducedMotion) return undefined;
     const context = gsap.context(() => {
       const timeline = gsap.timeline({ defaults: { ease: "power3.out" } });

@@ -13,13 +13,14 @@ mod window;
 
 use audio::{
     audio_outputs, audio_pause, audio_play, audio_resume, audio_seek, audio_set_analysis_enabled,
-    audio_set_eq, audio_set_output, audio_set_volume, audio_stop, playback_engine_replace_queue,
-    playback_engine_set_current_track, playback_engine_snapshot,
+    audio_set_eq, audio_set_mono, audio_set_output, audio_set_volume, audio_stop,
+    playback_engine_replace_queue, playback_engine_set_current_track, playback_engine_snapshot,
     playback_engine_update_transition_policy, playback_engine_update_transport,
     player_get_snapshot, player_next, player_pause, player_play, player_preload, player_previous,
     player_restart, player_seek, player_set_liked, player_set_queue, player_set_repeat,
-    player_set_shuffle, player_set_ui_visible, player_set_volume, player_update_integrations,
-    start_audio_thread, start_integration_worker, AudioPlayer, PlaybackEngine,
+    player_set_shuffle, player_set_together, player_set_ui_visible, player_set_volume,
+    player_together_sync, player_update_integrations, start_audio_thread, start_integration_worker,
+    AudioPlayer, PlaybackEngine,
 };
 use discord::{clear_discord_rpc, disconnect_rpc, DiscordRpc};
 #[cfg(windows)]
@@ -154,7 +155,7 @@ fn capture_screenshot(_app: tauri::AppHandle) -> Result<String, String> {
 
 #[tauri::command]
 fn stop_server_cmd(app: tauri::AppHandle) {
-    server::stop_server(&app);
+    server::stop_server_for_update(&app);
 }
 
 /// Rebuilds the tray menu with localised labels.
@@ -405,7 +406,7 @@ fn main() {
                 let handle = app.handle().clone();
                 std::thread::spawn(move || {
                     let mut none: Option<std::process::Child> = None;
-                    server::kill_existing_server(&mut none);
+                    server::kill_existing_server(&mut none, true);
                     server::start_server(&handle);
                 });
             }
@@ -424,6 +425,9 @@ fn main() {
             audio_play,
             audio_pause,
             audio_resume,
+            audio_set_mono,
+            player_set_together,
+            player_together_sync,
             audio_stop,
             audio_seek,
             audio_set_analysis_enabled,

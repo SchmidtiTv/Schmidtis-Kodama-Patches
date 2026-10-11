@@ -1,7 +1,4 @@
-// In-process bridge between the Player (which lives in the App tree) and the separate Big Picture
-// root. The Player pushes a formatted now-playing snapshot + registers command handlers; Big
-// Picture reads the state via useNowPlaying() and drives playback via the send* helpers. Same
-// single audio engine, two UIs — no HTTP, no duplication.
+// Share native playback snapshots and commands between the compact and fullscreen players.
 import { useSyncExternalStore } from "react";
 
 let _state = {
@@ -41,16 +38,13 @@ export function useNowPlaying() {
   return useSyncExternalStore(subscribe, getSnapshot);
 }
 
-// Handlers are registered from two places (the Player owns transport/seek; App owns play), so
-// registration MERGES instead of replacing. Big Picture invokes them via the send* helpers.
+// Transport and library actions register independently, so preserve existing handlers.
 let _handlers = { action: null, seek: null, play: null, enqueue: null };
 export function registerPlayerCommands(h) {
   _handlers = { ..._handlers, ...h };
 }
 
-// The real playback clock is the IpcAudio shim (currentTime/paused + timeupdate events), not a
-// DOM <audio> element. The Player registers it here so Big Picture's lyrics view can hand it to
-// the shared LyricsOverlay engine as its audioRef.
+// Lyrics follow the native playback clock exposed by IpcAudio.
 let _audio = null;
 export function registerAudio(a) {
   _audio = a;

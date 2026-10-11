@@ -175,3 +175,13 @@ export async function listenForNativeProgress(handler) {
     return () => {};
   }
 }
+
+// Selection intent belongs to the player boundary; it is never persisted in track metadata.
+const pausedSelections = new WeakSet();
+export function markPausedSelection(track) {
+  pausedSelections.add(track);
+  return track;
+}
+export function isPausedSelection(track) {
+  return track != null && pausedSelections.has(track);
+}

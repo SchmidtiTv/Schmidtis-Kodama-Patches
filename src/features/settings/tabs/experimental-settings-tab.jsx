@@ -3,7 +3,6 @@ import {
   ArrowsLeftRight,
   ClapperboardPlay,
   Columns,
-  Gamepad,
   MiniPlayerEnter,
   Sliders,
 } from "@/shared/icons/icons.jsx";
@@ -29,19 +28,6 @@ export function ExperimentalSettingsTab({
       >
         {t("experimentalDesc")}
       </SettingsSectionDesc>
-      <SettingRow
-        label={t("bigPictureMode")}
-        description={t("bigPictureModeDesc")}
-        icon={<Gamepad />}
-      >
-        <Button
-          variant="secondary"
-          size="sm"
-          onPress={() => window.dispatchEvent(new Event("kodama-open-bigpicture"))}
-        >
-          {t("bigPictureLaunch")}
-        </Button>
-      </SettingRow>
       <SettingRow
         label={t("miniPlayerTooltip")}
         description={t("miniPlayerOpenMain")}

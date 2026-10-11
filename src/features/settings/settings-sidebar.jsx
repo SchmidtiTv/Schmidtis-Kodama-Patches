@@ -109,6 +109,7 @@ export function SettingsSidebarContent({
       iconEl: <PersonArmsSpread size={18} />,
       sections: [
         { id: "acc-visual", label: t("accVisual") },
+        { id: "acc-hearing", label: t("accHearing") },
         { id: "acc-behaviour", label: t("behaviour") },
       ],
     },

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   getNativeSnapshot,
+  isPausedSelection,
   listenForNativeProgress,
   listenForNativeStateChanges,
   listenForNativeTrackChanges,
@@ -120,7 +121,7 @@ export function useNativePlaybackEngine({
       const isRestoredSelection =
         initialTrackRef.current === videoId && restoredTrackId === videoId;
       initialTrackRef.current = null;
-      if (isRestoredSelection) {
+      if (isRestoredSelection || isPausedSelection(track)) {
         await preloadNative();
       } else {
         // A previous source can still report Playing between set_current_track (which marks the
@@ -155,7 +156,17 @@ export function useNativePlaybackEngine({
       mixTransitionsEnabled,
       mixTempoLockEnabled,
     });
-  }, [crossfade, crossfadeOverrides, mixTempoLockEnabled, mixTransitions, mixTransitionsEnabled, nativeAvailable, playbackProgressive, queue, showVideoView]);
+  }, [
+    crossfade,
+    crossfadeOverrides,
+    mixTempoLockEnabled,
+    mixTransitions,
+    mixTransitionsEnabled,
+    nativeAvailable,
+    playbackProgressive,
+    queue,
+    showVideoView,
+  ]);
 
   useEffect(() => {
     let unlisten = () => {};

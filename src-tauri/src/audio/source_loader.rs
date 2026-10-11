@@ -2,9 +2,7 @@ use rodio::Source;
 use tauri::Emitter;
 
 use super::decoder::StreamingSource;
-use super::engine::{
-    CrossfadeRequest, PlaybackEngine, PlaybackSourceRequest, PlaybackStatus, TransportUpdate,
-};
+use super::engine::{CrossfadeRequest, PlaybackEngine, PlaybackSourceRequest};
 use super::http_source::DownloadProgress;
 use super::mix_processor::render_transition;
 
@@ -46,13 +44,14 @@ pub(super) fn build_streaming_source(
     existing: Option<DownloadProgress>,
 ) -> Result<(StreamingSource, Option<DownloadProgress>), String> {
     if url.contains("/audio-stream/") {
+        let prebuffer_ms = if existing.is_some() { 80 } else { 2000 };
         let source = match existing {
             Some(progress) => progress.reader(),
             None => super::http_source::HttpStream::new(url.to_string())
                 .map_err(|error| error.to_string())?,
         };
         let progress = source.progress();
-        return StreamingSource::new_streaming(Box::new(source), seek_to)
+        return StreamingSource::new_streaming_prebuffered(Box::new(source), seek_to, prebuffer_ms)
             .map(|s| (s, Some(progress)));
     }
     if let Some(path) = url.strip_prefix("file://") {
@@ -132,8 +131,7 @@ pub(super) fn spawn_automatic_source(
     request: PlaybackSourceRequest,
     generation: u64,
     source_tx: std::sync::mpsc::Sender<SourceMessage>,
-    app: tauri::AppHandle,
-    engine: PlaybackEngine,
+    command_tx: std::sync::mpsc::SyncSender<super::player::AudioCmd>,
 ) {
     std::thread::spawn(move || {
         let result = resolve_automatic_source(&request).and_then(|url| {
@@ -145,20 +143,13 @@ pub(super) fn spawn_automatic_source(
                 let _ = source_tx.send((source, generation, false, url, progress));
             }
             Err(error) => {
-                let _ = engine.update_transport(TransportUpdate {
-                    status: Some(PlaybackStatus::Stopped),
-                    ..TransportUpdate::default()
-                });
-                if let Ok(snapshot) = engine.snapshot() {
-                    let _ = app.emit("playback-state-changed", snapshot);
-                }
-                let _ = app.emit(
-                    "audio-error",
-                    format!(
+                let _ = command_tx.send(super::player::AudioCmd::SourceFailed {
+                    generation,
+                    message: format!(
                         "Could not load queued track {}: {error}",
                         request.track.video_id
                     ),
-                );
+                });
             }
         }
     });

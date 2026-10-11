@@ -1,0 +1,490 @@
+// ListenTogether in the sidebar, above the profile. Outside a room: a quiet "Listen together"
+// entry whose popover starts a room or joins one. In a room: a card tinted from the accent
+// (which follows the cover when the dynamic accent is on), with the members, an invite button,
+// the way to the Room tab and leaving. The room itself (people, queue, settings) lives in the
+// queue panel's Room tab.
+import { useState, useEffect } from "react";
+import { Button, PopoverRoot, PopoverContent, PopoverDialog, Spinner } from "@heroui/react";
+import { thumb } from "@/shared/api/thumbnails.js";
+import { useLang } from "@/shared/i18n/context.jsx";
+import { useZoom } from "@/features/settings/index.js";
+import { Users, Copy, Check, SignOut, Queue } from "@/shared/icons/icons.jsx";
+import { Tooltip } from "@/shared/ui/tooltip.jsx";
+import {
+  useTogether,
+  startRoom,
+  join,
+  leave,
+  inviteLink,
+  parseRoomInput,
+  setIdentity,
+  closeRoom,
+  handOverAndLeave,
+} from "./together.js";
+
+// A colour per member, stable for the session (the id is the room's, not the person's).
+export function memberColor(id = "") {
+  let h = 0;
+  for (const c of String(id)) h = (h * 31 + c.charCodeAt(0)) % 360;
+  return `hsl(${h} 65% 74%)`;
+}
+
+export function MemberAvatar({ member, size = 20, ring = "var(--bg-surface)" }) {
+  if (member.avatar) {
+    return (
+      <img
+        src={thumb(member.avatar)}
+        alt=""
+        aria-hidden="true"
+        draggable={false}
+        className="rounded-[var(--r-full)] shrink-0 object-cover"
+        style={{ width: size, height: size, boxShadow: ring ? `0 0 0 2px ${ring}` : undefined }}
+      />
+    );
+  }
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex items-center justify-center rounded-[var(--r-full)] shrink-0 font-semibold"
+      style={{
+        width: size,
+        height: size,
+        fontSize: Math.round(size * 0.5),
+        background: memberColor(member.id),
+        color: "#16181b",
+        boxShadow: ring ? `0 0 0 2px ${ring}` : undefined,
+      }}
+    >
+      {(member.name || "?").trim().charAt(0).toUpperCase()}
+    </span>
+  );
+}
+
+export const roomName = (r, t) => {
+  if (r.config?.name) return r.config.name;
+  if (r.isHost) return t("togetherYourRoom");
+  const host = r.members.find((m) => m.host);
+  return host ? t("togetherRoomOf", { n: host.name }) : t("togetherTitle");
+};
+
+const openRoomTab = () => window.dispatchEvent(new CustomEvent("kodama:open-room"));
+
+// The card's colours: mixed from the accent into the sidebar's own surface, so they work in a
+// dark and a light theme alike.
+const TINT = {
+  card: "color-mix(in srgb, var(--accent) 24%, var(--bg-surface))",
+  soft: "color-mix(in srgb, var(--accent) 40%, var(--bg-surface))",
+  softHover: "color-mix(in srgb, var(--accent) 52%, var(--bg-surface))",
+  sub: "color-mix(in srgb, var(--accent) 55%, var(--text-primary))",
+};
+
+// Why the last room ended, for the join popover (closed by its host is told as a toast already).
+const LAST_ERROR = {
+  unreachable: "togetherUnreachable",
+  kicked: "togetherKicked",
+  full: "togetherFull",
+  denied: "togetherDenied",
+};
+
+// Start a room, or join one by code or link: the popover outside a room.
+function JoinPopoverBody({ name, onDone }) {
+  const t = useLang();
+  const r = useTogether();
+  const [code, setCode] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(null);
+  const parsed = parseRoomInput(code);
+  const start = async () => {
+    setBusy(true);
+    setErr(null);
+    try {
+      await startRoom(name);
+      onDone();
+    } catch {
+      setErr(t("togetherStartFailed"));
+    }
+    setBusy(false);
+  };
+  const doJoin = () => {
+    if (parsed) {
+      setErr(null);
+      join(parsed, name);
+      setCode("");
+      onDone();
+    }
+  };
+  return (
+    <div className="w-[280px] p-3.5 flex flex-col gap-3 rounded-[var(--r-xl)] bg-[var(--bg-elevated)] shadow-[var(--elev-3,0_8px_24px_rgba(0,0,0,.35))] text-[length:var(--t12)]">
+      <div>
+        <div className="font-semibold text-[length:var(--t13)]">{t("togetherTitle")}</div>
+        <div className="text-secondary mt-0.5">{t("togetherDesc")}</div>
+      </div>
+      <Button
+        variant="primary"
+        isDisabled={busy}
+        onPress={start}
+        className="w-full rounded-[var(--r-full)]"
+      >
+        {busy ? <Spinner size="sm" /> : t("togetherStart")}
+      </Button>
+      <div className="text-[length:var(--t11)] text-muted font-semibold tracking-wide">
+        {t("togetherJoinLabel")}
+      </div>
+      <form
+        className="flex items-center gap-1.5 rounded-[var(--r-full)] bg-[var(--fill-subtle)] p-1 pl-3"
+        onSubmit={(e) => {
+          e.preventDefault();
+          doJoin();
+        }}
+      >
+        <input
+          value={code}
+          onChange={(e) => setCode(e.target.value)}
+          placeholder={t("togetherJoinPlaceholder")}
+          aria-label={t("togetherJoinPlaceholder")}
+          spellCheck={false}
+          className="flex-1 min-w-0 bg-transparent outline-none border-0 text-primary font-mono text-[length:var(--t12)]"
+        />
+        <Button
+          type="submit"
+          size="sm"
+          variant="secondary"
+          isDisabled={!parsed}
+          className="rounded-[var(--r-full)]"
+        >
+          {t("togetherJoin")}
+        </Button>
+      </form>
+      {(err || (r.status === "closed" && LAST_ERROR[r.error])) && (
+        <div className="text-[length:var(--t11)] text-[var(--status-danger)]">
+          {err || t(LAST_ERROR[r.error])}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function JoinPopover({ name, children }) {
+  const t = useLang();
+  const zoom = useZoom();
+  const [open, setOpen] = useState(false);
+  return (
+    <PopoverRoot isOpen={open} onOpenChange={setOpen}>
+      {children}
+      <PopoverContent
+        placement="right bottom"
+        offset={10}
+        className="p-0 bg-transparent shadow-none"
+      >
+        <PopoverDialog
+          aria-label={t("togetherTitle")}
+          className="outline-none p-0"
+          style={{ zoom }}
+        >
+          <JoinPopoverBody name={name} onDone={() => setOpen(false)} />
+        </PopoverDialog>
+      </PopoverContent>
+    </PopoverRoot>
+  );
+}
+
+// A host leaving: end the room for everyone, or hand it to someone first (co-hosts listed first,
+// the first of them preselected). Alone in the room there is nobody to hand it to.
+function HostLeavePopover({ r, t, children }) {
+  const zoom = useZoom();
+  const others = r.members
+    .filter((m) => !m.host)
+    .sort(
+      (a, b) =>
+        (b.role === "cohost") - (a.role === "cohost") || (a.joinedAt || 0) - (b.joinedAt || 0)
+    );
+  const [pick, setPick] = useState(null);
+  const chosen = pick && others.some((m) => m.id === pick) ? pick : others[0]?.id;
+  return (
+    <PopoverRoot>
+      {children}
+      <PopoverContent
+        placement="right bottom"
+        offset={10}
+        className="p-0 bg-transparent shadow-none"
+      >
+        <PopoverDialog
+          aria-label={t("togetherLeave")}
+          className="outline-none p-0"
+          style={{ zoom }}
+        >
+          <div className="w-[290px] p-3.5 flex flex-col gap-3 rounded-[var(--r-xl)] bg-[var(--bg-elevated)] shadow-[var(--elev-3,0_8px_24px_rgba(0,0,0,.35))] text-[length:var(--t12)]">
+            <div className="font-semibold text-[length:var(--t13)]">{t("togetherLeaveAsHost")}</div>
+            {others.length > 0 && (
+              <>
+                <div className="text-[length:var(--t11)] text-muted font-semibold tracking-wide">
+                  {t("togetherHandOverTo")}
+                </div>
+                <div
+                  className="flex flex-col gap-0.5 max-h-[180px] overflow-y-auto scrollable"
+                  role="radiogroup"
+                  aria-label={t("togetherHandOverTo")}
+                >
+                  {others.map((m) => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      role="radio"
+                      aria-checked={chosen === m.id}
+                      onClick={() => setPick(m.id)}
+                      className={`flex items-center gap-2.5 px-2 py-1.5 rounded-[var(--r-md)] border-0 cursor-default text-left min-w-0 ${chosen === m.id ? "bg-accent-dim text-primary" : "bg-transparent text-secondary hover:bg-hover"}`}
+                    >
+                      <MemberAvatar member={m} size={22} ring={false} />
+                      <span className="truncate flex-1">{m.name}</span>
+                      {m.role === "cohost" && (
+                        <span className="text-muted text-[length:var(--t11)] shrink-0">
+                          {t("togetherRoleCohost")}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+                <Button
+                  variant="primary"
+                  isDisabled={!chosen}
+                  onPress={() => handOverAndLeave(chosen)}
+                  className="w-full rounded-[var(--r-full)]"
+                >
+                  {t("togetherHandOverAndLeave")}
+                </Button>
+              </>
+            )}
+            <Button
+              variant="secondary"
+              onPress={closeRoom}
+              className="w-full rounded-[var(--r-full)] text-[var(--status-danger)]"
+            >
+              {t("togetherCloseRoom")}
+            </Button>
+          </div>
+        </PopoverDialog>
+      </PopoverContent>
+    </PopoverRoot>
+  );
+}
+
+export function TogetherSidebar({ name, avatar, collapsed, onOpenRoom }) {
+  const showRoom = () => {
+    onOpenRoom?.();
+    openRoomTab();
+  };
+  const t = useLang();
+  const r = useTogether();
+  useEffect(() => {
+    setIdentity(name, avatar);
+  }, [name, avatar]);
+  const [copied, setCopied] = useState(false);
+  const inRoom = r.status !== "idle" && r.status !== "closed";
+  const myName = (name || "").trim() || "Kodama";
+  const copy = () => {
+    navigator.clipboard
+      .writeText(inviteLink(r.room))
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 1800);
+      })
+      .catch(() => {});
+  };
+  const shown = r.members.slice(0, 3);
+  const sub =
+    r.status === "open" ? t("togetherInRoom", { c: r.members.length }) : t("togetherConnecting");
+
+  // ── Collapsed sidebar: one avatar with a ring and the count, or the entry's icon ──
+  if (collapsed) {
+    if (!inRoom) {
+      return (
+        <JoinPopover name={myName}>
+          <Tooltip text={t("togetherTitle")}>
+            <Button
+              variant="ghost"
+              isIconOnly
+              aria-label={t("togetherTitle")}
+              className="w-9 h-9 min-w-9 rounded-[var(--r-full)] text-secondary hover:text-primary"
+            >
+              <Users size={16} />
+            </Button>
+          </Tooltip>
+        </JoinPopover>
+      );
+    }
+    const first = r.members.find((m) => m.host) || r.members[0];
+    return (
+      <Tooltip text={`${roomName(r, t)} · ${sub}`}>
+        <button
+          type="button"
+          onClick={showRoom}
+          aria-label={`${roomName(r, t)}, ${sub}`}
+          className="relative w-9 h-9 border-0 bg-transparent cursor-default inline-flex items-center justify-center"
+        >
+          {first ? (
+            <MemberAvatar member={first} size={26} ring="var(--accent)" />
+          ) : (
+            <Spinner size="sm" />
+          )}
+          <span
+            className="absolute -bottom-0.5 -right-0.5 min-w-[15px] h-[15px] px-1 rounded-[var(--r-full)] text-[10px] font-bold leading-[15px] text-center"
+            style={{ background: TINT.card, color: "var(--text-primary)" }}
+          >
+            {r.members.length}
+          </span>
+        </button>
+      </Tooltip>
+    );
+  }
+
+  // ── Outside a room: a quiet entry, like the navigation's ──
+  if (!inRoom) {
+    return (
+      <JoinPopover name={myName}>
+        <Button
+          variant="ghost"
+          fullWidth
+          className="justify-start gap-2.5 px-3 rounded-xl text-[length:var(--t13)] text-secondary mb-1"
+        >
+          <Users size={16} />
+          {t("togetherTitle")}
+        </Button>
+      </JoinPopover>
+    );
+  }
+
+  // ── In a room: the card ──
+  const iconBtn =
+    "h-[34px] min-w-[34px] px-0 rounded-[var(--r-full)] inline-flex items-center justify-center border-0 cursor-default transition-[background-color] duration-150";
+  const softBtn = {
+    style: { background: TINT.soft },
+    onMouseEnter: (e) => {
+      e.currentTarget.style.background = TINT.softHover;
+    },
+    onMouseLeave: (e) => {
+      e.currentTarget.style.background = TINT.soft;
+    },
+  };
+
+  // Waiting to be let in: nothing to show of the room yet but that, and the way out.
+  if (r.status === "waiting") {
+    return (
+      <div
+        className="mb-1.5 p-3 flex flex-col gap-2.5 rounded-[var(--r-xl)]"
+        style={{ background: TINT.card }}
+      >
+        <span className="text-[length:var(--t12)] font-semibold" style={{ color: TINT.sub }}>
+          {t("togetherListening")}
+        </span>
+        <span className="flex items-center gap-2.5 text-[length:var(--t13)] text-primary">
+          <Spinner size="sm" />
+          {t("togetherWaitingToJoin")}
+        </span>
+        <button
+          type="button"
+          onClick={leave}
+          className={`${iconBtn} gap-2 text-[length:var(--t13)] font-semibold text-primary`}
+          {...softBtn}
+        >
+          {t("togetherCancel")}
+        </button>
+      </div>
+    );
+  }
+
+  const admin = r.isHost || r.you?.role === "cohost";
+  // A react-aria button: as the host's, it is the trigger of a popover, which a plain button is not.
+  const leaveBtn = (
+    <Button
+      variant="ghost"
+      isIconOnly
+      onPress={r.isHost ? undefined : leave}
+      aria-label={t("togetherLeave")}
+      className={`${iconBtn} w-[34px]`}
+      {...softBtn}
+      style={{ ...softBtn.style, color: "var(--status-danger)" }}
+    >
+      <SignOut size={15} />
+    </Button>
+  );
+  return (
+    <div
+      className="mb-1.5 p-3 flex flex-col gap-2.5 rounded-[var(--r-xl)]"
+      style={{ background: TINT.card }}
+    >
+      <button
+        type="button"
+        onClick={showRoom}
+        className="flex flex-col gap-1 border-0 bg-transparent p-0 text-left cursor-default min-w-0"
+      >
+        <span className="text-[length:var(--t12)] font-semibold" style={{ color: TINT.sub }}>
+          {t("togetherListening")}
+        </span>
+        <span className="flex items-center gap-2.5 min-w-0">
+          <span className="inline-flex items-center shrink-0">
+            {shown.length > 0 ? (
+              shown.map((m, i) => (
+                <span key={m.id} style={{ marginLeft: i ? -8 : 0 }}>
+                  <MemberAvatar member={m} size={28} ring={TINT.card} />
+                </span>
+              ))
+            ) : (
+              <Spinner size="sm" />
+            )}
+          </span>
+          <span className="min-w-0">
+            <span className="block truncate text-[length:var(--t13)] font-semibold text-primary">
+              {roomName(r, t)}
+            </span>
+            <span className="block truncate text-[length:var(--t12)]" style={{ color: TINT.sub }}>
+              {sub}
+            </span>
+          </span>
+        </span>
+      </button>
+      <div className="flex items-center gap-1.5">
+        {admin ? (
+          <button
+            type="button"
+            onClick={copy}
+            className={`${iconBtn} flex-1 gap-2 text-[length:var(--t13)] font-semibold bg-accent text-[var(--accent-foreground)] hover:brightness-110`}
+          >
+            {copied ? <Check size={14} /> : <Copy size={14} />}
+            {copied ? t("togetherCopied") : t("togetherInvite")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            onClick={showRoom}
+            className={`${iconBtn} flex-1 gap-2 text-[length:var(--t13)] font-semibold text-primary`}
+            {...softBtn}
+          >
+            <Queue size={14} />
+            {t("togetherOpenRoom")}
+          </button>
+        )}
+        {admin && (
+          <Tooltip text={t("togetherOpenRoom")}>
+            <button
+              type="button"
+              onClick={showRoom}
+              aria-label={t("togetherOpenRoom")}
+              className={iconBtn}
+              {...softBtn}
+              style={{ ...softBtn.style, color: "var(--text-primary)" }}
+            >
+              <Queue size={15} />
+            </button>
+          </Tooltip>
+        )}
+        {r.isHost ? (
+          <HostLeavePopover r={r} t={t}>
+            {leaveBtn}
+          </HostLeavePopover>
+        ) : (
+          <Tooltip text={t("togetherLeave")}>{leaveBtn}</Tooltip>
+        )}
+      </div>
+    </div>
+  );
+}

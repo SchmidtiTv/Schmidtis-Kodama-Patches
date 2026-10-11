@@ -16,7 +16,7 @@ describe("SMK-03 search to playback", () => {
     await browser.keys("Enter");
     await $("[data-testid='view-search']").waitForDisplayed();
 
-    const track = await $("[data-track-id='track-normal']");
+    const track = await $("[data-testid='view-search'] [data-track-id='track-normal']");
     await track.waitForDisplayed();
     await track.click();
 

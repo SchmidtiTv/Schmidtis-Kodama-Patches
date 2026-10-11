@@ -56,6 +56,8 @@ export const PlayerOverlay = memo(function PlayerOverlay({
   ambientVisualizer,
   syllableZoom,
   fluidLyrics,
+  braccatoLyrics,
+  braccatoLetterWave,
   playerVisible,
   handleInstrumentalChange,
   vizConfig,
@@ -187,6 +189,8 @@ export const PlayerOverlay = memo(function PlayerOverlay({
                   showAgentTags={showAgentTags}
                   ambientVisualizer={ambientVisualizer}
                   syllableZoom={syllableZoom}
+                  braccatoLyrics={braccatoLyrics}
+                  braccatoLetterWave={braccatoLetterWave}
                   fluidLyrics={fluidLyrics}
                   ambientBackground={ambientBackground}
                   fullscreen={fullscreen}
@@ -245,6 +249,11 @@ export const PlayerOverlay = memo(function PlayerOverlay({
                     fullscreen={fullscreen}
                     track={currentTrack}
                     showCaptions={videoCaptionsActive}
+                    braccatoCaptions={braccatoLyrics}
+                    braccatoLetterWave={braccatoLetterWave}
+                    captionsFontSize={lyricsFontSize}
+                    captionsTranslationFontSize={lyricsTranslationFontSize}
+                    captionsRomajiFontSize={lyricsRomajiFontSize}
                     fluidCaptions={fluidLyrics}
                     captionsTranslation={showLyricsTranslation}
                     captionsTranslationLang={lyricsTranslationLang}

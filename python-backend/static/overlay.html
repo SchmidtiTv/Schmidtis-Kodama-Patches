@@ -4,6 +4,19 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;700&family=Inter:wght@400;700&family=Roboto:wght@400;700&family=Nunito:wght@400;700&family=Exo+2:wght@400;700&family=Poppins:wght@400;700&family=Raleway:wght@400;700&family=Montserrat:wght@400;700&family=DM+Sans:opsz,wght@9..40,400;9..40,700&family=Ubuntu:wght@400;700&family=Lexend:wght@400;700&family=Space+Grotesk:wght@400;700&family=Sora:wght@400;700&family=Barlow:wght@400;700&family=Figtree:wght@400;700&family=Plus+Jakarta+Sans:wght@400;700&family=Kanit:wght@400;700&family=Oxanium:wght@400;700&family=Chakra+Petch:wght@400;700&display=swap" rel="stylesheet">
 <style>
+/* The three colours of the current cover (0..255 per channel), set by applyCoverPal. Registered
+   so they can be animated: a new song's colours glide in instead of switching. */
+@property --cv1r{syntax:'<number>';inherits:true;initial-value:238}
+@property --cv1g{syntax:'<number>';inherits:true;initial-value:168}
+@property --cv1b{syntax:'<number>';inherits:true;initial-value:255}
+@property --cv2r{syntax:'<number>';inherits:true;initial-value:124}
+@property --cv2g{syntax:'<number>';inherits:true;initial-value:77}
+@property --cv2b{syntax:'<number>';inherits:true;initial-value:255}
+@property --cv3r{syntax:'<number>';inherits:true;initial-value:0}
+@property --cv3g{syntax:'<number>';inherits:true;initial-value:229}
+@property --cv3b{syntax:'<number>';inherits:true;initial-value:255}
+:root{transition:--cv1r 1.2s ease,--cv1g 1.2s ease,--cv1b 1.2s ease,--cv2r 1.2s ease,--cv2g 1.2s ease,--cv2b 1.2s ease,--cv3r 1.2s ease,--cv3g 1.2s ease,--cv3b 1.2s ease}
+
 *{margin:0;padding:0;box-sizing:border-box}
 html,body{background:transparent;overflow:hidden}
 body{display:flex;align-items:center;justify-content:center;min-height:100vh;min-width:100vw}
@@ -14,32 +27,53 @@ body{display:flex;align-items:center;justify-content:center;min-height:100vh;min
 #blur{background-size:cover;background-position:center;opacity:0;transition:opacity .3s}
 .layer{position:absolute}
 .layer-anim{position:absolute;inset:0}
+.layer-group{position:absolute;inset:0}
 @keyframes ovl-fade{from{opacity:0}to{opacity:1}}
 @keyframes ovl-slideUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes ovl-slideDown{from{opacity:0;transform:translateY(-16px)}to{opacity:1;transform:translateY(0)}}
 @keyframes ovl-slideLeft{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:translateX(0)}}
 @keyframes ovl-slideRight{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:translateX(0)}}
 @keyframes ovl-zoom{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
+@keyframes ovl-blurIn{from{opacity:0;filter:blur(14px)}to{opacity:1;filter:blur(0)}}
+@keyframes ovl-pop{0%{opacity:0;transform:scale(.4)}60%{opacity:1;transform:scale(1.1)}80%{transform:scale(.97)}100%{opacity:1;transform:scale(1)}}
+@keyframes ovl-zoomOut{from{opacity:0;transform:scale(1.3)}to{opacity:1;transform:scale(1)}}
+@keyframes ovl-flipX{from{opacity:0;transform:perspective(500px) rotateX(-80deg)}to{opacity:1;transform:perspective(500px) rotateX(0)}}
+@keyframes ovl-flipY{from{opacity:0;transform:perspective(500px) rotateY(80deg)}to{opacity:1;transform:perspective(500px) rotateY(0)}}
+@keyframes ovl-rotateIn{from{opacity:0;transform:rotate(-25deg) scale(.85)}to{opacity:1;transform:rotate(0) scale(1)}}
+@keyframes ovl-dropIn{0%{opacity:0;transform:translateY(-48px)}55%{opacity:1;transform:translateY(8px)}75%{transform:translateY(-4px)}90%{transform:translateY(2px)}100%{opacity:1;transform:translateY(0)}}
+@keyframes ovl-wipeRight{from{clip-path:inset(-60% 100% -60% -60%)}to{clip-path:inset(-60% -60% -60% -60%)}}
+@keyframes ovl-wipeLeft{from{clip-path:inset(-60% -60% -60% 100%)}to{clip-path:inset(-60% -60% -60% -60%)}}
+@keyframes ovl-enter{from{transform:translate(var(--ovl-dx,0px),var(--ovl-dy,0px))}to{transform:translate(0,0)}}
+@keyframes ovl-wipeUp{from{clip-path:inset(100% -60% -60% -60%)}to{clip-path:inset(-60% -60% -60% -60%)}}
 @keyframes ovl-pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.06)}}
 @keyframes ovl-float{0%,100%{transform:translateY(0)}50%{transform:translateY(-6px)}}
 @keyframes ovl-spin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
 .layer-img{width:100%;height:100%;display:block}
 .layer-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center}
-.txt{display:flex;width:100%;height:100%;overflow:hidden}
+.txt{display:flex;width:100%;height:100%}
 .txt-inner{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
 .txt-inner.scroll{text-overflow:clip}
 .txt-inner.scroll span{display:inline-block}
 .prog-track,.prog-fill{position:absolute;top:0;height:100%}
 .prog-track{left:0;right:0}
-.prog-fill{left:0;width:0;transition:width .8s linear}
+.prog-fill{left:0;width:0}
+.prog-fx{position:absolute;top:0;bottom:0;pointer-events:none}
+@keyframes ovl-cane{from{background-position:0 0}to{background-position:16px 0}}
+@keyframes ovl-glint{0%,60%{left:-35%}100%{left:110%}}
+@keyframes ovl-comet{from{left:-35%}to{left:100%}}
+@keyframes ovl-breathe{0%,100%{opacity:1}50%{opacity:.45}}
+@keyframes ovl-hue{to{filter:hue-rotate(360deg)}}
 </style></head>
 <body>
 <div id="stage"><div id="border"></div><div id="bg"></div><div id="blur"></div><div id="layers"></div><div id="layers-free"></div></div>
 <script>
 const API=location.origin;
-const PARAMS=new URLSearchParams(location.search);
-const EDITOR=PARAMS.get('editor')==='1'; // suppress entrance anims in the editor preview
-const STILL=PARAMS.get('still')==='1';
+const EDITOR=new URLSearchParams(location.search).get('editor')==='1'; // suppress entrance anims in the editor preview
+// Still mode: a thumbnail of one saved design. It takes its document only from postMessage,
+// so it must NOT subscribe to the live stream or pull the active config — a dozen thumbnails
+// would otherwise open a dozen SSE clients and then overwrite themselves with the doc that is
+// currently on air. Sample track data stands in so text layers are not blank.
+const STILL=new URLSearchParams(location.search).get('still')==='1';
 let doc=null;
 const state={title:"",artist:"",album:"",cover:"",progress:0,duration:0,isPlaying:false};
 const layerEls={}; // id -> record
@@ -47,14 +81,28 @@ const layerEls={}; // id -> record
 // Preview background via ?bg= (light | checkered | dark)
 (()=>{const p=new URLSearchParams(location.search).get('bg');if(p)document.body.style.background=p==='light'?'#efefef':p==='checkered'?'repeating-conic-gradient(#aaa 0% 25%,#ddd 0% 50%) 0 0/20px 20px':'#111';})();
 
+// A colour can point at the cover: "cover:N" (N = 1..3, by how much of the cover it fills),
+// optionally ":light" or ":dark". It resolves to the CSS variables above, so everything drawn
+// with it changes with the song without being rebuilt. The editor mixes the same way
+// (src/features/overlay/cover-colors.js), keep the two in step.
+function coverChannels(c){
+  const m=/^cover:([123])(?::(light|dark))?$/.exec(c);if(!m)return null;
+  const v=(ch)=>`var(--cv${m[1]}${ch})`;
+  const f=m[2]==='light'?(ch)=>`calc(${v(ch)} + (255 - ${v(ch)}) * .55)`:m[2]==='dark'?(ch)=>`calc(${v(ch)} * .42)`:v;
+  return [f('r'),f('g'),f('b')];
+}
+function svgCol(el,attr,v){
+  if(typeof v==='string'&&v.indexOf('var(')>=0){el.removeAttribute(attr);el.style.setProperty(attr,v);}
+  else{el.style.removeProperty(attr);el.setAttribute(attr,v);}
+}
 function rgba(c,a){
   if(typeof c!=='string')return c;
+  if(c.slice(0,6)==='cover:'){const k=coverChannels(c);return k?`rgba(${k.join(',')},${a==null?1:a})`:'transparent';}
   if(c[0]!=='#')return c;            // already rgba()/named — pass through
   const r=parseInt(c.slice(1,3),16),g=parseInt(c.slice(3,5),16),b=parseInt(c.slice(5,7),16);
   return a==null?`rgb(${r},${g},${b})`:`rgba(${r},${g},${b},${a})`;
 }
 
-// SVG path data for a rounded/beveled rectangle (per-corner). ox/oy offset.
 function cornerPath(W,H,c,ox,oy){ox=ox||0;oy=oy||0;c=c||{};
   const tl={t:c.typeTL||'r',s:c.TL||0},tr={t:c.typeTR||'r',s:c.TR||0},
         br={t:c.typeBR||'r',s:c.BR||0},bl={t:c.typeBL||'r',s:c.BL||0};
@@ -75,7 +123,7 @@ function applyCanvas(cv){
   // Shadow + border glow render on #stage (no clip-path here so they spill outside the shape)
   const sh=cv.shadow&&cv.shadow.on?`drop-shadow(0 8px 32px rgba(0,0,0,${cv.shadow.strength==null?0.35:cv.shadow.strength}))`:'';
   const bd=cv.border||{};
-  const glow=bd.on&&(bd.glow||0)>0?`drop-shadow(0 0 ${(bd.glow||0)*1.5}px ${bd.color||'#EEA8FF'})`:'';
+  const glow=bd.on&&(bd.glow||0)>0?`drop-shadow(0 0 ${(bd.glow||0)*1.5}px ${rgba(bd.color||'#EEA8FF')})`:'';
   stage.style.filter=[sh,glow].filter(Boolean).join(' ')||'none';
   const bw=bd.on?(bd.width||1.5):0;
   const corners=cv.corners||{TL:14,TR:14,BR:14,BL:14,typeTL:'r',typeTR:'r',typeBR:'r',typeBL:'r'};
@@ -88,7 +136,7 @@ function applyCanvas(cv){
                  typeTL:corners.typeTL,typeTR:corners.typeTR,typeBR:corners.typeBR,typeBL:corners.typeBL};
     const IW=Math.max(1,W-2*bw),IH=Math.max(1,H-2*bw);
     const innerAt=cornerPath(IW,IH,inner,bw,bw);
-    border.style.display='';border.style.background=bd.color||'#EEA8FF';
+    border.style.display='';border.style.background=rgba(bd.color||'#EEA8FF');
     border.style.clipPath=`path(evenodd,'${outer} ${innerAt}')`;
     const clip=`path('${innerAt}')`;bg.style.clipPath=clip;blur.style.clipPath=clip;layers.style.clipPath=clip;
   }else{
@@ -96,7 +144,7 @@ function applyCanvas(cv){
     const clip=`path('${outer}')`;bg.style.clipPath=clip;blur.style.clipPath=clip;layers.style.clipPath=clip;
   }
   const b=cv.bg||{};
-  bg.style.background=rgba(b.color||'#1a1a1a',(b.opacity==null?90:b.opacity)/100);
+  bg.style.background=isGrad(b)?paintCss({...b,opacity:(b.opacity==null?90:b.opacity)}):rgba(b.color||'#1a1a1a',(b.opacity==null?90:b.opacity)/100);
   if(b.blurFromCover&&(b.blur||0)>0){
     blur.style.filter=`blur(${b.blur}px)`;blur.style.opacity=state.cover?'1':'0';
     if(state.cover)blur.style.backgroundImage=`url(${state.cover})`;
@@ -105,7 +153,7 @@ function applyCanvas(cv){
 
 function buildAlbumArt(el,L,rec){
   const s=L.style||{};
-  const ph=document.createElement('div');ph.className='layer-ph';ph.style.background=s.placeholderBg||'rgba(255,255,255,.12)';
+  const ph=document.createElement('div');ph.className='layer-ph';ph.style.background=rgba(s.placeholderBg||'rgba(255,255,255,.12)');
   ph.innerHTML='<svg width="38%" height="38%" viewBox="0 0 24 24" fill="rgba(255,255,255,.4)"><path d="M12 3v10.55c-.59-.34-1.27-.55-2-.55-2.21 0-4 1.79-4 4s1.79 4 4 4 4-1.79 4-4V7h4V3h-6z"/></svg>';
   const img=document.createElement('img');img.className='layer-img';img.style.display='none';img.style.objectFit=s.fit||'cover';
   const cp=`path('${cornerPath(L.w||0,L.h||0,s.corners,0,0)}')`;ph.style.clipPath=cp;img.style.clipPath=cp;
@@ -122,20 +170,500 @@ function buildText(el,L,rec){
   inner.style.fontSize=(s.fontSize||14)+'px';
   inner.style.fontWeight=s.fontWeight||400;
   inner.style.color=topFillColor(s,s.color||'#fff');
+  const tfill=visFills(s)[0];
+  if(isGrad(tfill)){
+    // A marquee moves the span inside the line. Clipped to text on the line, the gradient's mask
+    // stayed where the text was before it moved, and the title showed up shifted and cut. So a
+    // moving text carries its own gradient (set on the span below).
+    if(s.marquee){rec.spanPaint=paintCss(tfill);inner.style.color='transparent';}
+    else{inner.style.backgroundImage=paintCss(tfill);inner.style.webkitBackgroundClip='text';inner.style.backgroundClip='text';inner.style.color='transparent';}
+  }
+  // Outline: the first visible stroke. "Outside" is a stroke twice as wide painted UNDER the
+  // fill, so only its outer half shows; text has no inside stroke to offer.
+  //
+  // The browser's own text stroke can only do sharp (miter) corners, which spike on digits and
+  // diagonals, and cannot take a gradient. So a single line with an outline is drawn as SVG
+  // text, glyphs and outline both, with the corner style and paints of the layer; the HTML text
+  // stays underneath, invisible, for the layout, the marquee and the ellipsis. Several lines
+  // cannot be SVG text (it does not wrap) and keep the browser's stroke.
+  const tst=(Array.isArray(s.strokes)?s.strokes:[]).find(p=>p&&p.visible!==false);
+  let reach=0;
+  const multi=(s.maxLines||1)>1;
+  if(tst){
+    const w=(s.strokeWeight==null?2:s.strokeWeight),out=(s.strokePosition||'outside')!=='center';
+    reach=out?w:w/2;
+    if(multi){
+      inner.style.webkitTextStroke=(out?w*2:w)+'px '+rgba(tst.color||'#000000',(tst.opacity==null?100:tst.opacity)/100);
+      inner.style.paintOrder=out?'stroke fill':'normal';
+    }else{
+      rec.outline={w,out,stroke:tst,fill:tfill||{color:Array.isArray(s.fills)?'transparent':(s.color||'#ffffff'),opacity:100},join:s.strokeJoin||'round'};
+      inner.style.color='transparent';inner.style.backgroundImage='';
+    }
+  }
+  // The line clips its content (for the ellipsis and the marquee), and that clipped the outline
+  // and any glyph reaching past the line box: tall caps, descenders, overhanging letters. Room
+  // inside the clip, given back as negative margin, keeps the text exactly where it was.
+  const px=Math.ceil(reach)+2,py=`calc(0.25em + ${Math.ceil(reach)}px)`;
+  inner.style.padding=`${py} ${px}px`;
+  inner.style.margin=`calc(-0.25em - ${Math.ceil(reach)}px) -${px}px`;
+  inner.style.maxWidth=`calc(100% + ${2*px}px)`;
   inner.style.textAlign=s.align||'left';
   inner.style.letterSpacing=(s.letterSpacing||0)+'px';
   inner.style.lineHeight=s.lineHeight||1.3;
   if((s.maxLines||1)>1){inner.style.whiteSpace='normal';inner.style.display='-webkit-box';inner.style.webkitBoxOrient='vertical';inner.style.webkitLineClamp=s.maxLines;}
-  const span=document.createElement('span');inner.appendChild(span);box.appendChild(inner);el.appendChild(box);
-  rec.span=span;rec.inner=inner;
+  const span=document.createElement('span');const tn=document.createTextNode('');span.appendChild(tn);
+  inner.appendChild(span);box.appendChild(inner);el.appendChild(box);
+  rec.span=span;rec.inner=inner;rec.tnode=tn;rec.full=null;
+  if(rec.spanPaint&&!rec.outline){span.style.backgroundImage=rec.spanPaint;span.style.webkitBackgroundClip='text';span.style.backgroundClip='text';span.style.color='transparent';}
+  if(rec.outline){
+    const ns='http://www.w3.org/2000/svg';
+    span.style.position='relative';span.style.display='inline-block';
+    const svg=document.createElementNS(ns,'svg');svg.style.cssText='position:absolute;left:0;top:0;overflow:visible;pointer-events:none';
+    const t=document.createElementNS(ns,'text');t.setAttribute('x','0');
+    t.style.fontFamily=inner.style.fontFamily;t.style.fontSize=inner.style.fontSize;t.style.fontWeight=inner.style.fontWeight;
+    t.style.letterSpacing=(s.letterSpacing||0)+'px';t.style.whiteSpace='pre';
+    svg.appendChild(t);span.appendChild(svg);rec.osvg=svg;rec.otext=t;
+  }
 }
 
+function syncOutline(rec){
+  const o=rec.outline;if(!o||!rec.osvg)return;
+  const span=rec.span,svg=rec.osvg,t=rec.otext;
+  const probe=document.createElement('i');probe.style.cssText='display:inline-block;width:0;height:0;vertical-align:baseline';
+  span.insertBefore(probe,svg);const base=probe.offsetTop;span.removeChild(probe);
+  const W=Math.max(1,span.offsetWidth),H=Math.max(1,span.offsetHeight);
+  svg.setAttribute('width',W);svg.setAttribute('height',H);
+  t.setAttribute('y',base);t.textContent=rec.tnode.data;
+  const old=svg.querySelector('defs');if(old)svg.removeChild(old);
+  svgCol(t,'fill',svgPaint(svg,o.fill,W,H,'#ffffff'));
+  svgCol(t,'stroke',svgPaint(svg,o.stroke,W,H,'#000000'));
+  t.setAttribute('stroke-width',o.out?o.w*2:o.w);
+  t.setAttribute('stroke-linejoin',o.join==='bevel'?'bevel':o.join==='miter'?'miter':'round');
+  t.setAttribute('stroke-linecap','round');
+  t.setAttribute('paint-order',o.out?'stroke fill':'fill stroke');
+}
+// SVG text cannot end in an ellipsis on its own, so an outlined line is shortened here, the
+// same way the browser would: as many characters as fit, then "…".
+function fitOutlined(rec,full){
+  // Measured on the text box (the layer's width): the line itself shrinks to its content, so
+  // measuring it chased its own tail down to a lone ellipsis.
+  const avail=rec.inner.parentElement.clientWidth;
+  rec.tnode.data=full;
+  if(rec.span.offsetWidth<=avail+0.5)return;
+  let lo=0,hi=full.length;
+  while(lo<hi){const mid=Math.ceil((lo+hi)/2);rec.tnode.data=full.slice(0,mid).trimEnd()+'\u2026';if(rec.span.offsetWidth<=avail+0.5)lo=mid;else hi=mid-1;}
+  rec.tnode.data=full.slice(0,lo).trimEnd()+'\u2026';
+}
+
+const ovlDiv=(cls)=>{const d=document.createElement('div');if(cls)d.className=cls;return d;};
+function progressFx(fill,s,fillCol){
+  const fx=s.progressAnim||'none';
+  if(fx==='cane'){
+    // Over the fill rather than as its background, so a gradient fill shows through the stripes.
+    fill.style.overflow='hidden';
+    const c=ovlDiv('prog-fx');c.style.left='0';c.style.right='0';
+    c.style.backgroundImage='linear-gradient(45deg,rgba(255,255,255,.45) 25%,transparent 25%,transparent 50%,rgba(255,255,255,.45) 50%,rgba(255,255,255,.45) 75%,transparent 75%,transparent)';
+    c.style.backgroundSize='16px 16px';
+    c.style.animation=`ovl-cane ${(s.progressAnimSpeed||1)*0.9}s linear infinite`;
+    fill.appendChild(c);
+  }else if(fx==='shimmer'||fx==='comet'){
+    fill.style.overflow='hidden';
+    const g=ovlDiv('prog-fx');g.style.width='35%';
+    g.style.background=fx==='shimmer'
+      ?'linear-gradient(90deg,transparent,rgba(255,255,255,.75),transparent)'
+      :'linear-gradient(90deg,transparent,rgba(255,255,255,.35) 60%,#fff)';
+    g.style.animation=fx==='shimmer'?`ovl-glint ${(s.progressAnimSpeed||1)*2.4}s ease-in-out infinite`:`ovl-comet ${(s.progressAnimSpeed||1)*1.6}s linear infinite`;
+    fill.appendChild(g);
+  }else if(fx==='breathe'){
+    fill.style.animation=`ovl-breathe ${(s.progressAnimSpeed||1)*2.2}s ease-in-out infinite`;
+  }else if(fx==='rainbow'){
+    fill.style.backgroundImage='linear-gradient(90deg,#ff5f6d,#ffc371,#7cff6b,#4fc3f7,#b388ff)';
+    fill.style.animation=`ovl-hue ${(s.progressAnimSpeed||1)*4}s linear infinite`;
+  }
+}
 function buildProgress(el,L,rec){
+  const s=L.style||{},kind=s.progressStyle||'bar',W=L.w||0,H=L.h||0;
+  const fillCol=rgba(s.fillColor||'#EEA8FF',(s.fillOpacity==null?100:s.fillOpacity)/100);
+  const trackCol=rgba(s.trackColor||'rgba(255,255,255,.12)');
+  // The fill as a paint: solid fillColor, or a gradient (fillType/fillStops/fillAngle).
+  const fillPaint={type:s.fillType||'solid',color:s.fillColor||'#EEA8FF',opacity:(s.fillOpacity==null?100:s.fillOpacity),stops:s.fillStops,angle:s.fillAngle};
+  const gradFill=isGrad(fillPaint)?paintCss(fillPaint):'';
+  rec.kind=kind;
+  if(kind==='segments'||kind==='dots'){
+    const n=Math.max(2,Math.min(60,Math.round(s.segCount||(kind==='dots'?16:10))));
+    const row=ovlDiv();row.style.cssText='position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between';
+    if(kind==='segments')row.style.gap=(s.segGap==null?4:s.segGap)+'px';
+    const parts=[];
+    const dot=Math.max(2,Math.min(H,s.dotSize||Math.round(H*0.5)));
+    for(let i=0;i<n;i++){
+      const seg=ovlDiv();
+      if(kind==='segments'){seg.style.cssText=`flex:1;height:${H}px;border-radius:${H/2}px;background:${trackCol};position:relative;overflow:hidden`;}
+      else{seg.style.cssText=`width:${dot}px;height:${dot}px;border-radius:50%;background:${trackCol};position:relative;overflow:hidden;transition:transform .3s,box-shadow .3s`;}
+      const f=ovlDiv();f.style.cssText=`position:absolute;left:0;top:0;bottom:0;width:0;background:${fillCol}`;
+      if(gradFill&&kind==='segments'){f.style.background='';f.style.backgroundImage=gradFill;}
+      if(s.progressAnim==='breathe'||s.progressAnim==='rainbow'||s.progressAnim==='cane')progressFx(f,s,fillCol);
+      seg.appendChild(f);row.appendChild(seg);parts.push([seg,f]);
+    }
+    el.appendChild(row);
+    rec.set=(pct)=>{
+      const p=pct/100*n;
+      parts.forEach(([seg,f],i)=>{
+        if(kind==='segments'){f.style.width='100%';f.style.transformOrigin='left center';f.style.transform=`scaleX(${Math.max(0,Math.min(1,p-i)).toFixed(4)})`;}
+        else{
+          const on=i<Math.floor(p),cur=i===Math.min(n-1,Math.floor(p));
+          f.style.width=(on||cur)?'100%':'0';
+          seg.style.transform=cur?'scale(2)':'';
+          // The glow is a shadow, which sits outside the dot anyway; the dot keeps clipping its
+          // square fill to the circle.
+          seg.style.boxShadow=cur?`0 0 ${dot}px ${fillCol}`:'';
+        }
+      });
+    };
+    return;
+  }
+  if(kind==='wave'){
+    // Material 3 Expressive: the filled part is a flowing sine with round caps, flattening while
+    // paused; then a gap, the straight track, and a stop dot at the end.
+    const ns='http://www.w3.org/2000/svg';
+    const svg=document.createElementNS(ns,'svg');svg.setAttribute('width',W);svg.setAttribute('height',H);svg.style.cssText='position:absolute;inset:0;overflow:visible';
+    const sw=Math.max(1,s.lineWidth||4);
+    const path=document.createElementNS(ns,'path');svgCol(path,'fill','none');svgCol(path,'stroke',svgPaint(svg,fillPaint,W,H,fillCol));path.setAttribute('stroke-width',sw);path.setAttribute('stroke-linecap','round');path.setAttribute('stroke-linejoin','round');
+    const tr=document.createElementNS(ns,'line');svgCol(tr,'stroke',trackCol);tr.setAttribute('stroke-width',sw);tr.setAttribute('stroke-linecap','round');tr.setAttribute('y1',H/2);tr.setAttribute('y2',H/2);
+    const end=document.createElementNS(ns,'circle');end.setAttribute('cy',H/2);end.setAttribute('r',sw/2);svgCol(end,'fill',fillCol);end.setAttribute('cx',W-sw/2);
+    svg.appendChild(path);svg.appendChild(tr);svg.appendChild(end);el.appendChild(svg);
+    rec.wave={path,tr,W,H,sw,amp:0,shown:null,target:0,phase:0,
+      ampMax:(s.waveAmp==null?Math.max(1,(H-sw)/2):s.waveAmp),wl:Math.max(8,s.waveLength||36),speed:(s.waveSpeed==null?4:s.waveSpeed)};
+    rec.set=(pct)=>{rec.wave.target=pct;};
+    startWaves();
+    return;
+  }
+  // bar, knob, glow: a track and a fill; knob and glow are a centred rounded line.
+  const lw=kind==='bar'?H:Math.max(1,Math.min(H,s.lineWidth||(kind==='glow'?2:4)));
+  const top=(H-lw)/2;
+  if(kind==='bar')el.style.clipPath=`path('${cornerPath(W,H,s.corners,0,0)}')`;
+  const track=ovlDiv('prog-track');track.style.background=trackCol;
+  const fill=ovlDiv('prog-fill');fill.style.backgroundColor=fillCol;
+  // A gradient spans the whole bar, not the filled part, so it does not squash as the bar fills.
+  if(gradFill){fill.style.backgroundImage=gradFill;fill.style.backgroundSize=W+'px 100%';fill.style.backgroundRepeat='no-repeat';}
+  if(kind!=='bar'){
+    [track,fill].forEach(d=>{d.style.top=top+'px';d.style.height=lw+'px';d.style.borderRadius=(lw/2)+'px';});
+  }
+  // The fill is always the full width and is uncovered by a clip. A width snaps to whole pixels,
+  // and a four-minute song on a 300 px bar moves about one pixel a second, so it advanced in
+  // visible steps; a clip edge is anti-aliased and moves in fractions of a pixel. A gradient
+  // also stays put on the bar this way.
+  fill.style.width='100%';
+  progressFx(fill,s,fillCol);
+  el.appendChild(track);
+  if(kind==='glow'){
+    // The glow on a wrapper: a clip cuts away everything outside it, a shadow included.
+    const wrap=ovlDiv();wrap.style.cssText='position:absolute;inset:0';
+    wrap.style.filter=`drop-shadow(0 0 ${Math.max(1,(s.glow==null?8:s.glow)/2)}px ${fillCol}) drop-shadow(0 0 ${s.glow==null?8:s.glow}px ${fillCol})`;
+    wrap.appendChild(fill);el.appendChild(wrap);
+  }else el.appendChild(fill);
+  rec.fill=fill;
+  const radius=kind==='bar'?0:lw/2;
+  let head=null;
+  if(kind==='knob'||s.progressAnim==='pulse'){
+    const k=kind==='knob'?Math.max(lw,Math.min(H,s.knobSize||H)):Math.max(lw*2,6);
+    head=ovlDiv();head.style.cssText=`position:absolute;top:${(H-k)/2}px;width:${k}px;height:${k}px;margin-left:${-k/2}px;border-radius:50%;left:0;will-change:transform`;
+    head.style.background=kind==='knob'?rgba(s.knobColor||'#ffffff'):fillCol;
+    head.style.boxShadow=s.progressAnim==='pulse'?`0 0 ${k}px ${k/3}px ${fillCol}`:'0 1px 4px rgba(0,0,0,.45)';
+    if(s.progressAnim==='pulse')head.style.animation='ovl-breathe 1.2s ease-in-out infinite';
+    el.appendChild(head);
+  }
+  rec.set=(pct)=>{
+    const x=pct/100*W;
+    fill.style.clipPath=`inset(0 ${Math.max(0,W-x).toFixed(3)}px 0 0 round ${radius}px)`;
+    if(head)head.style.transform=`translateX(${x.toFixed(3)}px)`;
+  };
+}
+
+// The position, counted here between the backend's once-a-second reports: from the last report
+// and the time since, every frame. Without it the bar moved in steps (a glide, a stop, a glide).
+// A report that is only a little behind what is shown does not pull the bar backwards; a seek, a
+// new song or a pause/resume is taken as it comes.
+let progShown=0,progRate=1,progRateUntil=0,progRaf=0,progLast=0;
+function noteProgress(){
+  const sec=state.progress||0,err=sec-progShown;
+  // Far off (a seek, a new song) or not playing: take the report as it is. A little off: run a
+  // bit faster or slower for the next second instead of stopping or jumping. Holding still
+  // until the time caught up, as before, stopped the bar briefly after every report.
+  if(!state.isPlaying||Math.abs(err)>1.5){progShown=sec;progRate=1;}
+  else{progRate=1+Math.max(-0.35,Math.min(0.35,err));progRateUntil=performance.now()+1000;}
+  startProgressClock();
+}
+function startProgressClock(){
+  if(progRaf)return;
+  progLast=performance.now();
+  const tick=(t)=>{
+    const dt=Math.min(0.1,(t-progLast)/1000);progLast=t;
+    if(t>progRateUntil)progRate=1;
+    const dur=state.duration||0;
+    if(state.isPlaying)progShown+=dt*progRate;
+    if(dur>0)progShown=Math.max(0,Math.min(progShown,dur));
+    const pct=dur>0?progShown/dur*100:0;
+    let any=false;
+    for(const id in layerEls){const r=layerEls[id];if(r.type==='progress'&&r.set){any=true;r.set(pct);}}
+    progRaf=any?requestAnimationFrame(tick):0;
+  };
+  progRaf=requestAnimationFrame(tick);
+}
+
+let waveRaf=0;
+function startWaves(){
+  if(waveRaf)return;
+  let last=performance.now();
+  const tick=(t)=>{
+    const dt=Math.min(0.05,(t-last)/1000);last=t;
+    let any=false;
+    for(const id in layerEls){
+      const w=layerEls[id].wave;if(!w)continue;any=true;
+      const playing=!!state.isPlaying;
+      w.amp+=((playing?w.ampMax:0)-w.amp)*Math.min(1,dt*6);
+      if(playing)w.phase+=dt*w.speed;
+      w.shown=w.target;
+      const pad=w.sw/2,x0=pad,x1=pad+Math.max(0,Math.min(100,w.shown))/100*(w.W-2*pad),cy=w.H/2;
+      let d='';
+      const wy=(x)=>cy+Math.sin((x-x0)/w.wl*2*Math.PI-w.phase)*w.amp;
+      for(let x=x0;x<x1;x+=1.5)d+=(d?' L':'M')+x.toFixed(2)+' '+wy(x).toFixed(2);
+      // ...and end exactly at the position, not on the 1.5 px sampling grid, which made the
+      // wave grow in visible steps.
+      d+=(d?' L':'M')+x1.toFixed(3)+' '+wy(x1).toFixed(3);
+      w.path.setAttribute('d',d||`M${x0} ${cy}`);
+      const gap=w.sw*2,ts=Math.min(x1+gap,w.W-w.sw*2.5),te=Math.max(ts,w.W-w.sw*2.5);
+      w.tr.setAttribute('x1',ts);w.tr.setAttribute('x2',te);
+    }
+    waveRaf=any?requestAnimationFrame(tick):0;
+  };
+  waveRaf=requestAnimationFrame(tick);
+}
+
+// A shader is a WebGL canvas running one of a fixed set of presets, each fed three colours.
+// The GL context is kept per layer across rebuilds: the editor rebuilds the page on every drag
+// step, and a new context each time would soon pass the browser's limit and lose the oldest.
+const SHADER_HEAD=`precision mediump float;
+uniform vec2 uR;uniform float uS;uniform float t;uniform vec3 c1,c2,c3;
+uniform sampler2D uBands;uniform float uAudio,uPulse;
+float band(float x){return texture2D(uBands,vec2(clamp(x,0.,1.),.5)).x;}
+#define r (uR/uS)
+#define FC (gl_FragCoord.xy/uS)
+float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+vec2 h2(vec2 p){return fract(sin(vec2(dot(p,vec2(127.1,311.7)),dot(p,vec2(269.5,183.3))))*43758.5453);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+float fbm(vec2 p){float v=0.,a=.5;for(int i=0;i<5;i++){v+=a*n(p);p*=2.;a*=.5;}return v;}
+vec3 pal3(float x){x=fract(x)*3.;return x<1.?mix(c1,c2,x):(x<2.?mix(c2,c3,x-1.):mix(c3,c1,x-2.));}
+`;
+const SHADER_SRC={
+  aurora:`void main(){vec2 u=FC/r;vec3 col=vec3(.02,.02,.06);for(int i=0;i<3;i++){float fi=float(i);float y=.5+.18*sin(u.x*3.+t*.6+fi*2.)+.1*fbm(vec2(u.x*2.+t*.2,fi));float b=exp(-pow((u.y-y)*7.,2.));vec3 cc=i==0?c1:(i==1?c2:c3);col+=cc*b*(.6+.4*fbm(vec2(u.x*6.,t*.3+fi)));}gl_FragColor=vec4(col,1.);}`,
+  plasma:`void main(){vec2 u=FC/r*vec2(r.x/r.y,1.)*3.;float v=sin(u.x+t)+sin(u.y*1.3+t*.8)+sin((u.x+u.y)*.7+t*1.1)+sin(length(u-vec2(2.,1.5))*2.-t);v=v*.25+.5;vec3 col=mix(mix(c1,c2,smoothstep(0.,.5,v)),c3,smoothstep(.5,1.,v));gl_FragColor=vec4(col,1.);}`,
+  mesh:`void main(){vec2 u=FC/r;vec2 p1=vec2(.2+.15*sin(t*.5),.3+.2*cos(t*.4)),p2=vec2(.8+.1*cos(t*.3),.7+.2*sin(t*.5)),p3=vec2(.5+.3*sin(t*.27),.5+.3*cos(t*.33));float w1=1./pow(length(u-p1)+.05,2.),w2=1./pow(length(u-p2)+.05,2.),w3=1./pow(length(u-p3)+.05,2.);vec3 col=(c1*w1+c2*w2+c3*w3)/(w1+w2+w3);gl_FragColor=vec4(col,1.);}`,
+  smoke:`void main(){vec2 u=FC/r*vec2(r.x/r.y,1.)*2.;vec2 q=vec2(fbm(u+t*.1),fbm(u+vec2(5.2,1.3)-t*.08));float v=fbm(u+2.*q+vec2(t*.15,0.));vec3 col=mix(vec3(.02),c1,smoothstep(.2,.6,v));col=mix(col,c2,smoothstep(.5,.8,q.x));col=mix(col,c3,smoothstep(.6,.9,v)*.6);gl_FragColor=vec4(col*.9,1.);}`,
+  silk:`void main(){vec2 u=FC/r;vec3 col=vec3(.02);for(int i=0;i<4;i++){float fi=float(i);float y=.5+.25*sin(u.x*(2.+fi*.7)+t*(.4+fi*.15)+fi*1.7)*cos(u.x*1.3-t*.2+fi);float d=abs(u.y-y);float w=.06+.04*sin(t*.5+fi+u.x*3.);float band=smoothstep(w,0.,d);vec3 cc=fi<1.?c1:(fi<2.?c2:(fi<3.?c3:mix(c1,c3,.5)));col+=cc*band*(.35+.65*smoothstep(0.,w,w-d))*.7;}gl_FragColor=vec4(col,1.);}`,
+  rays:`void main(){vec2 u=FC/r;vec2 src=vec2(.5+.2*sin(t*.2),1.15);vec2 d=u-src;float a=atan(d.x,-d.y);float rays=.5+.5*sin(a*14.+t*.6)*sin(a*7.-t*.4);float fall=smoothstep(1.4,0.,length(d));vec3 col=mix(vec3(.02),mix(c1,c2,u.x),.2)+mix(c3,c2,rays)*pow(rays,2.)*fall*.9;gl_FragColor=vec4(col,1.);}`,
+  starfield:`void main(){vec2 u=FC;vec3 col=mix(vec3(.01,.01,.04),c1*.15,FC.y/r.y);for(int l=0;l<3;l++){float fl=float(l);vec2 p=u/(10.+fl*6.)+vec2(t*(.3+fl*.25),0.);vec2 id=floor(p),f=fract(p)-.5;float s=h(id+fl*7.);if(s>.86){vec2 o=vec2(h(id+3.),h(id+5.))-.5;float d=length(f-o*.6);float tw=.6+.4*sin(t*3.+s*40.);col+=mix(c2,c3,h(id))*smoothstep(.08,0.,d)*tw*(1.-fl*.25);}}gl_FragColor=vec4(col,1.);}`,
+  fire:`void main(){vec2 u=FC/r;vec2 p=vec2(u.x*3.*r.x/r.y,u.y*2.-t*1.2);float f=fbm(p+fbm(p*1.5));float flame=f*1.6-u.y*1.4;flame=clamp(flame,0.,1.);vec3 col=mix(vec3(0.),c2,smoothstep(.1,.45,flame));col=mix(col,c3,smoothstep(.45,.75,flame));col=mix(col,vec3(1.),smoothstep(.85,1.,flame));gl_FragColor=vec4(col,1.);}`,
+  halftone:`void main(){vec2 u=FC/r;float g=fbm(u*2.5+vec2(t*.15,-t*.1));vec3 base=pal3(g*1.2+t*.05);vec2 cell=FC/7.;vec2 f=fract(cell)-.5;float rad=.15+.4*g;float dot1=smoothstep(rad,rad-.08,length(f));gl_FragColor=vec4(mix(base*.15,base,dot1),1.);}`,
+  retro:`void main(){vec2 u=FC/r;vec3 col=mix(c2*.25,vec3(.02),u.y);float hz=.45;if(u.y<hz){float z=hz/(hz-u.y+.001);float x=(u.x-.5)*z;float gx=abs(fract(x*2.)-.5),gz=abs(fract(z*.6-t*.8)-.5);float g=max(smoothstep(.04*z,.0,gx),smoothstep(.05*z,.0,gz));col=mix(vec3(.02,0.,.05),c1,g*smoothstep(0.,.25,hz-u.y+.02)*1.2);}else{float sun=smoothstep(.22,.21,length((u-vec2(.5,.62))*vec2(r.x/r.y,1.)));float stripes=step(.5,fract(u.y*28.));col=mix(col,mix(c3,c2,(u.y-.45)*3.),sun*mix(1.,stripes,smoothstep(.62,.5,u.y)));}col+=c1*.4*smoothstep(.02,0.,abs(u.y-hz));gl_FragColor=vec4(col,1.);}`,
+  matrix:`void main(){vec2 u=FC/r;float N=r.x/7.;float i=floor(u.x*N);float sp=.4+h(vec2(i,1.))*.8;float y=fract(u.y+t*sp*.4+h(vec2(i,2.)));float trail=pow(y,6.);float cell=step(.3,h(vec2(i,floor(u.y*r.y/9.)+floor(t*6.*sp))));vec3 col=mix(c1,c3,trail)*trail*(.4+.6*cell)+vec3(1.)*pow(y,60.)*.8;gl_FragColor=vec4(col,1.);}`,
+  equalizer:`void main(){vec2 u=FC/r;float N=24.;float i=floor(u.x*N);float f=fract(u.x*N);float lv=mix(.15+.75*n(vec2(i*.7,t*2.5))*(.6+.4*sin(t*3.+i*.4)),.04+.94*band((i+.5)/N),uAudio);float bar=step(.12,f)*step(f,.88)*step(u.y,lv);float seg=step(.25,fract(u.y*18.));vec3 col=mix(mix(c1,c2,u.y/max(lv,.01)),c3,step(lv-.04,u.y))*bar*seg;col+=c1*.05;gl_FragColor=vec4(col,1.);}`,
+  glitch:`void main(){vec2 u=FC/r;float tk=floor(t*8.);float band=step(.85,h(vec2(floor(u.y*14.),tk)));float sh=band*(h(vec2(tk,floor(u.y*14.)))-.5)*.15;float g=fbm(vec2(u.x*2.+t*.2,u.y*3.));vec3 col=vec3(pal3(g+u.x*.5+sh+.02).x,pal3(g+u.x*.5+sh).y,pal3(g+u.x*.5+sh-.02).z);col*=.75+.25*sin(FC.y*1.6);col+=(h(u*r+t)-.5)*.12;col*=1.-band*.2*h(vec2(tk));gl_FragColor=vec4(col*.85,1.);}`
+};
+const SHADER_DEF_COLORS=['#7c4dff','#e040fb','#00e5ff'];
+// Stand-ins while there is no cover (and in still previews). Same in cover-colors.js.
+const COVER_FALLBACK=[[238/255,168/255,1],[124/255,77/255,1],[0,229/255,1]];
+function applyCoverPal(){
+  const pal=coverPal||COVER_FALLBACK,root=document.documentElement.style;
+  pal.forEach((c,i)=>{['r','g','b'].forEach((ch,j)=>root.setProperty(`--cv${i+1}${ch}`,String(Math.round(c[j]*255))));});
+  // The editor shows the same colours in its fields and picker.
+  if(EDITOR&&window.parent!==window){
+    const hex=pal.map((c)=>'#'+c.map((v)=>Math.round(v*255).toString(16).padStart(2,'0')).join(''));
+    try{window.parent.postMessage({__overlayCoverPal:{colors:hex,cover:state.cover||'',live:!!coverPal}},'*');}catch(_){}
+  }
+}
+// A cover colour for a shader, mixed as the CSS above mixes it.
+function coverRgbJs(tok){
+  const m=/^cover:([123])(?::(light|dark))?$/.exec(tok);if(!m)return null;
+  const c=(coverPal||COVER_FALLBACK)[+m[1]-1];
+  return m[2]==='light'?c.map((v)=>v+(1-v)*.55):m[2]==='dark'?c.map((v)=>v*.42):c.slice();
+}
+// Live audio levels from the player (48 bands, 0..1). Only connected while the design has a
+// shader that uses them, so a plain overlay never makes the player run its analysis.
+const audio={bands:new Float32Array(48),level:0,shown:new Float32Array(48),tex:new Uint8Array(48),fast:0,slow:0,live:0,ts:0,es:null};
+function wantsAudio(dc){
+  return !!(dc&&(dc.layers||[]).some((L)=>L.type==='shader'&&L.visible!==false&&((L.style||{}).preset==='equalizer'||(L.style||{}).reactive)));
+}
+function syncAudioStream(){
+  const want=!STILL&&wantsAudio(doc);
+  if(want&&!audio.es){
+    const es=new EventSource(API+'/overlay/levels');
+    es.onmessage=(e)=>{try{const d=JSON.parse(e.data),b=d.bands||[];for(let i=0;i<48;i++)audio.bands[i]=+b[i]||0;audio.level=+d.level||0;audio.ts=performance.now();}catch(_){}};
+    audio.es=es;
+  }else if(!want&&audio.es){audio.es.close();audio.es=null;audio.bands.fill(0);audio.level=0;}
+}
+// Once per frame: the 30 fps stream eased to the frame rate (fast up, slower down, like a
+// meter), and a beat value: how far the current level is above its own recent average.
+function stepAudio(dt){
+  const fresh=audio.es&&performance.now()-audio.ts<1500;
+  audio.live+=((fresh?1:0)-audio.live)*Math.min(1,dt*3);
+  const up=1-Math.exp(-dt*30),down=1-Math.exp(-dt*8);
+  for(let i=0;i<48;i++){
+    const want=fresh?audio.bands[i]:0,v=audio.shown[i];
+    audio.shown[i]=v+(want-v)*(want>v?up:down);
+    audio.tex[i]=Math.max(0,Math.min(255,Math.round(audio.shown[i]*255)));
+  }
+  const lv=fresh?audio.level:0;
+  audio.fast+=(lv-audio.fast)*(1-Math.exp(-dt*(lv>audio.fast?25:6)));
+  audio.slow+=(lv-audio.slow)*(1-Math.exp(-dt*1.2));
+}
+const shaderCache={}; // layer id -> {cv, gl, preset, u, t, cur}
+let shaderRaf=0,shaderRate=1,coverPal=null,coverPalSrc='';
+function hexRgb(c){
+  const m=/^#?([0-9a-f]{6})$/i.exec(String(c||'').trim());
+  if(!m)return [1,1,1];
+  const v=parseInt(m[1],16);return [(v>>16&255)/255,(v>>8&255)/255,(v&255)/255];
+}
+function dropShader(id){
+  const c=shaderCache[id];if(!c)return;
+  const x=c.gl.getExtension('WEBGL_lose_context');if(x)x.loseContext();
+  delete shaderCache[id];
+}
+function shaderGL(id,preset){
+  let c=shaderCache[id];
+  if(c&&c.preset===preset&&!c.gl.isContextLost())return c;
+  const keepT=c?c.t:0,keepCur=c?c.cur:null;
+  if(c)dropShader(id);
+  const cv=document.createElement('canvas');cv.style.cssText='display:block;width:100%;height:100%';
+  const gl=cv.getContext('webgl',{antialias:false,preserveDrawingBuffer:STILL});
+  if(!gl)return null;
+  const sh=(ty,src)=>{const o=gl.createShader(ty);gl.shaderSource(o,src);gl.compileShader(o);return gl.getShaderParameter(o,gl.COMPILE_STATUS)?o:null;};
+  const body=SHADER_SRC[preset].replace('void main(){','void main0(){')+'void main(){main0();gl_FragColor.rgb*=1.+uPulse*.6;}';
+  const vs=sh(gl.VERTEX_SHADER,'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}'),fs=sh(gl.FRAGMENT_SHADER,SHADER_HEAD+body);
+  if(!vs||!fs)return null;
+  const p=gl.createProgram();gl.attachShader(p,vs);gl.attachShader(p,fs);gl.linkProgram(p);
+  if(!gl.getProgramParameter(p,gl.LINK_STATUS))return null;
+  gl.useProgram(p);
+  const b=gl.createBuffer();gl.bindBuffer(gl.ARRAY_BUFFER,b);gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,1,-1,-1,1,1,1]),gl.STATIC_DRAW);
+  const loc=gl.getAttribLocation(p,'a');gl.enableVertexAttribArray(loc);gl.vertexAttribPointer(loc,2,gl.FLOAT,false,0,0);
+  const U=(k)=>gl.getUniformLocation(p,k);
+  // The bands as a 48x1 texture: a shader can read any band, between two bands too.
+  const tx=gl.createTexture();gl.activeTexture(gl.TEXTURE0);gl.bindTexture(gl.TEXTURE_2D,tx);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MIN_FILTER,gl.LINEAR);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);gl.texParameteri(gl.TEXTURE_2D,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+  gl.pixelStorei(gl.UNPACK_ALIGNMENT,1);
+  gl.texImage2D(gl.TEXTURE_2D,0,gl.LUMINANCE,48,1,0,gl.LUMINANCE,gl.UNSIGNED_BYTE,audio.tex);
+  gl.uniform1i(U('uBands'),0);
+  c={cv,gl,preset,u:{R:U('uR'),S:U('uS'),t:U('t'),c1:U('c1'),c2:U('c2'),c3:U('c3'),A:U('uAudio'),P:U('uPulse')},t:keepT,cur:keepCur};
+  cv.addEventListener('webglcontextlost',(e)=>{e.preventDefault();if(shaderCache[id]===c)delete shaderCache[id];});
+  shaderCache[id]=c;return c;
+}
+function shaderColors(s){
+  const own=(Array.isArray(s.shaderColors)&&s.shaderColors.length?s.shaderColors:SHADER_DEF_COLORS);
+  if(s.coverColors)return (coverPal||COVER_FALLBACK).map((c)=>c.slice());
+  return [0,1,2].map((i)=>{const c=own[i]||own[own.length-1];return coverRgbJs(c)||hexRgb(c);});
+}
+function drawShader(rec){
+  const sh=rec.shader,c=sh.c,gl=c.gl,s=sh.style;
+  if(gl.isContextLost())return;
+  if(!c.cur)c.cur=shaderColors(s);
+  gl.viewport(0,0,c.cv.width,c.cv.height);
+  gl.uniform2f(c.u.R,c.cv.width,c.cv.height);
+  gl.uniform1f(c.u.S,sh.dpr*Math.max(0.1,s.scale==null?1:s.scale));
+  gl.uniform1f(c.u.t,c.t);
+  gl.uniform3fv(c.u.c1,c.cur[0]);gl.uniform3fv(c.u.c2,c.cur[1]);gl.uniform3fv(c.u.c3,c.cur[2]);
+  gl.uniform1f(c.u.A,audio.live);
+  gl.uniform1f(c.u.P,s.reactive?pulseOf(s):0);
+  if(audio.es)gl.texSubImage2D(gl.TEXTURE_2D,0,0,0,48,1,gl.LUMINANCE,gl.UNSIGNED_BYTE,audio.tex);
+  gl.drawArrays(gl.TRIANGLE_STRIP,0,4);
+}
+function pulseOf(s){
+  const amt=(s.reactAmount==null?100:s.reactAmount)/100;
+  return Math.min(1.5,(Math.max(0,audio.fast-audio.slow)*2.5+audio.fast*.25)*amt)*audio.live;
+}
+function buildShader(el,L,rec){
   const s=L.style||{};
   el.style.clipPath=`path('${cornerPath(L.w||0,L.h||0,s.corners,0,0)}')`;
-  const track=document.createElement('div');track.className='prog-track';track.style.background=s.trackColor||'rgba(255,255,255,.12)';
-  const fill=document.createElement('div');fill.className='prog-fill';fill.style.background=rgba(s.fillColor||'#EEA8FF',(s.fillOpacity==null?100:s.fillOpacity)/100);
-  el.appendChild(track);el.appendChild(fill);rec.fill=fill;
+  const preset=SHADER_SRC[s.preset]?s.preset:'aurora';
+  const c=shaderGL(L.id,preset);
+  if(!c){
+    // No WebGL (or the preset would not compile): the three colours as a plain gradient.
+    const col=(Array.isArray(s.shaderColors)&&s.shaderColors.length?s.shaderColors:SHADER_DEF_COLORS);
+    el.style.background=`linear-gradient(120deg,${col.join(',')})`;return;
+  }
+  const dpr=Math.min(2,window.devicePixelRatio||1);
+  const W=Math.max(1,Math.round((L.w||1)*dpr)),H=Math.max(1,Math.round((L.h||1)*dpr));
+  if(c.cv.width!==W)c.cv.width=W;
+  if(c.cv.height!==H)c.cv.height=H;
+  el.appendChild(c.cv);
+  rec.shader={c,dpr,style:s};
+  if(STILL){
+    // A thumbnail: one frame a few seconds in, kept as a picture; the context is given back.
+    c.t=4;c.cur=shaderColors(s);drawShader(rec);
+    const img=document.createElement('img');img.className='layer-img';img.src=c.cv.toDataURL();
+    el.replaceChild(img,c.cv);dropShader(L.id);rec.shader=null;return;
+  }
+  startShaders();
+}
+// One clock for every shader. On pause they slow to a crawl rather than freezing, so the
+// widget stays alive; colours glide to a new cover's instead of switching in one frame.
+function startShaders(){
+  if(shaderRaf)return;
+  let last=performance.now();
+  const tick=(now)=>{
+    const dt=Math.min(0.1,(now-last)/1000);last=now;
+    const goal=(EDITOR||state.isPlaying)?1:0.15;
+    shaderRate+=(goal-shaderRate)*Math.min(1,dt*2);
+    stepAudio(dt);
+    let any=false;
+    for(const id in layerEls){
+      const rec=layerEls[id];if(!rec.shader)continue;any=true;
+      const c=rec.shader.c,s=rec.shader.style;
+      // A reactive shader also moves faster on the beat, not just brighter.
+      c.t+=dt*shaderRate*(s.speed==null?1:s.speed)*(1+(s.reactive?pulseOf(s)*1.5:0));
+      const want=shaderColors(s),k=Math.min(1,dt*3);
+      if(!c.cur)c.cur=want;
+      else for(let i=0;i<3;i++)for(let j=0;j<3;j++)c.cur[i][j]+=(want[i][j]-c.cur[i][j])*k;
+      drawShader(rec);
+    }
+    shaderRaf=any?requestAnimationFrame(tick):0;
+  };
+  shaderRaf=requestAnimationFrame(tick);
+}
+function paletteOf(img){
+  const N=32,cv=document.createElement('canvas');cv.width=cv.height=N;
+  const x=cv.getContext('2d');x.drawImage(img,0,0,N,N);
+  const d=x.getImageData(0,0,N,N).data,B=[];
+  for(let i=0;i<12;i++)B.push({w:0,r:0,g:0,b:0});
+  for(let i=0;i<d.length;i+=4){
+    const r=d[i]/255,g=d[i+1]/255,b=d[i+2]/255,mx=Math.max(r,g,b),mn=Math.min(r,g,b),dl=mx-mn;
+    if(mx<.12)continue;
+    let hue=0;if(dl){hue=mx===r?((g-b)/dl)%6:mx===g?(b-r)/dl+2:(r-g)/dl+4;hue=(hue*60+360)%360;}
+    const sat=mx?dl/mx:0,w=sat*sat*mx+.01,k=Math.floor(hue/30)%12;
+    B[k].w+=w;B[k].r+=r*w;B[k].g+=g*w;B[k].b+=b*w;
+  }
+  const top=B.filter((q)=>q.w>0).sort((a,q)=>q.w-a.w).slice(0,3).map((q)=>{
+    const c=[q.r/q.w,q.g/q.w,q.b/q.w],m=Math.max(...c);
+    return m>0&&m<.6?c.map((v)=>v*.6/m):c;
+  });
+  if(!top.length)return null;
+  while(top.length<3){const p=top[top.length-1];top.push(p.map((v)=>Math.min(1,v*1.3+.12)));}
+  return top;
+}
+function sampleCover(){
+  const src=state.cover||'';
+  if(src===coverPalSrc)return;
+  coverPalSrc=src;
+  if(!src){coverPal=null;applyCoverPal();return;}
+  const img=new Image();
+  // Its own address for the palette: the album art loads the same cover as a plain image, and a
+  // browser that cached that copy (OBS keeps its cache for days) hands it to this CORS request
+  // too, which then fails and leaves the stand-in colours. A marker no one else uses keeps the
+  // two apart; the proxy ignores it.
+  let palSrc=src;
+  try{if(new URL(src,location.href).origin!==location.origin){img.crossOrigin='anonymous';palSrc=src+(src.indexOf('?')>=0?'&':'?')+'pal=1';}}catch(_){}
+  img.onload=()=>{if(coverPalSrc!==src)return;try{coverPal=paletteOf(img);}catch(_){coverPal=null;}applyCoverPal();};
+  img.onerror=()=>{if(coverPalSrc===src){coverPal=null;applyCoverPal();}};
+  img.src=palSrc;
 }
 
 function buildImage(el,L,rec){
@@ -159,27 +687,53 @@ function shapePoints(shp,W,H,s){
   }
   return `0,0 ${W},0 ${W},${H} 0,${H}`;
 }
-// Visible fills (new `style.fills` array, or migrated from legacy single fill).
 function visFills(s){
-  var fl=(s&&s.fills&&s.fills.length)?s.fills:(s&&s.fill!=null?[{color:s.fill,opacity:(s.fillOpacity==null?100:s.fillOpacity)}]:[]);
+  var fl=(s&&Array.isArray(s.fills))?s.fills:(s&&s.fill!=null?[{color:s.fill,opacity:(s.fillOpacity==null?100:s.fillOpacity)}]:[]);
   return fl.filter(function(f){return f&&f.visible!==false;});
 }
-// Stacked solid fills as a background-image list (index 0 = front).
+// A paint is solid ({color, opacity}) or a gradient ({type:'linear'|'radial', stops:[{color,
+// opacity, pos}], angle, opacity}). A gradient without stops starts from its colour to black.
+function isGrad(f){return !!f&&(f.type==='linear'||f.type==='radial');}
+function gradStops(f){
+  var st=(f.stops&&f.stops.length>1)?f.stops:[{color:f.color||'#ffffff',pos:0},{color:'#000000',pos:100}];
+  var o=(f.opacity==null?100:f.opacity)/100;
+  return st.slice().sort(function(a,b){return (a.pos||0)-(b.pos||0);})
+    .map(function(x){return {c:rgba(x.color||'#000000',o*((x.opacity==null?100:x.opacity)/100)),p:(x.pos==null?0:x.pos)};});
+}
+function paintCss(f){
+  if(f&&f.type==='linear')return 'linear-gradient('+(f.angle==null?90:f.angle)+'deg,'+gradStops(f).map(function(x){return x.c+' '+x.p+'%';}).join(',')+')';
+  if(f&&f.type==='radial')return 'radial-gradient(ellipse at center,'+gradStops(f).map(function(x){return x.c+' '+x.p+'%';}).join(',')+')';
+  var c=rgba((f&&f.color)||'#000',((f&&f.opacity!=null)?f.opacity:100)/100);return 'linear-gradient('+c+','+c+')';
+}
+// The same paint for SVG, which needs a gradient element; in user space, so a flat line (whose
+// bounding box has no height) still gets one.
+var svgGradN=0;
+function svgPaint(svg,f,W,H,fallback){
+  if(!isGrad(f))return f?rgba(f.color||'#000',(f.opacity==null?100:f.opacity)/100):fallback;
+  var ns='http://www.w3.org/2000/svg';
+  var defs=svg.querySelector('defs');if(!defs){defs=document.createElementNS(ns,'defs');svg.insertBefore(defs,svg.firstChild);}
+  var id='ovlg'+(++svgGradN),g=document.createElementNS(ns,f.type==='radial'?'radialGradient':'linearGradient');
+  g.setAttribute('id',id);g.setAttribute('gradientUnits','userSpaceOnUse');
+  if(f.type==='linear'){
+    // CSS angles: 0deg points up, 90deg to the right.
+    var a=(f.angle==null?90:f.angle)*Math.PI/180,dx=Math.sin(a),dy=-Math.cos(a),half=(Math.abs(W*dx)+Math.abs(H*dy))/2;
+    g.setAttribute('x1',W/2-dx*half);g.setAttribute('y1',H/2-dy*half);g.setAttribute('x2',W/2+dx*half);g.setAttribute('y2',H/2+dy*half);
+  }else{g.setAttribute('cx',W/2);g.setAttribute('cy',H/2);g.setAttribute('r',Math.max(W,H)/2);}
+  gradStops(f).forEach(function(x){var st=document.createElementNS(ns,'stop');st.setAttribute('offset',x.p+'%');svgCol(st,'stop-color',x.c);g.appendChild(st);});
+  defs.appendChild(g);return 'url(#'+id+')';
+}
 function fillStack(s){
   var v=visFills(s);if(!v.length)return '';
-  return v.map(function(f){var c=rgba(f.color||'#000',(f.opacity==null?100:f.opacity)/100);return 'linear-gradient('+c+','+c+')';}).join(',');
+  return v.map(paintCss).join(',');
 }
-// Top visible fill as a single rgba color (for text + SVG shapes).
 function topFillColor(s,fallback){
-  var v=visFills(s);if(!v.length)return fallback;
+  var v=visFills(s);if(!v.length)return Array.isArray(s.fills)?'transparent':fallback;
   var f=v[0];return rgba(f.color||fallback||'#fff',(f.opacity==null?100:f.opacity)/100);
 }
-// Visible stroke paints (new `style.strokes`, or migrated from legacy `border`).
 function visStrokes(s){
-  var st=(s&&s.strokes&&s.strokes.length)?s.strokes:(s&&s.border&&s.border.on?[{color:s.border.color,opacity:s.border.opacity}]:[]);
+  var st=(s&&Array.isArray(s.strokes))?s.strokes:(s&&s.border&&s.border.on?[{color:s.border.color,opacity:s.border.opacity}]:[]);
   return st.filter(function(x){return x&&x.visible!==false;});
 }
-// Stacked strokes as a box-shadow list, using the shared weight + position.
 function strokeBox(s){
   var v=visStrokes(s);if(!v.length)return '';
   var w=(s.strokeWeight!=null?s.strokeWeight:(s.border&&s.border.width!=null?s.border.width:1.5));
@@ -228,9 +782,9 @@ function buildShape(el,L,rec){
       el.style.clipPath='';
       el.style.borderRadius=(c.TL||0)+'px '+(c.TR||0)+'px '+(c.BR||0)+'px '+(c.BL||0)+'px';
       if(st){el.style.backgroundImage=st;el.style.backgroundColor='';}else{el.style.background='transparent';}
-      el.style.boxShadow=strokeBox(s);
+      el.dataset.sbox=strokeBox(s);el.style.boxShadow=el.dataset.sbox;
     }else{
-      el.style.borderRadius='';el.style.boxShadow='';
+      el.style.borderRadius='';el.dataset.sbox='';el.style.boxShadow='';
       el.style.clipPath=`path('${cornerPath(W,H,s.corners,0,0)}')`;
       if(st){el.style.backgroundImage=st;el.style.backgroundColor='';}else{el.style.background='transparent';}
       donutStrokes(el,s,W,H);
@@ -252,52 +806,153 @@ function buildShape(el,L,rec){
   if(shp==='line'){
     const ln=document.createElementNS(NS,'line');
     ln.setAttribute('x1',0);ln.setAttribute('y1',H/2);ln.setAttribute('x2',W);ln.setAttribute('y2',H/2);
-    ln.setAttribute('stroke',topFillColor(s,rgba(s.fill||'#EEA8FF',fa)));
+    svgCol(ln,'stroke',svgPaint(svg,visFills(s)[0],W,H,Array.isArray(s.fills)?'transparent':rgba(s.fill||'#EEA8FF',fa)));
     ln.setAttribute('stroke-width',s.strokeWidth||Math.max(2,H));
     ln.setAttribute('stroke-linecap',s.lineCap||'round');
     svg.appendChild(ln);
   }else{
     const pg=document.createElementNS(NS,'polygon');
     pg.setAttribute('points',shapePoints(shp,W,H,s));
-    pg.setAttribute('fill',topFillColor(s,rgba(s.fill||'#EEA8FF',fa)));
+    svgCol(pg,'fill',svgPaint(svg,visFills(s)[0],W,H,Array.isArray(s.fills)?'transparent':rgba(s.fill||'#EEA8FF',fa)));
     var ts=visStrokes(s)[0];
-    if(ts){pg.setAttribute('stroke',ts.color||'#fff');pg.setAttribute('stroke-width',(s.strokeWeight!=null?s.strokeWeight:(bd.width||1.5)));pg.setAttribute('stroke-opacity',(ts.opacity==null?100:ts.opacity)/100);pg.setAttribute('stroke-linejoin','round');}
+    if(ts){svgCol(pg,'stroke',rgba(ts.color||'#fff'));pg.setAttribute('stroke-width',(s.strokeWeight!=null?s.strokeWeight:(bd.width||1.5)));pg.setAttribute('stroke-opacity',(ts.opacity==null?100:ts.opacity)/100);pg.setAttribute('stroke-linejoin','round');}
     svg.appendChild(pg);
   }
   el.appendChild(svg);
 }
 
-const BUILDERS={albumArt:buildAlbumArt,text:buildText,progress:buildProgress,image:buildImage,shape:buildShape};
+const BUILDERS={albumArt:buildAlbumArt,text:buildText,progress:buildProgress,image:buildImage,shape:buildShape,shader:buildShader};
 
 function applyFx(el,entr,loopw,L){
   const st=(L.style||{});
   const fx=st.fx||{};
-  const f=[];
+  const f=[];const ins=[];
   const eff=Array.isArray(st.effects)?st.effects:null;
   if(eff){
     eff.forEach(function(e){
       if(!e||e.visible===false)return;
       if(e.type==='shadow')f.push('drop-shadow('+(e.x||0)+'px '+(e.y==null?2:e.y)+'px '+(e.blur==null?8:e.blur)+'px '+rgba(e.color||'#000000',(e.opacity==null?50:e.opacity)/100)+')');
-      else if(e.type==='glow')f.push('drop-shadow(0 0 '+(e.blur==null?10:e.blur)+'px '+(e.color||'#ffffff')+')');
+      else if(e.type==='glow')f.push('drop-shadow(0 0 '+(e.blur==null?10:e.blur)+'px '+rgba(e.color||'#ffffff')+')');
       else if(e.type==='blur')f.push('blur('+(e.amount==null?4:e.amount)+'px)');
+      // Not a filter: an inner shadow only exists as box-shadow: inset, and that property
+      // already carries the strokes -- hence the stashed base below.
+      else if(e.type==='innerShadow')ins.push('inset '+(e.x||0)+'px '+(e.y==null?2:e.y)+'px '+(e.blur==null?8:e.blur)+'px '+rgba(e.color||'#000000',(e.opacity==null?50:e.opacity)/100));
     });
   }else{
     if(fx.shadow&&fx.shadow.on)f.push(`drop-shadow(${fx.shadow.x||0}px ${fx.shadow.y==null?2:fx.shadow.y}px ${fx.shadow.blur==null?8:fx.shadow.blur}px ${rgba(fx.shadow.color||'#000000',fx.shadow.opacity==null?0.5:fx.shadow.opacity)})`);
-    if(fx.glow&&fx.glow.on)f.push(`drop-shadow(0 0 ${fx.glow.blur==null?10:fx.glow.blur}px ${fx.glow.color||'#ffffff'})`);
+    if(fx.glow&&fx.glow.on)f.push(`drop-shadow(0 0 ${fx.glow.blur==null?10:fx.glow.blur}px ${rgba(fx.glow.color||'#ffffff')})`);
     if(fx.blur&&fx.blur.on)f.push(`blur(${fx.blur.amount==null?4:fx.blur.amount}px)`);
   }
   el.style.filter=f.join(' ')||'';
+  // Strokes own box-shadow; inset shadows join that list rather than replace it. Bevelled and
+  // mixed corners fall back to clip-path, which swallows box-shadow entirely -- strokes are
+  // drawn as an overlay there for the same reason, and an inner shadow simply will not show.
+  // On loopw, not el: the builders style that element, so it is the one carrying the fill and
+  // the corner radius. An inset shadow on the outer root would sit behind the child's fill and
+  // square off at the corners.
+  const tgt=loopw||el;
+  const sbox=tgt.dataset.sbox||'';
+  tgt.style.boxShadow=[sbox,ins.join(', ')].filter(Boolean).join(', ');
   const en=fx.entrance;
-  if(en&&en.type&&en.type!=='none'&&!EDITOR)entr.style.animation=`ovl-${en.type} ${en.duration||0.5}s cubic-bezier(.22,1,.36,1) both`;
+  if(en&&en.type&&en.type!=='none'&&(!EDITOR||REPLAY)){entr.style.animation=entrAnim(en,0);enterVars(entr,en,{x:L.x||0,y:L.y||0,w:L.w||0,h:L.h||0},L.rotation,L.flipH,L.flipV);}
   else entr.style.animation='';
   const lp=fx.loop;
-  if(lp&&lp.type&&lp.type!=='none'){const dur=lp.speed||(lp.type==='spin'?4:2);loopw.style.animation=`ovl-${lp.type} ${dur}s ${lp.type==='spin'?'linear':'ease-in-out'} infinite`;}
+  if(lp&&lp.type&&lp.type!=='none')loopw.style.animation=loopAnim(lp);
   else loopw.style.animation='';
 }
+// Entrance animations play in OBS but not in the editor, where every edit rebuilds the layers;
+// REPLAY lets the editor ask for one run on purpose.
+let REPLAY=false;
+// `delay` on an animation is the listener's own wait; `extra` is added by a group's stagger.
+// "enter*" travels in from outside the canvas at an even speed, with no fade: one keyframe,
+// with the distance handed over in --ovl-dx/--ovl-dy because it depends on where the layer is.
+function entrAnim(en,extra){
+  const enter=/^enter/.test(en.type||'');
+  return `${enter?'ovl-enter':'ovl-'+en.type} ${en.duration||0.5}s ${enter?'linear':'cubic-bezier(.22,1,.36,1)'} ${(en.delay||0)+(extra||0)}s both`;
+}
+// The distance from the canvas edge to the box, so it starts just out of sight. The animated
+// element of a layer sits inside its rotation and flip, so the direction is turned back into the
+// layer's own frame: "from the left" stays from the left on screen.
+function enterVars(el,en,box,rot,fh,fv){
+  if(!el||!en||!/^enter/.test(en.type||''))return;
+  const W=(doc&&doc.canvas&&doc.canvas.width)||0,H=(doc&&doc.canvas&&doc.canvas.height)||0;
+  const m=4+(rot?Math.max(box.w,box.h)/2:0);
+  let dx=0,dy=0;
+  if(en.type==='enterLeft')dx=-(box.x+box.w)-m;
+  else if(en.type==='enterRight')dx=W-box.x+m;
+  else if(en.type==='enterTop')dy=-(box.y+box.h)-m;
+  else if(en.type==='enterBottom')dy=H-box.y+m;
+  const a=-(rot||0)*Math.PI/180;
+  let lx=dx*Math.cos(a)-dy*Math.sin(a),ly=dx*Math.sin(a)+dy*Math.cos(a);
+  if(fh)lx=-lx;if(fv)ly=-ly;
+  el.style.setProperty('--ovl-dx',Math.round(lx)+'px');el.style.setProperty('--ovl-dy',Math.round(ly)+'px');
+}
+function loopAnim(lp){const dur=lp.speed||(lp.type==='spin'?4:2);return `ovl-${lp.type} ${dur}s ${lp.type==='spin'?'linear':'ease-in-out'} ${lp.delay||0}s infinite`;}
+
+// Groups are marks on the layers (layer.group, doc.groups with parents). Most of them draw
+// exactly as loose layers would; only a group that animates gets an element of its own, so that
+// it moves, spins or pulses as ONE thing around its own centre. A wrapper is a stacking context
+// and would change how blend modes inside it mix with what is below, which is why a group
+// without animation gets none.
+function groupPlan(dc){
+  const gm={};(dc.groups||[]).forEach(g=>{gm[g.id]=g;});
+  const on=a=>a&&a.type&&a.type!=='none';
+  const animated=g=>!!(g&&g.fx&&(on(g.fx.entrance)||on(g.fx.loop)));
+  const stagger=g=>!!(g&&g.fx&&on(g.fx.entrance)&&(g.fx.entrance.stagger||0)>0);
+  const chain=L=>{const out=[],seen={};let id=L.group;while(id&&gm[id]&&!seen[id]){seen[id]=1;out.unshift(id);id=gm[id].parent;}return out;};
+  const box={},top={};
+  for(const L of dc.layers||[]){
+    for(const gid of chain(L)){
+      const b=box[gid]||(box[gid]={x1:1e9,y1:1e9,x2:-1e9,y2:-1e9});
+      b.x1=Math.min(b.x1,L.x||0);b.y1=Math.min(b.y1,L.y||0);
+      b.x2=Math.max(b.x2,(L.x||0)+(L.w||0));b.y2=Math.max(b.y2,(L.y||0)+(L.h||0));
+      top[gid]=Math.max(top[gid]==null?-1e9:top[gid],L.z||0);
+    }
+  }
+  // With a stagger, a group's direct children come in one after another, bottom first.
+  const order={};
+  for(const gid in gm){
+    if(!stagger(gm[gid]))continue;
+    const kids=[];
+    (dc.layers||[]).forEach(L=>{if(L.group===gid)kids.push(['l:'+L.id,L.z||0]);});
+    (dc.groups||[]).forEach(g=>{if(g.parent===gid&&top[g.id]!=null)kids.push(['g:'+g.id,top[g.id]]);});
+    kids.sort((a,b)=>a[1]-b[1]);
+    order[gid]={};kids.forEach((k,i)=>{order[gid][k[0]]=i;});
+  }
+  const wrapped=gid=>{const g=gm[gid];return animated(g)||!!(g&&g.parent&&stagger(gm[g.parent]));};
+  return {gm,on,stagger,chain,box,top,order,wrapped};
+}
+function staggerAnim(plan,parentId,key){
+  const p=plan.gm[parentId];
+  if(!p||!plan.stagger(p)||(EDITOR&&!REPLAY))return '';
+  const i=(plan.order[parentId]||{})[key]||0;
+  return entrAnim(p.fx.entrance,i*p.fx.entrance.stagger);
+}
+function groupWrap(plan,container,gid){
+  container._gw=container._gw||{};
+  if(container._gw[gid])return container._gw[gid];
+  const g=plan.gm[gid],b=plan.box[gid]||{x1:0,y1:0,x2:0,y2:0};
+  const origin=((b.x1+b.x2)/2)+'px '+((b.y1+b.y2)/2)+'px';
+  const outer=document.createElement('div');outer.className='layer-group';
+  const entr=document.createElement('div');entr.className='layer-anim';
+  const loopw=document.createElement('div');loopw.className='layer-anim';
+  [outer,entr,loopw].forEach(d=>{d.style.transformOrigin=origin;});
+  outer.style.zIndex=plan.top[gid]||0;
+  outer.appendChild(entr);entr.appendChild(loopw);container.appendChild(outer);
+  const gbox={x:b.x1,y:b.y1,w:b.x2-b.x1,h:b.y2-b.y1};
+  if(g.parent){outer.style.animation=staggerAnim(plan,g.parent,'g:'+gid);enterVars(outer,(plan.gm[g.parent].fx||{}).entrance,gbox,0);}
+  const fx=g.fx||{},en=fx.entrance,lp=fx.loop;
+  if(plan.on(en)&&!plan.stagger(g)&&(!EDITOR||REPLAY)){entr.style.animation=entrAnim(en,0);enterVars(entr,en,gbox,0);}
+  if(plan.on(lp))loopw.style.animation=loopAnim(lp);
+  container._gw[gid]=loopw;
+  return loopw;
+}
+
 function buildLayers(dc){
-  const layers=document.getElementById('layers');layers.innerHTML='';
-  const free=document.getElementById('layers-free');free.innerHTML='';
+  const layers=document.getElementById('layers');layers.innerHTML='';layers._gw=null;
+  const free=document.getElementById('layers-free');free.innerHTML='';free._gw=null;
   for(const k in layerEls)delete layerEls[k];
+  const plan=groupPlan(dc);
   const sorted=(dc.layers||[]).slice().sort((a,b)=>(a.z||0)-(b.z||0));
   for(const L of sorted){
     const el=document.createElement('div');el.className='layer';
@@ -317,8 +972,20 @@ function buildLayers(dc){
     const rec={root:el,type:L.type,bind:L.bind,layer:L};
     (BUILDERS[L.type]||(()=>{}))(loopw,L,rec);
     applyFx(el,entr,loopw,L);
-    (L.clip===false?free:layers).appendChild(el);layerEls[L.id]=rec;
+    let host=L.clip===false?free:layers;
+    for(const gid of plan.chain(L).filter(plan.wrapped))host=groupWrap(plan,host,gid);
+    // A layer whose group comes in staggered gets its turn on a wrapper of its own: on el the
+    // keyframes' transform would replace the layer's rotation.
+    const sa=L.group?staggerAnim(plan,L.group,'l:'+L.id):'';
+    if(sa){
+      const sw=document.createElement('div');sw.className='layer-anim';
+      sw.style.zIndex=L.z||0;sw.style.transformOrigin=((L.x||0)+(L.w||0)/2)+'px '+((L.y||0)+(L.h||0)/2)+'px';
+      sw.style.animation=sa;enterVars(sw,(plan.gm[L.group].fx||{}).entrance,{x:L.x||0,y:L.y||0,w:L.w||0,h:L.h||0},0);sw.appendChild(el);host.appendChild(sw);
+    }else host.appendChild(el);
+    layerEls[L.id]=rec;
   }
+  // Shaders whose layer is gone (deleted, or no longer a shader) give their GL context back.
+  for(const id in shaderCache)if(!layerEls[id]||!layerEls[id].shader)dropShader(id);
 }
 
 function textForBind(bind,style){
@@ -351,16 +1018,38 @@ function applyMarquee(rec){
     const name='kf_'+L.id.replace(/[^a-z0-9_]/gi,'');
     let kf=document.getElementById(name);
     if(!kf){kf=document.createElement('style');kf.id=name;document.head.appendChild(kf);}
-    kf.textContent=`@keyframes ${name}{0%,${p1}%{transform:translateX(0)}${p2}%,100%{transform:translateX(${-overflow}px)}}`;
     inner.classList.add('scroll');
-    span.style.animation=`${name} ${total.toFixed(1)}s ease-in-out infinite`;
+    if((s.marqueeMode||'bounce')==='bounce'){
+      // Back and forth: a short rest at each end and an eased glide between them, so the text
+      // never jumps. The easing sits on the keyframes because each leg is its own movement.
+      const hold=1.2,tot=hold+scrollSec+hold+scrollSec;
+      const a=Math.round(hold/tot*1000)/10,b=Math.round((hold+scrollSec)/tot*1000)/10,c=Math.round((2*hold+scrollSec)/tot*1000)/10;
+      const ez='animation-timing-function:ease-in-out';
+      kf.textContent=`@keyframes ${name}{0%,${a}%{transform:translateX(0);${ez}}${b}%,${c}%{transform:translateX(${-overflow}px);${ez}}100%{transform:translateX(0)}}`;
+      span.style.animation=`${name} ${tot.toFixed(1)}s linear infinite`;
+    }else{
+      kf.textContent=`@keyframes ${name}{0%,${p1}%{transform:translateX(0)}${p2}%,100%{transform:translateX(${-overflow}px)}}`;
+      span.style.animation=`${name} ${total.toFixed(1)}s ease-in-out infinite`;
+    }
   }
 }
 
+let stageShown=null,trackKey=null;
+const ENTRANCE_KF=/^ovl-(fade|slide|zoom|blurIn|pop|flip|rotateIn|dropIn|wipe|enter)/;
+function restartEntrances(){
+  if(EDITOR)return;
+  const els=[...document.querySelectorAll('#layers *, #layers-free *')].filter(el=>ENTRANCE_KF.test(el.style.animationName||''));
+  const saved=els.map(el=>el.style.animation);
+  els.forEach(el=>{el.style.animation='none';});
+  void document.body.offsetWidth;
+  els.forEach((el,i)=>{el.style.animation=saved[i];});
+}
 function applyAutoHide(){
   const stage=document.getElementById('stage');
-  if(doc&&doc.canvas&&doc.canvas.autoHide)stage.style.opacity=(state.isPlaying&&state.title)?'1':'0';
-  else stage.style.opacity='1';
+  const show=!(doc&&doc.canvas&&doc.canvas.autoHide)||!!(state.isPlaying&&state.title);
+  stage.style.opacity=show?'1':'0';
+  if(show&&stageShown===false)restartEntrances();
+  stageShown=show;
 }
 
 function renderData(){
@@ -373,14 +1062,15 @@ function renderData(){
       else{rec.img.style.display='none';rec.ph.style.display='';}
     }else if(rec.type==='text'){
       const txt=textForBind(rec.bind,rec.layer.style);
-      if(rec.span.textContent!==txt){
+      if(rec.full!==txt){
+        rec.full=txt;
         rec.span.style.animation='';rec.inner.classList.remove('scroll');
-        rec.span.textContent=txt;
+        if(rec.outline&&!(rec.layer.style||{}).marquee)fitOutlined(rec,txt);else rec.tnode.data=txt;
+        syncOutline(rec);
         if(rec.layer.style&&rec.layer.style.marquee)requestAnimationFrame(()=>requestAnimationFrame(()=>applyMarquee(rec)));
       }
     }else if(rec.type==='progress'){
-      const pct=state.duration>0?(state.progress/state.duration*100):0;
-      rec.fill.style.width=Math.max(0,Math.min(100,pct))+'%';
+      startProgressClock();
     }
   }
   applyAutoHide();
@@ -388,30 +1078,43 @@ function renderData(){
 
 function applyDoc(dc){
   if(!dc||!dc.canvas)return;
-  doc=dc;applyCanvas(dc.canvas);buildLayers(dc);renderData();
+  doc=dc;applyCanvas(dc.canvas);buildLayers(dc);renderData();syncAudioStream();
   setTimeout(()=>{for(const id in layerEls){const rec=layerEls[id];if(rec.type==='text')applyMarquee(rec);}},60);
+  if(document.fonts&&document.fonts.ready)document.fonts.ready.then(()=>{for(const id in layerEls){const rec=layerEls[id];if(rec.outline){if(!(rec.layer.style||{}).marquee&&rec.full!=null)fitOutlined(rec,rec.full);syncOutline(rec);}}});
 }
 
 function updateState(s){
   if(s._configUpdate){applyDoc(s.config);return;}
   if(s._config)applyDoc(s._config);
   ['title','artist','album','cover','progress','duration','isPlaying'].forEach(f=>{if(f in s)state[f]=s[f];});
+  if('progress' in s||'isPlaying' in s)noteProgress();
+  if('cover' in s)sampleCover();
+  const key=(state.title||'')+'|'+(state.artist||'');
+  const newSong=trackKey!==null&&key!==trackKey&&!!state.title&&((doc&&doc.canvas&&doc.canvas.entranceOn)||'track')==='track';
+  trackKey=key;
   if(doc&&doc.canvas&&doc.canvas.bg&&doc.canvas.bg.blurFromCover&&(doc.canvas.bg.blur||0)>0){
     const blur=document.getElementById('blur');
     blur.style.backgroundImage=state.cover?`url(${state.cover})`:'none';
     blur.style.opacity=state.cover?'1':'0';
   }
   renderData();
+  if(newSong)restartEntrances();
 }
 
 // Editor live-preview channel: the editor postMessages the in-progress doc
 // during drag so the preview updates without flooding the backend with POSTs.
-window.addEventListener('message',function(e){if(e.data&&e.data.__overlayDoc)applyDoc(e.data.__overlayDoc);});
+window.addEventListener('message',function(e){
+  if(!EDITOR||e.source!==window.parent)return;
+  if(e.data&&e.data.__overlayDoc)applyDoc(e.data.__overlayDoc);
+  else if(e.data&&e.data.__overlayReplay&&doc){REPLAY=true;try{buildLayers(doc);}finally{REPLAY=false;}renderData();}
+});
 
 function connect(){
   const es=new EventSource(API+'/overlay/stream');
   es.onmessage=e=>{try{updateState(JSON.parse(e.data));}catch(_){}};
   es.onerror=()=>{es.close();setTimeout(connect,3000);};
 }
-fetch(API+'/overlay/config').then(r=>r.json()).then(c=>{applyDoc(c);if(!STILL)connect();}).catch(()=>{if(!STILL)connect();});
+applyCoverPal();
+if(STILL){Object.assign(state,{title:'Song Title',artist:'Artist',album:'Album',progress:66,duration:180,isPlaying:true});}
+else{fetch(API+'/overlay/config').then(r=>r.json()).then(c=>{applyDoc(c);connect();}).catch(()=>connect());}
 </script></body></html>

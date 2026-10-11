@@ -1,3 +1,5 @@
+import { useState } from "react";
+import { LegalModal, LegalLinks } from "../legal.jsx";
 import { APP_VERSION } from "../settings-support.jsx";
 import {
   BrandBluesky,
@@ -13,6 +15,7 @@ import {
 import { Button, CardRoot } from "@heroui/react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 export function AboutSettingsTab({ t }) {
+  const [legalPage, setLegalPage] = useState(null);
   return (
     <>
       {/* Logo + App Info */}
@@ -95,6 +98,10 @@ export function AboutSettingsTab({ t }) {
             Ko-fi
           </Button>
         </div>
+        <div className="mt-2.5">
+          <LegalLinks onPage={setLegalPage} t={t} />
+        </div>
+        <LegalModal page={legalPage} onPage={setLegalPage} t={t} />
       </div>
 
       {/* Contributors */}

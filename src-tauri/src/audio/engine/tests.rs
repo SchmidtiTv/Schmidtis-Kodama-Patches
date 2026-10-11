@@ -307,6 +307,7 @@ fn integration_preferences_are_shared_and_validated() {
             youtube_history_enabled: true,
             overlay_updates_enabled: true,
             remote_enabled: true,
+            together_invite_url: None,
         })
         .unwrap();
     assert!(engine.integration_settings().unwrap().remote_enabled);
@@ -371,4 +372,139 @@ fn concurrent_updates_produce_consistent_snapshots() {
         worker.join().unwrap();
     }
     assert!((0.0..8.0).contains(&engine.snapshot().unwrap().position_seconds));
+}
+
+#[test]
+fn room_listener_blocks_native_queue_navigation_and_automatic_transition() {
+    let engine = engine_with_queue();
+    engine.set_together(true, true, None).unwrap();
+    assert!(engine.require_local_transport().is_err());
+    assert!(engine.select_next().is_err());
+    assert!(engine.select_track("three").is_err());
+    assert!(engine.advance_after_end().unwrap().is_none());
+    assert!(engine.prepare_crossfade(199.0, 200.0).unwrap().is_none());
+    engine.set_together(false, false, None).unwrap();
+    assert!(engine.require_local_transport().is_ok());
+}
+
+#[test]
+fn room_clock_validation_and_scheduled_start_are_native() {
+    use super::together::TogetherPlaybackState;
+    use crate::audio::player::AudioCmd;
+    let engine = engine_with_queue();
+    engine.set_together(true, true, None).unwrap();
+    engine
+        .update_transport(TransportUpdate {
+            status: Some(PlaybackStatus::Paused),
+            ..TransportUpdate::default()
+        })
+        .unwrap();
+    let track = engine.snapshot().unwrap().current_track;
+    let target = TogetherPlaybackState {
+        track,
+        playing: true,
+        pos: 10.0,
+        at: 5000.0,
+        rate: 1.0,
+    };
+    engine
+        .update_together_target(target.clone(), 0.0, 300.0, 5.0)
+        .unwrap();
+    // A slow load cannot trigger a start against an unfinished source.
+    assert!(engine
+        .together_audio_commands(4000.0, true)
+        .unwrap()
+        .is_empty());
+    let commands = engine.together_audio_commands(4000.0, false).unwrap();
+    assert!(commands
+        .iter()
+        .any(|command| matches!(command, AudioCmd::ResumeAt(at) if *at == 5500.0)));
+    assert!(commands
+        .iter()
+        .any(|command| matches!(command, AudioCmd::Seek(pos) if *pos == 10.5)));
+    assert!(engine
+        .together_audio_commands(4500.0, false)
+        .unwrap()
+        .is_empty());
+    let invalid = TogetherPlaybackState {
+        pos: f64::INFINITY,
+        ..target
+    };
+    assert!(engine
+        .update_together_target(invalid, 0.0, 300.0, 5.0)
+        .is_err());
+}
+
+#[test]
+fn room_invite_survives_unrelated_integration_preference_updates() {
+    let engine = engine_with_queue();
+    engine
+        .set_together(
+            true,
+            false,
+            Some("https://kodama.kiyoshi.dev/together/?abcd1234".into()),
+        )
+        .unwrap();
+    engine
+        .update_integration_settings(PlaybackIntegrationSettings::default())
+        .unwrap();
+    assert!(engine
+        .integration_settings()
+        .unwrap()
+        .together_invite_url
+        .is_some());
+    engine.set_together(false, false, None).unwrap();
+    assert!(engine
+        .integration_settings()
+        .unwrap()
+        .together_invite_url
+        .is_none());
+}
+
+#[test]
+fn room_listener_source_stays_held_when_async_load_reports_loading() {
+    let engine = engine_with_queue();
+    engine.set_together(true, true, None).unwrap();
+    engine
+        .update_transport(TransportUpdate {
+            status: Some(PlaybackStatus::Loading),
+            ..TransportUpdate::default()
+        })
+        .unwrap();
+    assert!(engine.should_hold_together_source());
+    engine.set_together(false, false, None).unwrap();
+    assert!(!engine.should_hold_together_source());
+}
+
+#[test]
+fn room_host_source_is_held_only_until_its_scheduled_start() {
+    use super::together::TogetherPlaybackState;
+    let engine = engine_with_queue();
+    engine.set_together(true, false, None).unwrap();
+    assert!(!engine.should_hold_together_source());
+    let target = TogetherPlaybackState {
+        track: engine.snapshot().unwrap().current_track,
+        playing: true,
+        pos: 0.0,
+        at: 5000.0,
+        rate: 1.0,
+    };
+    engine
+        .update_together_target(target, 0.0, 300.0, 5.0)
+        .unwrap();
+    engine
+        .update_transport(TransportUpdate {
+            status: Some(PlaybackStatus::Loading),
+            ..TransportUpdate::default()
+        })
+        .unwrap();
+    assert!(engine.should_hold_together_source());
+    engine
+        .update_transport(TransportUpdate {
+            status: Some(PlaybackStatus::Playing),
+            ..TransportUpdate::default()
+        })
+        .unwrap();
+    engine.together_audio_commands(5400.0, false).unwrap();
+    assert!(!engine.should_hold_together_source());
 }

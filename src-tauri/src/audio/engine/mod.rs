@@ -2,7 +2,9 @@ mod commands;
 mod integrations;
 mod model;
 mod state;
+mod together;
 mod transitions;
+pub use together::{player_set_together, player_together_sync};
 
 #[cfg(test)]
 mod tests;

@@ -44,6 +44,7 @@ pub fn player_set_queue(
     state: tauri::State<'_, PlaybackEngine>,
     queue: Vec<PlaybackTrack>,
 ) -> Result<PlaybackSnapshot, String> {
+    state.require_local_transport()?;
     let snapshot = state.replace_queue(queue)?;
     emit_snapshot(&app, &snapshot);
     Ok(snapshot)
@@ -55,6 +56,7 @@ pub fn player_play(
     engine: tauri::State<'_, PlaybackEngine>,
     audio: tauri::State<'_, AudioPlayer>,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     let sender = audio.sender()?;
     let current = engine.snapshot()?;
     match current.status {
@@ -90,6 +92,7 @@ pub fn player_restart(
     engine: tauri::State<'_, PlaybackEngine>,
     audio: tauri::State<'_, AudioPlayer>,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     let request = engine
         .restart_current()?
         .ok_or_else(|| "cannot restart without a current track".to_string())?;
@@ -111,6 +114,7 @@ pub fn player_preload(
     engine: tauri::State<'_, PlaybackEngine>,
     audio: tauri::State<'_, AudioPlayer>,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     // Resolve and construct the selected source while keeping transport paused.
     // This is used only for the restored startup selection, so reopening the app
     // makes Play instant without unexpectedly starting audio.
@@ -135,6 +139,7 @@ pub fn player_pause(
     engine: tauri::State<'_, PlaybackEngine>,
     audio: tauri::State<'_, AudioPlayer>,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     if engine.snapshot()?.status == PlaybackStatus::Stopped {
         return engine.snapshot();
     }
@@ -156,6 +161,7 @@ pub fn player_next(
     engine: tauri::State<'_, PlaybackEngine>,
     audio: tauri::State<'_, AudioPlayer>,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     let sender = audio.sender()?;
     let Some(request) = engine.select_next()? else {
         return engine.snapshot();
@@ -177,6 +183,7 @@ pub fn player_previous(
     engine: tauri::State<'_, PlaybackEngine>,
     audio: tauri::State<'_, AudioPlayer>,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     let sender = audio.sender()?;
     let Some(request) = engine.select_previous()? else {
         return engine.snapshot();
@@ -199,6 +206,7 @@ pub fn player_seek(
     audio: tauri::State<'_, AudioPlayer>,
     position: f64,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     let current = engine.snapshot()?;
     let position = if current.duration_seconds > 0.0 {
         position.min(current.duration_seconds)
@@ -242,6 +250,7 @@ pub fn player_set_shuffle(
     engine: tauri::State<'_, PlaybackEngine>,
     shuffle: bool,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     let snapshot = engine.update_transport(TransportUpdate {
         shuffle: Some(shuffle),
         ..TransportUpdate::default()
@@ -256,6 +265,7 @@ pub fn player_set_repeat(
     engine: tauri::State<'_, PlaybackEngine>,
     repeat: RepeatMode,
 ) -> Result<PlaybackSnapshot, String> {
+    engine.require_local_transport()?;
     let snapshot = engine.update_transport(TransportUpdate {
         repeat: Some(repeat),
         ..TransportUpdate::default()
@@ -284,6 +294,7 @@ pub fn playback_engine_set_current_track(
     state: tauri::State<'_, PlaybackEngine>,
     track: Option<PlaybackTrack>,
 ) -> Result<PlaybackSnapshot, String> {
+    state.require_local_transport()?;
     state.set_current_track(track)
 }
 
@@ -292,6 +303,13 @@ pub fn playback_engine_update_transport(
     state: tauri::State<'_, PlaybackEngine>,
     update: TransportUpdate,
 ) -> Result<PlaybackSnapshot, String> {
+    if update.status.is_some()
+        || update.position_seconds.is_some()
+        || update.shuffle.is_some()
+        || update.repeat.is_some()
+    {
+        state.require_local_transport()?;
+    }
     state.update_transport(update)
 }
 

@@ -27,6 +27,7 @@ impl DiscordRpc {
         elapsed: f64,
         paused: bool,
         status_display: &str,
+        together_invite_url: Option<&str>,
     ) -> Result<(), String> {
         update(
             &self.0,
@@ -39,6 +40,7 @@ impl DiscordRpc {
             track.video_id.clone(),
             paused,
             status_display.to_string(),
+            together_invite_url,
         )
     }
 
@@ -59,6 +61,7 @@ fn update(
     video_id: String,
     paused: bool,
     status_display: String,
+    together_invite_url: Option<&str>,
 ) -> Result<(), String> {
     let mut guard = client_state.lock().map_err(|e| e.to_string())?;
 
@@ -93,7 +96,10 @@ fn update(
     if paused {
         assets = assets.small_image(PAUSED_IMAGE).small_text("Paused");
     }
-    let button = activity::Button::new("Listen on YouTube Music", &yt_url);
+    let mut buttons = vec![activity::Button::new("Listen on YouTube Music", &yt_url)];
+    if let Some(url) = together_invite_url {
+        buttons.push(activity::Button::new("Listen along", url));
+    }
 
     let state_str = artist_c.clone();
 
@@ -109,7 +115,7 @@ fn update(
         .activity_type(activity::ActivityType::Listening)
         .status_display_type(display_type)
         .assets(assets)
-        .buttons(vec![button]);
+        .buttons(buttons);
 
     if title_c.chars().count() >= 2 {
         act = act.details(&title_c);

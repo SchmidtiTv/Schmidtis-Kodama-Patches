@@ -47,6 +47,7 @@ impl NowPlayingSync {
                 snapshot.position_seconds,
                 snapshot.status != PlaybackStatus::Playing,
                 &settings.discord_status_display,
+                settings.together_invite_url.as_deref(),
             );
         } else {
             let _ = discord.clear();
@@ -68,7 +69,7 @@ fn discord_signature(
     settings: &PlaybackIntegrationSettings,
 ) -> String {
     format!(
-        "{}:{}:{}:{}:{}:{}:{}",
+        "{}:{}:{}:{}:{}:{}:{}:{:?}",
         settings.discord_enabled,
         settings.discord_status_display,
         settings.hide_discord_while_paused,
@@ -83,7 +84,8 @@ fn discord_signature(
             .map(|track| track.title.as_str())
             .unwrap_or_default(),
         snapshot.status == PlaybackStatus::Paused,
-        (snapshot.position_seconds / 15.0).floor()
+        (snapshot.position_seconds / 15.0).floor(),
+        settings.together_invite_url
     )
 }
 

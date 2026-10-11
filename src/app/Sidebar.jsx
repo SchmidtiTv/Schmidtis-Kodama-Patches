@@ -1,3 +1,5 @@
+import { openStoreWeb } from "@/features/store/index.js";
+import { TogetherSidebar } from "@/features/together/index.js";
 import { SidebarTooltip } from "@/shared/ui/tooltip.jsx";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -81,6 +83,7 @@ export function Sidebar({
   newsUnread = 0,
   settingsOpen,
   hideUserHandle,
+  onShowRoom,
 }) {
   const { profiles, activeProfile: currentProfileData } = useProfileState();
   const { logout: onLogout } = useProfileActions();
@@ -572,6 +575,24 @@ export function Sidebar({
             {t("newPlaylist")}
           </Button>
         </div>
+      )}
+
+      <TogetherSidebar
+        name={currentProfileData?.displayName || currentProfileData?.name}
+        avatar={currentProfileData?.avatar}
+        collapsed={collapsed}
+        onOpenRoom={onShowRoom}
+      />
+
+      {!collapsed && (
+        <Button
+          variant="ghost"
+          size="sm"
+          className="mx-3 mb-2"
+          onPress={() => openStoreWeb().catch(() => {})}
+        >
+          {t("store")}
+        </Button>
       )}
 
       {/* User info + account menu — expanded */}

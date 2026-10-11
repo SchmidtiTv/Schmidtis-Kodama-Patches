@@ -53,3 +53,15 @@ def overlay_server_stop() -> RouteResponse:
 @blueprint.route("/overlay/status")
 def overlay_status() -> RouteResponse:
     return jsonify(overlay_server().status())
+
+
+@blueprint.route("/overlay/levels")
+def overlay_levels() -> RouteResponse:
+    """Stream live audio frames for reactive overlay layers."""
+    return overlay_server().levels.stream_response()
+
+
+@blueprint.route("/overlay/levels/demand")
+def overlay_levels_demand() -> RouteResponse:
+    """Report the local UDP port requested by overlay listeners."""
+    return jsonify({"port": overlay_server().levels.demand_port()})

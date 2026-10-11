@@ -1,6 +1,5 @@
 export const OVERLAY_DOC_VERSION = 2;
 
-// Bindable now-playing data fields a layer can subscribe to.
 // `subtitle` is a composite (artist · album) that preserves the old sub-line.
 export const TEXT_BINDS = [
   "title",
@@ -11,7 +10,7 @@ export const TEXT_BINDS = [
   "duration",
   "static",
 ];
-export const LAYER_TYPES = ["albumArt", "text", "progress", "image", "shape"];
+export const LAYER_TYPES = ["albumArt", "text", "progress", "image", "shape", "shader"];
 
 let _idCounter = 0;
 export function makeId(prefix = "l") {
@@ -19,22 +18,17 @@ export function makeId(prefix = "l") {
   return `${prefix}_${Date.now().toString(36)}${_idCounter.toString(36)}`;
 }
 
-// A solid paint: { id, type:"solid", color, opacity, visible }. Layers carry an
-// ordered `style.fills` array (index 0 = front). The engine stacks them; the
-// inspector edits them as a list. Legacy single `fill`/`color` is migrated below.
+// Fill order is front to back; legacy single paints migrate to this array.
 export function solidFill(color = "#ffffff", opacity = 100) {
   return { id: makeId("fill"), type: "solid", color, opacity, visible: true };
 }
 
-// A stroke paint. The stroke *weight* and *position* are shared per layer
-// (`style.strokeWeight` / `style.strokePosition`), Figma-style; each paint carries
-// its own colour + opacity + visibility.
+// Stroke weight and position are shared across a layer's paints.
 export function strokePaint(color = "#ffffff", opacity = 100) {
   return { id: makeId("stroke"), color, opacity, visible: true };
 }
 
-// A corner object carries 4 radii + 4 types ("r" = round, "b" = bevel). This
-// mirrors the existing per-corner SVG clip-path system (kept verbatim).
+// Corner types: "r" = round, "b" = bevel.
 export function uniformCorners(radius = 14, type = "r") {
   return {
     TL: radius,
@@ -48,7 +42,6 @@ export function uniformCorners(radius = 14, type = "r") {
   };
 }
 
-// Pull a corner object out of a flat v1 config given key prefixes.
 function cornersFromV1(cfg, rKeys, tKeys, fallback) {
   return {
     TL: cfg[rKeys[0]] ?? fallback,
@@ -68,11 +61,6 @@ export function formatTime(sec) {
   const s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
-
-// Each factory returns a fully-formed layer with sensible defaults.
-// Common transform fields: x, y, w, h (px, canvas-relative), rotation (deg),
-// opacity (0-100), z (paint order), visible, locked. `bind` ties the layer to
-// live data. `style` is type-specific, and `effects` is an array.
 
 function baseLayer(type, over = {}) {
   return {
@@ -136,6 +124,10 @@ export function makeTextLayer(over = {}) {
       maxLines: 1,
       marquee: false,
       marqueeSpeed: 80,
+      marqueeMode: "bounce", // bounce = back and forth | loop = run through, then start over
+      strokes: [], // outline (the first visible one is drawn)
+      strokeWeight: 2,
+      strokePosition: "outside", // outside | center (text has no inside stroke)
     },
     ...over,
   });
@@ -152,7 +144,9 @@ export function makeProgressLayer(over = {}) {
       fillOpacity: 100,
       trackColor: "rgba(255,255,255,0.12)",
       corners: uniformCorners(0, "r"),
-      shape: "bar",
+      shape: "bar", // bar | ring (ring = Phase 4)
+      progressStyle: "bar", // bar | knob | glow | segments | dots | wave
+      progressAnim: "none", // none | cane | shimmer | breathe | rainbow | comet | pulse
     },
     ...over,
   });
@@ -192,12 +186,47 @@ export function makeShapeLayer(over = {}) {
   });
 }
 
+// Presets must match SHADER_SRC in the OBS renderer.
+export const SHADER_PRESETS = [
+  "aurora",
+  "plasma",
+  "mesh",
+  "smoke",
+  "silk",
+  "rays",
+  "starfield",
+  "fire",
+  "halftone",
+  "retro",
+  "matrix",
+  "equalizer",
+  "glitch",
+];
+export function makeShaderLayer(over = {}) {
+  return baseLayer("shader", {
+    name: "Shader",
+    w: 400,
+    h: 80,
+    style: {
+      preset: "aurora",
+      shaderColors: ["#7c4dff", "#e040fb", "#00e5ff"],
+      reactive: false, // pulse with the music (live levels from the player)
+      reactAmount: 100,
+      speed: 1,
+      scale: 1,
+      corners: uniformCorners(0, "r"),
+    },
+    ...over,
+  });
+}
+
 export const LAYER_FACTORIES = {
   albumArt: makeAlbumArtLayer,
   text: makeTextLayer,
   progress: makeProgressLayer,
   image: makeImageLayer,
   shape: makeShapeLayer,
+  shader: makeShaderLayer,
 };
 
 export function defaultCanvas(over = {}) {
@@ -210,16 +239,14 @@ export function defaultCanvas(over = {}) {
     border: { on: false, color: "#EEA8FF", width: 1.5, glow: 0 },
     shadow: { on: false, strength: 0.35 },
     autoHide: false,
+    entranceOn: "track", // entrances replay on every new song ("track") or only when the widget appears ("appear")
     // Theme defaults — new layers inherit these via the editor.
     theme: { fontFamily: "system-ui, sans-serif", textColor: "#ffffff", accentColor: "#EEA8FF" },
     ...over,
   };
 }
 
-// Produces a layer document that reproduces the old fixed layout
-// (album art left · title/subtitle column · progress bar at the bottom edge).
-// Positions are computed from the old padding/gap/size config so the migrated
-// default looks equivalent to the current overlay.
+// Preserve the fixed v1 layout when converting saved configurations.
 export function migrateV1toV2(cfg = {}) {
   const padH = cfg.paddingH ?? 16;
   const padV = cfg.paddingV ?? 12;
@@ -285,7 +312,7 @@ export function migrateV1toV2(cfg = {}) {
         y: Math.round((H - artSize) / 2),
         w: artSize,
         h: artSize,
-        z,
+        z: z++,
         style: {
           corners: cornersFromV1(
             cfg,
@@ -388,7 +415,7 @@ export const DEFAULT_V1_CONFIG = {
   bgOpacity: 90,
   accentColor: "#EEA8FF",
   textColor: "#ffffff",
-  borderRadius: "var(--r-xl)",
+  borderRadius: 14,
   showProgress: true,
   showAlbumArt: true,
   showArtist: true,
@@ -427,7 +454,7 @@ const _V1_PRESETS = {
     bgOpacity: 90,
     accentColor: "#ffffff",
     textColor: "#ffffff",
-    borderRadius: "var(--r-xl)",
+    borderRadius: 14,
     border: false,
   },
   pink: {
@@ -443,7 +470,7 @@ const _V1_PRESETS = {
     bgOpacity: 0,
     accentColor: "#EEA8FF",
     textColor: "#ffffff",
-    borderRadius: "var(--r-2xl)",
+    borderRadius: 16,
     border: true,
     borderColor: "#EEA8FF",
   },
@@ -452,7 +479,7 @@ const _V1_PRESETS = {
     bgOpacity: 85,
     accentColor: "#EEA8FF",
     textColor: "#ffffff",
-    borderRadius: "var(--r-xl)",
+    borderRadius: 10,
     border: false,
   },
   minimal: {
@@ -485,10 +512,7 @@ export function isV2Doc(obj) {
   );
 }
 
-// Coerce any stored value (v1 flat config OR v2 doc OR junk) into a valid v2 doc.
-// Ensure a layer's style carries the new array-based paints/effects (fills/strokes/
-// effects), migrated from the legacy single fill/color/border/fx, so the Figma-style
-// lists always populate.
+// Backfill array paints and effects for saved documents using the legacy fields.
 function migrateLayer(l) {
   if (!l) return l;
   const s = l.style || {};
@@ -505,6 +529,10 @@ function migrateLayer(l) {
       strokeWeight: next.strokeWeight ?? b.width ?? 1.5,
       strokePosition: next.strokePosition ?? b.position ?? "inside",
     };
+  }
+  // Shaders had a switch for cover colours before any colour could point at the cover.
+  if (l.type === "shader" && next.coverColors) {
+    next = { ...next, shaderColors: ["cover:1", "cover:2", "cover:3"], coverColors: false };
   }
   if (!Array.isArray(next.effects) && next.fx) {
     const fx = next.fx,

@@ -36,6 +36,7 @@ export function useProfiles({
   stopPlayback,
 }) {
   const [profiles, setProfiles] = useState([]);
+  const pinsProfileRef = useRef(null);
   const profilesRef = useRef(profiles);
   useEffect(() => {
     profilesRef.current = profiles;
@@ -69,8 +70,9 @@ export function useProfiles({
       }
       setProfiles(d.profiles || []);
       setCurrentProfile(d.current || null);
-      if (d.current) {
-        window.__activeProfile = d.current;
+      if (d.current) window.__activeProfile = d.current;
+      if (d.current && pinsProfileRef.current !== d.current) {
+        pinsProfileRef.current = d.current;
         try {
           setPinnedIds(
             JSON.parse(localStorage.getItem(`kiyoshi-pinned-${d.current}`) || "[]").map(
@@ -338,6 +340,7 @@ export function useProfiles({
       setProfiles(cp);
       setCurrentProfile(current);
       window.__activeProfile = current;
+      pinsProfileRef.current = current;
       try {
         setPinnedIds(
           JSON.parse(localStorage.getItem(`kiyoshi-pinned-${current}`) || "[]").map(

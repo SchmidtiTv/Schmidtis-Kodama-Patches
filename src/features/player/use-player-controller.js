@@ -6,7 +6,8 @@ import { IpcAudio } from "./ipc-audio.js";
 import { registerPlayerCommands as bpRegisterCommands } from "@/features/player/player-bridge.js";
 import { usePlayerNativeBridges } from "./hooks/use-player-native-bridges.js";
 import { useWindowTitle } from "./hooks/use-window-title.js";
-import { pauseNative } from "./native-playback-engine.js";
+import { pauseNative, markPausedSelection } from "./native-playback-engine.js";
+import { appendRelatedTracks, roomQueueForSelection } from "./related-queue.js";
 import { loadPlaybackSession, savePlaybackSession } from "./playback-session.js";
 
 function dedupeTracks(tracks) {
@@ -40,7 +41,12 @@ function normalizePlaybackOrigin(origin) {
 // Lyrics-session reset (clearing forced/current/failed providers on a new track) is injected as a
 // ref rather than as setters, because App's lyrics-session state is declared *after* this hook is
 // called — passing the setters directly would hit a temporal-dead-zone error in the dep arrays.
-export function usePlayerController({ addToast, resetLyricsSessionRef, integrationsRef }) {
+export function usePlayerController({
+  addToast,
+  resetLyricsSessionRef,
+  integrationsRef,
+  roomIntentRef,
+}) {
   // One IpcAudio for the app lifetime. Kept as a ref so it survives re-renders and stays a
   // singleton (duplicating it would duplicate native audio, listeners, and OBS capture).
   const audioRef = useRef(null);
@@ -58,6 +64,7 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
   // collection explicitly supplies this origin; never infer it from matching track ids.
   const [playbackOrigin, setPlaybackOrigin] = useState(null);
   const currentTrackRef = useRef(null);
+  const selectionRevision = useRef(0);
 
   // Latest track/queue for async and keyboard callbacks without stale closures.
   const queueRef = useRef([]);
@@ -180,6 +187,11 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
   }, []);
 
   const handlePlay = useCallback((track, trackList, origin = null) => {
+    if (roomIntentRef?.current?.isListener()) {
+      roomIntentRef.current.play(track);
+      return;
+    }
+    const revision = ++selectionRevision.current;
     setCurrentTrack((current) =>
       current?.videoId && current.videoId === track?.videoId ? { ...track } : track
     );
@@ -187,6 +199,26 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
     setPlaybackOrigin(normalizePlaybackOrigin(origin));
     if (trackList) {
       setQueue(dedupeTracks(trackList));
+    } else if (track?.videoId && roomIntentRef?.current?.isHost()) {
+      setQueue(roomQueueForSelection(track, queueRef.current, currentTrackRef.current?.videoId));
+    } else if (track?.videoId) {
+      setQueue([track]);
+      fetch(`${API}/radio/_?videoId=${encodeURIComponent(track.videoId)}`)
+        .then((response) => {
+          if (!response.ok) throw new Error("related songs unavailable");
+          return response.json();
+        })
+        .then((data) => {
+          if (
+            selectionRevision.current !== revision ||
+            currentTrackRef.current?.videoId !== track.videoId ||
+            roomIntentRef?.current?.isListener() ||
+            roomIntentRef?.current?.isHost()
+          )
+            return;
+          setQueue((current) => appendRelatedTracks(current, data.tracks));
+        })
+        .catch(() => {});
     }
     // Save to play history
     if (track?.videoId) {
@@ -206,13 +238,19 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
   }, []);
 
   // Enqueue a track for Big Picture's context menu: "next" inserts it right after the current
-  // track, "end" appends it. The queue is the source of truth for next/prev (getAdjacentTrack),
-  // so a plain splice is enough. With nothing playing yet, just start it.
+  // track, "end" appends it. Native playback owns next/previous transitions. With an empty
+  // player, prepare the selection paused so adding to a queue never starts playback.
   const enqueue = useCallback(
     (track, mode) => {
       if (!track?.videoId) return;
+      if (roomIntentRef?.current?.isListener()) {
+        roomIntentRef.current.enqueue(track, mode);
+        return;
+      }
       if (!currentTrack) {
-        handlePlay(track, [track]);
+        const selection = markPausedSelection({ ...track });
+        setCurrentTrack(selection);
+        setQueue([selection]);
         return;
       }
       if (track.videoId === currentTrack.videoId) return;
@@ -225,7 +263,7 @@ export function usePlayerController({ addToast, resetLyricsSessionRef, integrati
         return n;
       });
     },
-    [currentTrack, handlePlay]
+    [currentTrack, roomIntentRef]
   );
 
   // Big Picture bridge: expose "play this track" + enqueue (the Player already owns transport/seek).

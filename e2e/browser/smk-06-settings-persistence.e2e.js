@@ -2,6 +2,12 @@ const assert = require("node:assert/strict");
 
 const { startWithProfile } = require("./smoke-support.cjs");
 
+function settingSwitch(label) {
+  return $(
+    `//*[@role='switch' and (@aria-label='${label}' or @aria-labelledby=//*[normalize-space(text())='${label}']/@id)]/ancestor::label[@data-slot='switch-content']`
+  );
+}
+
 describe("SMK-06 settings persistence", () => {
   beforeEach(() => startWithProfile("local"));
 
@@ -59,7 +65,7 @@ describe("SMK-06 settings persistence", () => {
     await $("[data-testid='account-menu-trigger']").click();
     await $("[data-testid='menu-settings']").click();
     await $("[data-testid='settings-nav-darstellung']").click();
-    const toggle = await $("[role='switch'][aria-label='Speed Dial']");
+    const toggle = await settingSwitch("Speed Dial");
     await toggle.scrollIntoView();
     await toggle.click();
     await browser.waitUntil(() =>
@@ -76,7 +82,7 @@ describe("SMK-06 settings persistence", () => {
     await $("[data-testid='account-menu-trigger']").click();
     await $("[data-testid='menu-settings']").click();
     await $("[data-testid='settings-nav-darstellung']").click();
-    const restoredToggle = await $("[role='switch'][aria-label='Speed Dial']");
+    const restoredToggle = await settingSwitch("Speed Dial");
     await restoredToggle.scrollIntoView();
     await restoredToggle.click();
     await browser.refresh();
@@ -87,23 +93,21 @@ describe("SMK-06 settings persistence", () => {
     await $("[data-testid='account-menu-trigger']").click();
     await $("[data-testid='menu-settings']").click();
     await $("[data-testid='settings-nav-wiedergabe']").click();
-    const toggle = await $("[role='switch'][aria-label='Equalizer']");
+    const toggle = await settingSwitch("Equalizer");
     await toggle.scrollIntoView();
     await toggle.click();
     const controls = await $("[data-testid='equalizer-controls']");
     await controls.waitForDisplayed();
     assert.ok((await controls.getText()).includes("Preamp"));
-    const cards = await browser.execute(() => {
-      const header = document
-        .querySelector("[role='switch'][aria-label='Equalizer']")
-        .closest(".card");
+    const cards = await browser.execute((control) => {
+      const header = control.closest(".card");
       const panel = document.querySelector("[data-testid='equalizer-controls']");
       return {
         headerText: header.textContent,
         headerRadius: getComputedStyle(header).borderTopLeftRadius,
         panelRadius: getComputedStyle(panel).borderTopLeftRadius,
       };
-    });
+    }, toggle);
     assert.ok(cards.headerText.includes("Ten frequency bands and a preamp, applied to playback."));
     assert.equal(cards.panelRadius, cards.headerRadius);
     assert.notEqual(cards.panelRadius, "0px");

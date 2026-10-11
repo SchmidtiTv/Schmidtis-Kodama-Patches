@@ -4,6 +4,7 @@ pub mod engine;
 pub mod eq;
 pub mod http_source;
 mod mix_processor;
+pub mod overlay_levels;
 pub mod player;
 mod source_loader;
 
@@ -15,6 +16,8 @@ pub use engine::{
     player_set_shuffle, player_set_ui_visible, player_set_volume, player_update_integrations,
     start_integration_worker, PlaybackEngine,
 };
+pub use engine::{player_set_together, player_together_sync};
+pub use player::audio_set_mono;
 pub use player::{
     audio_outputs, audio_pause, audio_play, audio_resume, audio_seek, audio_set_analysis_enabled,
     audio_set_eq, audio_set_output, audio_set_volume, audio_stop,

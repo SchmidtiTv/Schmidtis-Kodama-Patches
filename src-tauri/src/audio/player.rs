@@ -20,8 +20,15 @@ pub enum AudioCmd {
     PlayResolved {
         request: super::engine::PlaybackSourceRequest,
     },
+    SourceFailed {
+        generation: u64,
+        message: String,
+    },
     Pause,
     Resume,
+    ResumeAt(f64),
+    CancelScheduledResume,
+    SetRate(f32),
     Stop,
     Seek(f64),
     SetOutput(String),
@@ -99,12 +106,15 @@ pub fn start_audio_thread(
     let current_analysis: Arc<Mutex<Option<Arc<analyzer::AnalysisBuffer>>>> =
         Arc::new(Mutex::new(None));
     let analysis_enabled = Arc::new(AtomicBool::new(false));
+    let analysis_requested = Arc::new(AtomicBool::new(false));
 
     // ── Visualizer analysis thread: snapshot → FFT → bands, emit ~30fps ──
     {
         let app = app.clone();
         let cur = Arc::clone(&current_analysis);
         let enabled = Arc::clone(&analysis_enabled);
+        let requested = Arc::clone(&analysis_requested);
+        let overlay_levels = super::overlay_levels::OverlayLevelsPublisher::new();
         let engine = engine.clone();
         std::thread::spawn(move || {
             let mut az: Option<(u32, analyzer::Analyzer)> = None;
@@ -114,7 +124,10 @@ pub fn start_audio_thread(
             let mut idle_zeros = 0u32;
             loop {
                 std::thread::sleep(std::time::Duration::from_millis(33));
-                if !enabled.load(Ordering::Relaxed) || !engine.is_ui_visible() {
+                let ui_active = requested.load(Ordering::Relaxed) && engine.is_ui_visible();
+                let demanded = ui_active || overlay_levels.port() != 0;
+                enabled.store(demanded, Ordering::Relaxed);
+                if !demanded {
                     last_written = 0;
                     continue;
                 }
@@ -130,6 +143,7 @@ pub fn start_audio_thread(
                     }
                     buf.snapshot(&mut samples);
                     let (raw, level) = az.as_mut().unwrap().1.analyze(&samples);
+                    overlay_levels.publish(&raw, level);
                     bands.copy_from_slice(&raw); // keep last frame for the decay path
                     idle_zeros = 0;
                     let payload: Vec<f32> =
@@ -153,6 +167,7 @@ pub fn start_audio_thread(
                         if !any {
                             idle_zeros += 1;
                         }
+                        overlay_levels.publish(&bands, 0.0);
                         let payload: Vec<f32> = bands
                             .iter()
                             .map(|b| (b * 1000.0).round() / 1000.0)
@@ -180,6 +195,11 @@ pub fn start_audio_thread(
         };
 
         let mut sink: Option<rodio::Sink> = None;
+        let mut resume_at: Option<f64> = None;
+        let mut loading_source = false;
+        let mut source_skew = Arc::new(std::sync::atomic::AtomicU64::new(0));
+        let mut source_fade = Arc::new(AtomicBool::new(false));
+        let mut seek_pending = false;
         let mut audio_data: Option<Vec<u8>> = None;
         // Resolvable source identity used to rebuild automatic sources on seek.
         let mut source_url: Option<String> = None;
@@ -247,17 +267,25 @@ pub fn start_audio_thread(
                                     source
                                         .enable_analysis(Arc::clone(&analysis_enabled_for_player)),
                                 );
-                                new_sink.append(source);
-                                if seek_to > 0.05 {
-                                    let _ = new_sink
-                                        .try_seek(std::time::Duration::from_secs_f64(seek_to));
+                                source_skew = source.skew_handle();
+                                source_fade = source.fade_out_handle();
+                                if seek_pending {
+                                    source.seek_fade_in();
+                                    seek_pending = false;
                                 }
                                 let start_paused = engine
                                     .snapshot()
                                     .map(|snapshot| snapshot.status == PlaybackStatus::Paused)
-                                    .unwrap_or(false);
+                                    .unwrap_or(false)
+                                    || engine.should_hold_together_source();
                                 if start_paused {
                                     new_sink.pause();
+                                }
+                                new_sink.append(source);
+                                loading_source = false;
+                                if seek_to > 0.05 {
+                                    let _ = new_sink
+                                        .try_seek(std::time::Duration::from_secs_f64(seek_to));
                                 }
                                 let _ = app.emit(
                                     "audio-loaded",
@@ -274,12 +302,25 @@ pub fn start_audio_thread(
                                     duration,
                                 );
                             }
-                            Err(e) => eprintln!("[Audio] Sink error: {e}"),
+                            Err(e) => {
+                                if apply_source_failure(&engine, play_gen, gen) {
+                                    loading_source = false;
+                                    resume_at = None;
+                                    let _ = app.emit(
+                                        "audio-error",
+                                        format!("Could not create audio sink: {e}"),
+                                    );
+                                }
+                            }
                         }
                     }
                     Err(e) => {
                         eprintln!("[Audio] Decode error: {e}");
-                        let _ = app.emit("audio-error", format!("{e}"));
+                        if apply_source_failure(&engine, play_gen, gen) {
+                            loading_source = false;
+                            resume_at = None;
+                            let _ = app.emit("audio-error", format!("{e}"));
+                        }
                     }
                 }
             }
@@ -294,7 +335,12 @@ pub fn start_audio_thread(
                 }
                 dl_progress = progress;
                 if let Some(s) = sink.take() {
-                    s.stop();
+                    if seek_pending && !s.is_paused() {
+                        source_fade.store(true, Ordering::Relaxed);
+                        s.detach();
+                    } else {
+                        s.stop();
+                    }
                 }
                 // seek_offset was set by the Play/Seek handler (the source decodes from there).
                 duration = source
@@ -306,16 +352,24 @@ pub fn start_audio_thread(
                     || engine
                         .snapshot()
                         .map(|snapshot| snapshot.status == PlaybackStatus::Paused)
-                        .unwrap_or(false);
+                        .unwrap_or(false)
+                    || engine.should_hold_together_source();
                 match rodio::Sink::try_new(&handle) {
                     Ok(new_sink) => {
                         new_sink.set_volume(volume);
                         *current_analysis.lock().unwrap() =
                             Some(source.enable_analysis(Arc::clone(&analysis_enabled_for_player)));
-                        new_sink.append(source);
+                        source_skew = source.skew_handle();
+                        source_fade = source.fade_out_handle();
+                        if seek_pending {
+                            source.seek_fade_in();
+                            seek_pending = false;
+                        }
                         if start_paused {
                             new_sink.pause();
                         }
+                        new_sink.append(source);
+                        loading_source = false;
                         let _ =
                             app.emit("audio-loaded", serde_json::json!({ "duration": duration }));
                         sink = Some(new_sink);
@@ -330,7 +384,14 @@ pub fn start_audio_thread(
                         );
                         eprintln!("[Audio] Progressive stream playing, duration={duration:.1}s");
                     }
-                    Err(e) => eprintln!("[Audio] Sink error: {e}"),
+                    Err(e) => {
+                        if apply_source_failure(&engine, play_gen, gen) {
+                            loading_source = false;
+                            resume_at = None;
+                            let _ = app
+                                .emit("audio-error", format!("Could not create audio sink: {e}"));
+                        }
+                    }
                 }
             }
 
@@ -469,9 +530,46 @@ pub fn start_audio_thread(
                 }
             }
 
-            while let Ok(cmd) = rx.try_recv() {
+            let now_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs_f64()
+                * 1000.0;
+            if loading_source
+                && engine
+                    .snapshot()
+                    .map(|snapshot| snapshot.status == PlaybackStatus::Stopped)
+                    .unwrap_or(false)
+            {
+                loading_source = false;
+            }
+            let room_commands = engine
+                .together_audio_commands(now_ms, loading_source || sink.is_none())
+                .unwrap_or_default();
+            let mut room_commands = room_commands.into_iter();
+
+            while let Some(cmd) = room_commands.next().or_else(|| rx.try_recv().ok()) {
+                if let AudioCmd::PlayResolved { request } = &cmd {
+                    if engine.require_local_transport().is_err()
+                        && engine
+                            .snapshot()
+                            .ok()
+                            .and_then(|snapshot| snapshot.current_track)
+                            .is_some_and(|track| track.video_id != request.track.video_id)
+                    {
+                        continue;
+                    }
+                    if engine.require_local_transport().is_err() {
+                        let _ = app.emit(
+                            "playback-track-changed",
+                            serde_json::json!({"track":request.track,"reason":"together"}),
+                        );
+                    }
+                }
                 match cmd {
                     AudioCmd::Play { url, seek_to } => {
+                        loading_source = true;
+                        resume_at = None;
                         let _ = engine.cancel_crossfade();
                         let _ = engine.update_transport(TransportUpdate {
                             status: Some(PlaybackStatus::Loading),
@@ -581,6 +679,8 @@ pub fn start_audio_thread(
                         });
                     }
                     AudioCmd::PlayResolved { request } => {
+                        loading_source = true;
+                        resume_at = None;
                         let _ = engine.cancel_crossfade();
                         if let Some(s) = sink.take() {
                             s.stop();
@@ -601,11 +701,29 @@ pub fn start_audio_thread(
                             request,
                             play_gen,
                             source_tx.clone(),
-                            app.clone(),
-                            engine.clone(),
+                            command_tx.clone(),
                         );
                     }
+                    AudioCmd::SourceFailed {
+                        generation,
+                        message,
+                    } => {
+                        if !apply_source_failure(&engine, play_gen, generation) {
+                            continue;
+                        }
+                        loading_source = false;
+                        resume_at = None;
+                        seek_pending = false;
+                        if let Some(current) = sink.take() {
+                            current.stop();
+                        }
+                        let _ = app.emit("audio-error", message);
+                        if let Ok(snapshot) = engine.snapshot() {
+                            let _ = app.emit("playback-state-changed", snapshot);
+                        }
+                    }
                     AudioCmd::Pause => {
+                        resume_at = None;
                         if let Some(s) = &sink {
                             s.pause();
                         }
@@ -617,7 +735,20 @@ pub fn start_audio_thread(
                             ..TransportUpdate::default()
                         });
                     }
+                    AudioCmd::CancelScheduledResume => {
+                        resume_at = None;
+                    }
+                    AudioCmd::ResumeAt(at) => {
+                        resume_at = Some(at);
+                        if let Some(current) = &sink {
+                            current.pause();
+                        }
+                    }
+                    AudioCmd::SetRate(rate) => {
+                        super::decoder::set_rate(rate);
+                    }
                     AudioCmd::Resume => {
+                        resume_at = None;
                         if sink.is_some() || sink2.is_some() {
                             if let Some(s) = &sink {
                                 s.play();
@@ -636,8 +767,7 @@ pub fn start_audio_thread(
                                 request,
                                 play_gen,
                                 source_tx.clone(),
-                                app.clone(),
-                                engine.clone(),
+                                command_tx.clone(),
                             );
                             let _ = app.emit(
                                 "playback-track-changed",
@@ -649,6 +779,9 @@ pub fn start_audio_thread(
                         }
                     }
                     AudioCmd::Stop => {
+                        loading_source = false;
+                        resume_at = None;
+                        super::decoder::set_rate(1.0);
                         let _ = engine.cancel_crossfade();
                         if let Some(s) = sink.take() {
                             s.stop();
@@ -704,12 +837,12 @@ pub fn start_audio_thread(
                         });
                         let was_paused = sink.as_ref().map(|s| s.is_paused()).unwrap_or(false);
                         if let Some(url) = source_url.clone() {
-                            if let Some(s) = sink.take() {
-                                s.stop();
-                            }
+                            loading_source = true;
+                            seek_pending = true;
                             seek_offset = t;
                             let gen = play_gen;
                             let stx = source_tx.clone();
+                            let failure_tx = command_tx.clone();
                             // Seeking rebuilds the decoder, but it must not restart the download:
                             // read the already-buffered bytes through a second reader over the
                             // same stream. A backwards seek then costs nothing, and the buffer
@@ -718,9 +851,17 @@ pub fn start_audio_thread(
                             std::thread::spawn(move || {
                                 let source_url = url.clone();
                                 let built = build_streaming_source(&url, t, existing);
-                                if let Ok((source, progress)) = built {
-                                    let _ =
-                                        stx.send((source, gen, was_paused, source_url, progress));
+                                match built {
+                                    Ok((source, progress)) => {
+                                        let _ = stx
+                                            .send((source, gen, was_paused, source_url, progress));
+                                    }
+                                    Err(error) => {
+                                        let _ = failure_tx.send(AudioCmd::SourceFailed {
+                                            generation: gen,
+                                            message: format!("Could not seek audio: {error}"),
+                                        });
+                                    }
                                 }
                             });
                         } else if let Some(ref data) = audio_data {
@@ -736,7 +877,14 @@ pub fn start_audio_thread(
                                         Some(source.enable_analysis(Arc::clone(
                                             &analysis_enabled_for_player,
                                         )));
+                                    source_skew = source.skew_handle();
+                                    source_fade = source.fade_out_handle();
+                                    if seek_pending {
+                                        source.seek_fade_in();
+                                        seek_pending = false;
+                                    }
                                     new_sink.append(source);
+                                    loading_source = false;
                                     if was_paused {
                                         new_sink.pause();
                                     }
@@ -755,7 +903,11 @@ pub fn start_audio_thread(
                                 .unwrap_or(0.0)
                         } else {
                             sink.as_ref()
-                                .map(|s| s.get_pos().as_secs_f64() + seek_offset)
+                                .map(|s| {
+                                    s.get_pos().as_secs_f64()
+                                        + seek_offset
+                                        + f64::from_bits(source_skew.load(Ordering::Relaxed))
+                                })
                                 .unwrap_or(0.0)
                         };
                         match open_output() {
@@ -788,8 +940,19 @@ pub fn start_audio_thread(
                         }
                     }
                     AudioCmd::SetAnalysisEnabled(enabled) => {
-                        analysis_enabled_for_player.store(enabled, Ordering::Relaxed);
+                        analysis_requested.store(enabled, Ordering::Relaxed);
                     }
+                }
+            }
+
+            if resume_at.is_some_and(|at| now_ms >= at) && !loading_source {
+                if let Some(current) = &sink {
+                    current.play();
+                    resume_at = None;
+                    let _ = engine.update_transport(TransportUpdate {
+                        status: Some(PlaybackStatus::Playing),
+                        ..TransportUpdate::default()
+                    });
                 }
             }
 
@@ -798,7 +961,9 @@ pub fn start_audio_thread(
             // starts, preventing duplicate builds while the WebView is hidden or throttled.
             if xfade_start.is_none() && sink2.is_none() {
                 if let Some(current_sink) = sink.as_ref().filter(|sink| !sink.is_paused()) {
-                    let position = current_sink.get_pos().as_secs_f64() + seek_offset;
+                    let position = current_sink.get_pos().as_secs_f64()
+                        + seek_offset
+                        + f64::from_bits(source_skew.load(Ordering::Relaxed));
                     // Cheap arithmetic gate before even asking the engine: a crossfade can only
                     // become due once fewer than MAX_CROSSFADE_SECONDS remain, so this skips the
                     // engine call entirely (no lock, no queue lookup) for the rest of every track.
@@ -878,7 +1043,9 @@ pub fn start_audio_thread(
                     }
                 }
             } else if let Some(s) = &sink {
-                let pos = s.get_pos().as_secs_f64() + seek_offset;
+                let pos = s.get_pos().as_secs_f64()
+                    + seek_offset
+                    + f64::from_bits(source_skew.load(Ordering::Relaxed));
                 let paused = s.is_paused();
                 let ended = s.empty();
                 let status = if paused {
@@ -920,8 +1087,7 @@ pub fn start_audio_thread(
                                 request,
                                 play_gen,
                                 source_tx.clone(),
-                                app.clone(),
-                                engine.clone(),
+                                command_tx.clone(),
                             );
                         }
                         Ok(None) => {
@@ -1045,4 +1211,46 @@ pub fn audio_set_analysis_enabled(
     enabled: bool,
 ) -> Result<(), String> {
     send_audio(&state, AudioCmd::SetAnalysisEnabled(enabled))
+}
+
+#[tauri::command]
+pub fn audio_set_mono(enabled: bool) {
+    super::eq::set_mono(enabled);
+}
+
+// A failed background build belongs to the generation that requested it. A later source
+// must never be stopped by an error arriving from an older load or seek.
+fn apply_source_failure(
+    engine: &PlaybackEngine,
+    current_generation: u64,
+    failed_generation: u64,
+) -> bool {
+    if current_generation != failed_generation {
+        return false;
+    }
+    engine
+        .update_transport(TransportUpdate {
+            status: Some(PlaybackStatus::Stopped),
+            ..TransportUpdate::default()
+        })
+        .is_ok()
+}
+
+#[cfg(test)]
+mod source_failure_tests {
+    use super::*;
+    #[test]
+    fn failed_seek_can_retry_and_stale_failure_cannot_stop_new_source() {
+        let engine = PlaybackEngine::new();
+        engine
+            .update_transport(TransportUpdate {
+                status: Some(PlaybackStatus::Loading),
+                ..TransportUpdate::default()
+            })
+            .unwrap();
+        assert!(!apply_source_failure(&engine, 2, 1));
+        assert_eq!(engine.snapshot().unwrap().status, PlaybackStatus::Loading);
+        assert!(apply_source_failure(&engine, 2, 2));
+        assert_eq!(engine.snapshot().unwrap().status, PlaybackStatus::Stopped);
+    }
 }

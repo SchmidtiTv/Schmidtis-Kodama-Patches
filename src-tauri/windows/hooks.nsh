@@ -24,6 +24,10 @@
 !macroend
 
 !macro NSIS_HOOK_POSTUNINSTALL
+  ${If} $UpdateMode <> 1
+    RMDir /r "$LOCALAPPDATA\${BUNDLEID}\runtime"
+  ${EndIf}
+
   ; Remove kiyoshi-audio temp folder (used by the audio backend)
   RMDir /r "$TEMP\kiyoshi-audio"
 

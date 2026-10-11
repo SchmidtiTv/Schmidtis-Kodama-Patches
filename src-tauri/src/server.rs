@@ -35,7 +35,9 @@ fn shutdown_via_http() {
     }
 }
 
-pub fn kill_existing_server(child: &mut Option<Child>) {
+pub fn kill_existing_server(child: &mut Option<Child>, sweep: bool) {
+    #[cfg(not(windows))]
+    let _ = sweep;
     shutdown_via_http();
     std::thread::sleep(std::time::Duration::from_millis(400));
 
@@ -45,7 +47,7 @@ pub fn kill_existing_server(child: &mut Option<Child>) {
     }
 
     #[cfg(windows)]
-    {
+    if sweep {
         use std::os::windows::process::CommandExt;
         const CREATE_NO_WINDOW: u32 = 0x08000000;
         let _ = std::process::Command::new("taskkill")
@@ -117,6 +119,8 @@ pub fn start_server(app: &tauri::AppHandle) {
     }
     match cmd.spawn() {
         Ok(child) => {
+            #[cfg(windows)]
+            bind_to_kodama(&child);
             *app.state::<ServerProcess>().0.lock().unwrap() = Some(child);
         }
         Err(e) => {
@@ -130,8 +134,50 @@ pub fn start_server(app: &tauri::AppHandle) {
     wait_for_server(15000);
 }
 
+#[cfg(windows)]
+fn bind_to_kodama(child: &Child) {
+    use std::os::windows::io::AsRawHandle;
+    use windows::core::PCWSTR;
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::JobObjects::{
+        AssignProcessToJobObject, CreateJobObjectW, JobObjectExtendedLimitInformation,
+        SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    unsafe {
+        let job = match CreateJobObjectW(None, PCWSTR::null()) {
+            Ok(j) => j,
+            Err(e) => {
+                eprintln!("[server] no job object: {e}");
+                return;
+            }
+        };
+        let mut info = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        if let Err(e) = SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        ) {
+            eprintln!("[server] job object limit not set: {e}");
+            return;
+        }
+        if let Err(e) = AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())) {
+            eprintln!("[server] backend not bound to the job object: {e}");
+        }
+        // `job` is deliberately never closed: closing it is what ends the backend.
+    }
+}
+
 pub fn stop_server(app_handle: &tauri::AppHandle) {
     let state: tauri::State<ServerProcess> = app_handle.state();
     let mut child_opt = state.0.lock().ok().and_then(|mut g| g.take());
-    kill_existing_server(&mut child_opt);
+    kill_existing_server(&mut child_opt, false);
+}
+
+pub fn stop_server_for_update(app_handle: &tauri::AppHandle) {
+    let state: tauri::State<ServerProcess> = app_handle.state();
+    let mut child = state.0.lock().ok().and_then(|mut guard| guard.take());
+    kill_existing_server(&mut child, true);
 }

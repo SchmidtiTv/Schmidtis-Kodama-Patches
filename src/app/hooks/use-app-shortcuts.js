@@ -75,8 +75,6 @@ export function useAppShortcuts({
 
       // While the overlay editor is open, playback shortcuts must not fire.
       if (document.querySelector("[data-overlay-editor]")) return;
-      // Same for Big Picture mode.
-      if (document.querySelector("[data-bigpicture]")) return;
 
       // Escape remains a standard dismiss action even when custom shortcuts are disabled.
       if (e.code === "Escape") {

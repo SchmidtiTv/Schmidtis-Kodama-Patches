@@ -70,6 +70,8 @@ export function SettingsPanel({
 }) {
   const anim = useAnimations();
   const t = useLang();
+  const accessibilitySettings = useAppearanceSettings();
+  const newLyricsSettings = useLyricsSettings();
   const {
     accent,
     accentCustom,
@@ -511,8 +513,8 @@ export function SettingsPanel({
           {tab === "visualizer" && (
             <VisualizerSettingsTab
               ambientVisualizer={ambientVisualizer}
-                applyVizPreset={applyVizPreset}
-                overwriteVizPreset={overwriteVizPreset}
+              applyVizPreset={applyVizPreset}
+              overwriteVizPreset={overwriteVizPreset}
               deleteVizPreset={deleteVizPreset}
               exportVizPreset={exportVizPreset}
               handleVizImport={handleVizImport}
@@ -630,6 +632,7 @@ export function SettingsPanel({
 
           {tab === "lyrics" && (
             <LyricsSettingsTab
+              {...newLyricsSettings}
               fluidLyrics={fluidLyrics}
               lyricsFontSize={lyricsFontSize}
               lyricsProviders={lyricsProviders}
@@ -652,6 +655,7 @@ export function SettingsPanel({
 
           {tab === "accessibility" && (
             <AccessibilitySettingsTab
+              {...accessibilitySettings}
               ambientBackground={ambientBackground}
               appFont={appFont}
               closeTray={closeTray}

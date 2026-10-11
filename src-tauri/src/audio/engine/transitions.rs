@@ -143,6 +143,9 @@ impl PlaybackEngine {
 
     pub fn advance_after_end(&self) -> Result<Option<PlaybackSourceRequest>, String> {
         let mut state = self.write_state()?;
+        if state.together.listener {
+            return Ok(None);
+        }
         let pending_target = state
             .pending_crossfade
             .take()
@@ -176,6 +179,7 @@ impl PlaybackEngine {
     }
 
     pub fn select_track(&self, video_id: &str) -> Result<Option<PlaybackSourceRequest>, String> {
+        self.require_local_transport()?;
         super::model::validate_video_id("videoId", video_id)?;
         let mut state = self.write_state()?;
         let Some(track) = state
@@ -212,6 +216,7 @@ impl PlaybackEngine {
         &self,
         direction: ManualDirection,
     ) -> Result<Option<PlaybackSourceRequest>, String> {
+        self.require_local_transport()?;
         let mut state = self.write_state()?;
         let Some(current) = state.snapshot.current_track.as_ref() else {
             return Ok(None);
@@ -274,7 +279,8 @@ fn evaluate_pending_crossfade(
 }
 
 fn transition_is_blocked(state: &EngineState, duration_seconds: f64) -> bool {
-    !state.policy.automatic_crossfade
+    state.together.active
+        || !state.policy.automatic_crossfade
         || state.pending_crossfade.is_some()
         || state.snapshot.repeat == RepeatMode::One
         || duration_seconds <= 0.0

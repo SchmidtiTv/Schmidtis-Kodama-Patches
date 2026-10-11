@@ -1,3 +1,4 @@
+import { ToggleButton, ToggleButtonGroupRoot } from "@heroui/react";
 import {
   ComposerSettingsSection,
   LyricsProviderList,
@@ -13,6 +14,10 @@ import {
   Toggle,
 } from "@/shared/ui/settings-controls.jsx";
 export function LyricsSettingsTab({
+  lyricsEngine = "braccato",
+  onLyricsEngineChange,
+  braccatoLetterWave = true,
+  onToggleBraccatoLetterWave,
   fluidLyrics,
   lyricsFontSize,
   lyricsProviders,
@@ -157,19 +162,52 @@ export function LyricsSettingsTab({
       >
         <SettingsSectionLabel>{t("lyrEffects")}</SettingsSectionLabel>
         <SettingRow
-          label={t("syllableZoom")}
-          description={t("syllableZoomDesc")}
-          icon={<Sparkles />}
-        >
-          <Toggle value={syllableZoom} onChange={onToggleSyllableZoom} />
-        </SettingRow>
-        <SettingRow
-          label={t("fluidLyrics")}
-          description={t("fluidLyricsDesc")}
+          label={t("lyricsEngine")}
+          description={t("lyricsEngineDesc")}
           icon={<WaveformLines />}
         >
-          <Toggle value={fluidLyrics} onChange={onToggleFluidLyrics} />
+          <ToggleButtonGroupRoot
+            aria-label={t("lyricsEngine")}
+            selectionMode="single"
+            disallowEmptySelection
+            selectedKeys={[lyricsEngine]}
+            size="sm"
+            onSelectionChange={(keys) => {
+              const value = [...keys][0];
+              if (value) onLyricsEngineChange?.(value);
+            }}
+          >
+            <ToggleButton id="braccato">{t("lyricsEngineBraccato")}</ToggleButton>
+            <ToggleButton id="legacy">{t("lyricsEngineLegacy")}</ToggleButton>
+          </ToggleButtonGroupRoot>
         </SettingRow>
+        {lyricsEngine === "braccato" ? (
+          <SettingRow
+            label={t("braccatoLetterWave")}
+            description={t("braccatoLetterWaveDesc")}
+            icon={<Sparkles />}
+          >
+            <Toggle value={braccatoLetterWave} onChange={onToggleBraccatoLetterWave} />
+          </SettingRow>
+        ) : (
+          <>
+            {" "}
+            <SettingRow
+              label={t("syllableZoom")}
+              description={t("syllableZoomDesc")}
+              icon={<Sparkles />}
+            >
+              <Toggle value={syllableZoom} onChange={onToggleSyllableZoom} />
+            </SettingRow>
+            <SettingRow
+              label={t("fluidLyrics")}
+              description={t("fluidLyricsDesc")}
+              icon={<WaveformLines />}
+            >
+              <Toggle value={fluidLyrics} onChange={onToggleFluidLyrics} />
+            </SettingRow>
+          </>
+        )}
       </div>
 
       <div
