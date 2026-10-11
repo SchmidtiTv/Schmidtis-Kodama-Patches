@@ -8,6 +8,9 @@ files extend this guide for their directory trees:
 - [`python-backend/AGENTS.md`](python-backend/AGENTS.md) — Flask backend
   architecture and clean-code rules.
 
+Project memory (status, decisions, milestones, session hand-offs) lives in
+[`.ai/`](.ai/AGENTS.md); read it before planning multi-step work.
+
 When instructions differ, follow the guide closest to the file being changed.
 Do not bypass a scoped guide by placing code in a less appropriate directory.
 
