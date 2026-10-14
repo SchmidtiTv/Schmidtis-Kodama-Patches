@@ -13,17 +13,20 @@ import {
   setDrift,
   setSync,
   inviteLink,
+  finishRoomRestore,
 } from "./together.js";
+import { hostRoomRestorePlan } from "./room-session.js";
 
 /** The webview relays room observations. Native playback owns loading, queue progression,
  * seeking, scheduled starts and rate correction, including while this window is hidden. */
-export function useTogetherSync({ currentTrack, queue }) {
+export function useTogetherSync({ currentTrack, queue, setQueue }) {
   const active = useTogetherValue(
     (room) => room.status === "open" || room.status === "reconnecting"
   );
   const isHost = useTogetherValue((room) => room.isHost);
   const roomCode = useTogetherValue((room) => room.room);
   const showDiscord = useTogetherValue((room) => room.showDiscord);
+  const restoring = useTogetherValue((room) => room.restoring);
   const readyTrack = useRef(null);
   const host = useRef({ track: null, waiting: false, since: 0 });
 
@@ -74,6 +77,7 @@ export function useTogetherSync({ currentTrack, queue }) {
   useEffect(() => {
     if (!active || !isHost) return;
     const room = getTogether();
+    if (room.restoring) return;
     const sameTrack = currentTrack?.videoId && room.state?.track?.videoId === currentTrack.videoId;
     host.current = {
       track: currentTrack?.videoId,
@@ -104,9 +108,34 @@ export function useTogetherSync({ currentTrack, queue }) {
 
   useEffect(() => {
     if (!active || !isHost) return;
+    if (getTogether().restoring) return;
     const index = queue.findIndex((track) => track.videoId === currentTrack?.videoId);
     hostQueue(index >= 0 ? queue.slice(index + 1, index + 21) : []);
   }, [active, isHost, currentTrack, queue]);
+
+  useEffect(() => {
+    if (!active || !isHost || !restoring || !isNativeRuntime()) return;
+    const room = getTogether();
+    const plan = hostRoomRestorePlan(room);
+    if (!plan) {
+      finishRoomRestore();
+      return;
+    }
+    setQueue(plan.queue);
+    const tune = getTune();
+    native
+      .syncPlayerTogether({
+        state: {
+          ...plan.state,
+          track: toNativePlaybackTrack(plan.state.track),
+          at: plan.state.at - room.offset,
+        },
+        latencyMs: 0,
+        seekAboveMs: tune.seekAbove,
+        maxRate: tune.maxRate,
+      })
+      .catch(() => {});
+  }, [active, isHost, restoring, setQueue]);
 
   useEffect(() => {
     if (!active || !isNativeRuntime()) return;
@@ -120,6 +149,35 @@ export function useTogetherSync({ currentTrack, queue }) {
         if (cancelled) return;
         const room = getTogether();
         const tune = getTune();
+        if (room.isHost && room.restoring) {
+          const plan = hostRoomRestorePlan(room);
+          if (!plan) {
+            finishRoomRestore();
+            return;
+          }
+          await native.syncPlayerTogether({
+            state: {
+              ...plan.state,
+              track: toNativePlaybackTrack(plan.state.track),
+              at: plan.state.at - room.offset,
+            },
+            latencyMs: 0,
+            seekAboveMs: tune.seekAbove,
+            maxRate: tune.maxRate,
+          });
+          const statusMatches = plan.state.playing
+            ? snapshot.status === "playing"
+            : snapshot.status === "paused";
+          if (snapshot.currentTrack?.videoId === plan.state.track.videoId && statusMatches) {
+            host.current = {
+              track: plan.state.track.videoId,
+              waiting: false,
+              since: Date.now(),
+            };
+            finishRoomRestore();
+          }
+          return;
+        }
         if (!room.isHost) {
           if (!room.state) return;
           if (readyTrack.current === room.state.track?.videoId) sendReady(readyTrack.current);

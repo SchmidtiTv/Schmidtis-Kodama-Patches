@@ -5,6 +5,7 @@
 // shortest round trip wins, and its midpoint gives the offset between this clock and the room's.
 import { useSyncExternalStore } from "react";
 import { roomPositionAt, clockSample, validRoomMessage, roomRole } from "./room-clock.js";
+import { connectionIsSilent, nextPlayedTracks, parseRememberedRoom } from "./room-session.js";
 
 // The deployed room server. A local `wrangler dev` (http://localhost:8787) can be set in the Debug tab.
 const DEFAULT_URL = "https://kodama-together.kiyoshidesign.workers.dev";
@@ -25,6 +26,8 @@ let snap = {
   state: null,
   queue: [], // what the host plays after this song
   suggestions: [], // songs suggested to the room, most votes first
+  played: [], // listener: room tracks completed since joining
+  restoring: false, // returning host: native playback is adopting the durable room state
   config: {
     waitAll: false,
     name: "",
@@ -106,6 +109,56 @@ export function expectedPos(st = snap.state) {
 }
 
 const hostKey = (room) => `kodama-together-host:${room}`;
+const LAST_ROOM_KEY = "kodama-together-last";
+
+function rememberRoom(room, name) {
+  try {
+    localStorage.setItem(LAST_ROOM_KEY, JSON.stringify({ room, name, at: Date.now() }));
+  } catch {
+    /* Storage can be unavailable. */
+  }
+}
+
+function forgetRoom() {
+  try {
+    localStorage.removeItem(LAST_ROOM_KEY);
+  } catch {
+    /* Storage can be unavailable. */
+  }
+}
+
+/** Rejoin a recently active room if the server still knows it. */
+export async function resumeLastRoom() {
+  let last;
+  try {
+    last = parseRememberedRoom(localStorage.getItem(LAST_ROOM_KEY));
+  } catch {
+    return false;
+  }
+  if (!last) {
+    forgetRoom();
+    return false;
+  }
+  try {
+    const response = await fetch(`${togetherUrl()}/rooms/${encodeURIComponent(last.room)}`, {
+      cache: "no-store",
+    });
+    if (response.status === 404) {
+      forgetRoom();
+      return false;
+    }
+    if (!response.ok) return false;
+  } catch {
+    return false;
+  }
+  if (snap.status !== "idle" && snap.status !== "closed") return false;
+  join(last.room, last.name, { restoring: true });
+  return true;
+}
+
+export function finishRoomRestore() {
+  if (snap.restoring) set({ restoring: false });
+}
 
 // This Kodama, as the room tells it apart from a second one with the same name: a reconnect
 // replaces its old connection instead of standing next to it.
@@ -161,9 +214,6 @@ export const onRoomRemove = (fn) => {
 // Who this Kodama is in a room, with the account's profile picture (which can be switched off).
 const AVATAR_KEY = "kodama-together-show-avatar";
 let identity = { name: "Kodama", avatar: "" };
-export function setIdentity(name, avatar) {
-  identity = { name: (name || "").trim() || "Kodama", avatar: avatar || "" };
-}
 // On unless switched off.
 export const showsAvatar = () => {
   try {
@@ -174,6 +224,13 @@ export const showsAvatar = () => {
 };
 snap.showAvatar = showsAvatar();
 const sharedAvatar = () => (showsAvatar() ? identity.avatar : "");
+export function setIdentity(name, avatar) {
+  const previousAvatar = sharedAvatar();
+  identity = { name: (name || "").trim() || "Kodama", avatar: avatar || "" };
+  if (snap.status === "open" && sharedAvatar() !== previousAvatar) {
+    send({ t: "profile", avatar: sharedAvatar() });
+  }
+}
 // The "Listen along" button on the Discord status: on unless switched off.
 const DISCORD_KEY = "kodama-together-discord";
 export const showsDiscord = () => {
@@ -208,7 +265,8 @@ let ws = null,
   wantName = "",
   retries = 0,
   pingTimer = 0,
-  burst = 0;
+  burst = 0,
+  lastHeard = 0;
 let samples = [];
 let lastQueue = "",
   lastReady = "";
@@ -218,7 +276,37 @@ function send(msg) {
 }
 
 function ping() {
+  if (ws?.readyState === 1 && connectionIsSilent(lastHeard)) {
+    reconnectNow();
+    return;
+  }
   send({ t: "ping", c: Date.now() });
+}
+
+function reconnectNow() {
+  const previous = ws;
+  ws = null;
+  clearInterval(pingTimer);
+  if (previous) {
+    previous.onclose = null;
+    previous.onmessage = null;
+    try {
+      previous.close();
+    } catch {
+      /* Ignore an already closed socket. */
+    }
+  }
+  if (!wantRoom) return;
+  set({ status: "reconnecting" });
+  setTimeout(() => {
+    if (wantRoom && !ws) open();
+  }, 300);
+}
+
+if (typeof window !== "undefined") {
+  window.addEventListener("online", () => {
+    if (wantRoom && snap.status === "reconnecting") reconnectNow();
+  });
 }
 function onPong(m) {
   const sample = clockSample(samples, m, Date.now());
@@ -228,18 +316,21 @@ function onPong(m) {
 }
 
 /** Join a room by its code, under a display name. Reconnects on its own until left. */
-export function join(room, name) {
+export function join(room, name, { restoring = false } = {}) {
   leave();
   wantRoom = room;
   wantName = name || identity.name;
   retries = 0;
   samples = [];
+  rememberRoom(room, wantName);
   set({
     status: "connecting",
     room,
     error: null,
     members: [],
     state: null,
+    played: [],
+    restoring,
     isHost: false,
     drift: null,
   });
@@ -255,6 +346,7 @@ function open() {
     lastQueue = "";
     lastReady = "";
     retries = 0;
+    lastHeard = Date.now();
     let token = null;
     try {
       token = localStorage.getItem(hostKey(wantRoom));
@@ -275,6 +367,7 @@ function open() {
   };
   sock.onmessage = (e) => {
     if (ws !== sock) return;
+    lastHeard = Date.now();
     let m;
     try {
       m = JSON.parse(e.data);
@@ -292,6 +385,7 @@ function open() {
         members: m.members || [],
         queue: m.queue || [],
         suggestions: m.suggestions || [],
+        restoring: snap.restoring && !!m.you?.host,
         config: { ...snap.config, ...(m.config || {}) },
       });
     else if (m.t === "suggestions") set({ suggestions: m.list || [] });
@@ -312,11 +406,13 @@ function open() {
     else if (m.t === "add") addSubs.forEach((f) => f(m));
     else if (m.t === "remove") removeSubs.forEach((f) => f({ videoId: m.videoId, by: m.by }));
     else if (m.t === "queue") set({ queue: m.list || [] });
-    else if (m.t === "state")
+    else if (m.t === "state") {
+      const played = nextPlayedTracks(snap.played, snap.state?.track, m.track);
       set({
+        played,
         state: { track: m.track, playing: m.playing, pos: m.pos, at: m.at, rate: m.rate || 1 },
       });
-    else if (m.t === "members") {
+    } else if (m.t === "members") {
       const list = m.list || [];
       const mine = snap.you && list.find((x) => x.id === snap.you.id);
       set(
@@ -349,6 +445,7 @@ function open() {
     const final = { 4001: "kicked", 4002: "full", 4004: "denied", 4005: "closed" }[ev.code];
     if (final) {
       wantRoom = null;
+      forgetRoom();
       set({
         status: "closed",
         error: final,
@@ -357,6 +454,8 @@ function open() {
         state: null,
         queue: [],
         suggestions: [],
+        played: [],
+        restoring: false,
         waiting: [],
         isHost: false,
       });
@@ -380,8 +479,16 @@ function open() {
   };
 }
 
+/** Retry immediately instead of waiting for the current backoff. */
+export function reconnect() {
+  if (!wantRoom) return;
+  retries = 0;
+  reconnectNow();
+}
+
 export function leave() {
   wantRoom = null;
+  forgetRoom();
   clearInterval(pingTimer);
   const s = ws;
   ws = null;
@@ -403,6 +510,8 @@ export function leave() {
     state: null,
     queue: [],
     suggestions: [],
+    played: [],
+    restoring: false,
     waiting: [],
     drift: null,
     error: null,

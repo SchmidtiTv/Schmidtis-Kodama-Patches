@@ -122,31 +122,7 @@ export function PlaybackSettingsTab({
       </SettingRow>
       <div className="text-t11 text-muted px-1 mb-2 leading-snug">{t("mixFallbackDesc")}</div>
       <SettingRow
-        label={
-          <span
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {t("crossfade")}
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: "0.04em",
-                background: "var(--accent)",
-                color: "#fff",
-                padding: "2px 5px",
-                borderRadius: "var(--r-sm)",
-                lineHeight: 1.4,
-              }}
-            >
-              Beta
-            </span>
-          </span>
-        }
+        label={t("crossfade")}
         description={`${t("crossfadeDesc")}: ${crossfade}s${
           crossfadeDisabled ? ` · ${t("crossfadeUnavailableInVideo")}` : ""
         }`}

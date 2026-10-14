@@ -360,7 +360,6 @@ export function SettingsPanel({
       id: "overlay",
       label: t("overlay"),
       iconEl: <ScreencastSimple size={18} />,
-      badge: "Beta",
     },
     {
       id: "experimental",

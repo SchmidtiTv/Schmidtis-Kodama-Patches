@@ -10,7 +10,12 @@ All notable changes to Kodama (formerly Kiyoshi Music) are documented here.
 
 ## [Unreleased]
 
-- Integrated upstream master through `96f33b8` into the fork's modular architecture.
+- Integrated upstream master through `95162bb` into the fork's modular architecture.
+- Listen Together now recovers silent connections, offers an immediate reconnect action, restores
+  recent rooms after restart, preserves a returning host's room state, and shows listener history.
+- Added community translation updates and translator credits, with Hebrew and Portuguese
+  (Portugal) listed as upcoming languages.
+- Removed obsolete Beta labels from Crossfade, App Icon and the Overlay Editor.
 - Added the Speed Dial visibility setting, sharper home artwork, and larger pager controls.
 - Fixed OLED component colors and sidebar/dropdown positioning at different UI zoom levels.
 - Aligned sidebar controls and added scroll fades without scrollbar arrows.

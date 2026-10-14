@@ -1,4 +1,5 @@
 import { useTogether, roomRemove, myRole } from "./together.js";
+import { buildListenerRoomQueue } from "./room-session.js";
 import {
   TogetherRoomHeader,
   TogetherPeopleTab,
@@ -18,6 +19,7 @@ export function useTogetherQueueAdapter() {
     listener: active && !room.isHost,
     currentTrack: room.state?.track,
     queue: room.queue,
+    played: room.played,
     header: <TogetherRoomHeader />,
     people: <TogetherPeopleTab />,
     suggestions:
@@ -28,6 +30,8 @@ export function useTogetherQueueAdapter() {
           ))}
         </div>
       ) : null,
+    hasSuggestions: room.suggestions.length > 0,
+    buildListenerQueue: buildListenerRoomQueue,
     canRemove: (track) =>
       myRole() === "cohost" || (track.addedBy?.id && track.addedBy.id === room.you?.id),
     onRemove: roomRemove,

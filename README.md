@@ -6,7 +6,13 @@
   [![Platform](https://img.shields.io/badge/platform-Windows_%7C_macOS-0078d4?style=for-the-badge)](https://github.com/SchmidtiTv/Kodama)
   [![Tauri](https://img.shields.io/badge/Tauri-2.x-24c8db?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app)
   [![License](https://img.shields.io/badge/license-AGPL_v3-3da639?style=for-the-badge)](LICENSE)
+
+  <p><a href="https://kodama.kiyoshi.dev"><b>Website</b></a> · <a href="https://kodama.kiyoshi.dev/store/">Store</a> · <a href="https://discord.gg/PzSsPF7KW">Discord</a></p>
 </div>
+
+<p align="center">
+  <img src="docs/shots/home.webp" alt="Kodama home view" width="900">
+</p>
 
 ---
 
@@ -14,12 +20,15 @@
 
 ## Features
 
-- Synced lyrics with word- and syllable-level timing, plus Unison community lyrics.
+- Synced lyrics with line-, word- and syllable-level timing, translations and romaji, plus Unison community lyrics.
 - A Lyrics Composer for creating and editing lyrics.
-- Crossfade, a built-in visualizer, remote control, and an OBS overlay.
+- Listen Together rooms with roles, shared queues, suggestions and synchronized native playback.
+- Crossfade, a ten-band equalizer, visualizer, themes, mini player, remote control, and an OBS overlay editor.
+- A web store for validated themes, equalizer presets and visualizer presets.
 - Optional animated cover artwork in the **About Song** card, with automatic or per-source
   selection for Apple Music, Tidal, and ViviMusic under **Settings → Visualizer**.
 - Offline downloads, Discord Rich Presence, and Last.fm scrobbling.
+- Accessibility settings for reduced motion, mono audio, readable accents and song announcements.
 - Search, playlists, artist pages, profiles, and a keyboard-first desktop interface.
 
 > A Google account and YouTube Premium are not required, though some content may be unavailable because of Premium restrictions.

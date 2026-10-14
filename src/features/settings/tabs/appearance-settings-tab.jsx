@@ -191,31 +191,7 @@ export function AppearanceSettingsTab({
           scrollMarginTop: 8,
         }}
       >
-        <SettingsSectionLabel>
-          <span
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            {t("appIcon")}
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 700,
-                letterSpacing: "0.04em",
-                background: "var(--accent)",
-                color: "#fff",
-                padding: "2px 5px",
-                borderRadius: "var(--r-sm)",
-                lineHeight: 1.4,
-              }}
-            >
-              Beta
-            </span>
-          </span>
-        </SettingsSectionLabel>
+        <SettingsSectionLabel>{t("appIcon")}</SettingsSectionLabel>
         <div
           style={{
             fontSize: "var(--t11)",

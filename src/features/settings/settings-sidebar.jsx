@@ -167,7 +167,7 @@ export function SettingsSidebarContent({
       ],
     },
     { id: "sicherheit", label: t("security"), iconEl: <Lock size={18} /> },
-    { id: "overlay", label: t("overlay"), iconEl: <ScreencastSimple size={18} />, badge: "Beta" },
+    { id: "overlay", label: t("overlay"), iconEl: <ScreencastSimple size={18} /> },
     { id: "shortcuts", label: t("shortcuts"), iconEl: <Keyboard size={18} /> },
     { id: "experimental", label: t("experimental"), iconEl: <Flask size={18} /> },
     { id: "language", label: t("language"), iconEl: <Translate size={18} /> },

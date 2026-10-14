@@ -8,7 +8,7 @@ import { Button, PopoverRoot, PopoverContent, PopoverDialog, Spinner } from "@he
 import { thumb } from "@/shared/api/thumbnails.js";
 import { useLang } from "@/shared/i18n/context.jsx";
 import { useZoom } from "@/features/settings/index.js";
-import { Users, Copy, Check, SignOut, Queue } from "@/shared/icons/icons.jsx";
+import { Users, Copy, Check, SignOut, Queue, ArrowsClockwise } from "@/shared/icons/icons.jsx";
 import { Tooltip } from "@/shared/ui/tooltip.jsx";
 import {
   useTogether,
@@ -20,6 +20,7 @@ import {
   setIdentity,
   closeRoom,
   handOverAndLeave,
+  reconnect,
 } from "./together.js";
 
 // A colour per member, stable for the session (the id is the room's, not the person's).
@@ -291,8 +292,13 @@ export function TogetherSidebar({ name, avatar, collapsed, onOpenRoom }) {
       .catch(() => {});
   };
   const shown = r.members.slice(0, 3);
+  const connectionLost = r.status === "reconnecting";
   const sub =
-    r.status === "open" ? t("togetherInRoom", { c: r.members.length }) : t("togetherConnecting");
+    r.status === "open"
+      ? t("togetherInRoom", { c: r.members.length })
+      : connectionLost
+        ? t("togetherConnectionLost")
+        : t("togetherConnecting");
 
   // ── Collapsed sidebar: one avatar with a ring and the count, or the entry's icon ──
   if (collapsed) {
@@ -393,12 +399,13 @@ export function TogetherSidebar({ name, avatar, collapsed, onOpenRoom }) {
   }
 
   const admin = r.isHost || r.you?.role === "cohost";
+  const hostMenu = r.isHost && !connectionLost;
   // A react-aria button: as the host's, it is the trigger of a popover, which a plain button is not.
   const leaveBtn = (
     <Button
       variant="ghost"
       isIconOnly
-      onPress={r.isHost ? undefined : leave}
+      onPress={hostMenu ? undefined : leave}
       aria-label={t("togetherLeave")}
       className={`${iconBtn} w-[34px]`}
       {...softBtn}
@@ -443,7 +450,16 @@ export function TogetherSidebar({ name, avatar, collapsed, onOpenRoom }) {
         </span>
       </button>
       <div className="flex items-center gap-1.5">
-        {admin ? (
+        {connectionLost ? (
+          <button
+            type="button"
+            onClick={reconnect}
+            className={`${iconBtn} flex-1 gap-2 text-[length:var(--t13)] font-semibold bg-accent text-[var(--accent-foreground)] hover:brightness-110`}
+          >
+            <ArrowsClockwise size={14} />
+            {t("togetherReconnect")}
+          </button>
+        ) : admin ? (
           <button
             type="button"
             onClick={copy}
@@ -463,7 +479,7 @@ export function TogetherSidebar({ name, avatar, collapsed, onOpenRoom }) {
             {t("togetherOpenRoom")}
           </button>
         )}
-        {admin && (
+        {(admin || connectionLost) && (
           <Tooltip text={t("togetherOpenRoom")}>
             <button
               type="button"
@@ -477,7 +493,7 @@ export function TogetherSidebar({ name, avatar, collapsed, onOpenRoom }) {
             </button>
           </Tooltip>
         )}
-        {r.isHost ? (
+        {hostMenu ? (
           <HostLeavePopover r={r} t={t}>
             {leaveBtn}
           </HostLeavePopover>

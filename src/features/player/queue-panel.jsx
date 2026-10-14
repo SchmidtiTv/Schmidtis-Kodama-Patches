@@ -216,9 +216,13 @@ export function QueuePanel({
 }) {
   const { track: playerTrack, playbackOrigin } = usePlaybackStatus();
   const { queue: playerQueue } = useQueueState();
-  const currentTrack = together?.listener ? together.currentTrack : playerTrack;
+  const roomTrack = together?.listener ? together.currentTrack : null;
+  const currentTrack =
+    roomTrack && playerTrack?.videoId === roomTrack.videoId
+      ? playerTrack
+      : roomTrack || playerTrack;
   const queue = together?.listener
-    ? [currentTrack, ...together.queue].filter(Boolean)
+    ? together.buildListenerQueue(together.played, playerTrack, roomTrack, together.queue)
     : playerQueue;
   const { crossfade = 0, crossfadeOverrides = {} } = usePlaybackConfig();
   const { setQueue, setTrack, setCrossfadeOverride, removeCrossfadeOverride } = usePlayerActions();
@@ -597,7 +601,7 @@ export function QueuePanel({
               </span>
             </div>
           )}
-          {queue.length === 0 ? (
+          {queue.length === 0 && !together?.hasSuggestions ? (
             <div className="p-6 text-t13 text-muted text-center">{t("emptyQueue")}</div>
           ) : (
             <div style={{ height: rowVirtualizer.getTotalSize(), position: "relative" }}>
@@ -643,7 +647,9 @@ export function QueuePanel({
                         globalIdx={item.globalIdx}
                         isDraggable={!item.active && !together?.listener}
                         roomRemove={
-                          together?.listener && together.canRemove?.(item.track)
+                          together?.listener &&
+                          item.section === "next" &&
+                          together.canRemove?.(item.track)
                             ? together.onRemove
                             : undefined
                         }

@@ -1,6 +1,6 @@
 import { useStoreLinks } from "./hooks/use-store-links.js";
 import { useListenTogether } from "./hooks/use-listen-together.js";
-import { useTogetherSync } from "@/features/together/index.js";
+import { resumeLastRoom, useTogetherSync } from "@/features/together/index.js";
 import { TrackAnnouncement } from "@/features/player/track-announcement.jsx";
 import { useAccessibility } from "@/features/settings/hooks/use-accessibility.js";
 import { applyShape, applyTheme } from "@/shared/lib/theme.js";
@@ -886,7 +886,14 @@ export default function App() {
     stopPlayback,
   });
 
-  useTogetherSync({ currentTrack: player.currentTrack, queue: player.queue });
+  useEffect(() => {
+    resumeLastRoom().catch(() => {});
+  }, []);
+  useTogetherSync({
+    currentTrack: player.currentTrack,
+    queue: player.queue,
+    setQueue: player.setQueue,
+  });
   useListenTogether({
     player,
     profile: profile.profiles?.find((item) => item.active),
