@@ -42,10 +42,10 @@
 - Produces: pure remembered-room parsing, silence detection and played-history helpers; `resumeLastRoom()`, `reconnect()`, and `finishRoomRestore()`.
 - Consumes: existing Together snapshot, room validation and WebSocket lifecycle.
 
-- [ ] Write failing tests for fresh/stale remembered rooms, silent connections, bounded played history and duplicate transitions.
-- [ ] Run `node --test src/features/together/room-session.test.mjs` and confirm the helpers are missing.
-- [ ] Implement the pure helpers and integrate persistence, reconnect watchdog, profile refresh and listener history into `together.js`.
-- [ ] Run the focused Together tests and confirm they pass.
+- [x] Write failing tests for fresh/stale remembered rooms, silent connections, bounded played history and duplicate transitions.
+- [x] Run `node --test src/features/together/room-session.test.mjs` and confirm the helpers are missing.
+- [x] Implement the pure helpers and integrate persistence, reconnect watchdog, profile refresh and listener history into `together.js`.
+- [x] Run the focused Together tests and confirm they pass.
 
 ### Task 2: Native host restoration and queue presentation
 
@@ -64,11 +64,11 @@
 - Consumes: Task 1's restore state and played-history snapshot.
 - Produces: native host adoption, listener history rendering, reconnect controls and non-empty suggestion presentation.
 
-- [ ] Add failing pure tests for the host-restoration decision and listener queue composition.
-- [ ] Run the focused test and verify the new cases fail.
-- [ ] Adapt the synchronization hook to guard host reports while the native engine adopts the room state and queue.
-- [ ] Render connection-loss controls, listener history and suggestions without a false empty state.
-- [ ] Run focused Together tests and the JavaScript suite.
+- [x] Add failing pure tests for the host-restoration decision and listener queue composition.
+- [x] Run the focused test and verify the new cases fail.
+- [x] Adapt the synchronization hook to guard host reports while the native engine adopts the room state and queue.
+- [x] Render connection-loss controls, listener history and suggestions without a false empty state.
+- [x] Run focused Together tests and the JavaScript suite.
 
 ### Task 3: Localization and product cleanup
 
@@ -88,10 +88,10 @@
 - Consumes: upstream locale values and approved product decisions.
 - Produces: merged translations/credits, Toki Pona availability metadata, stable-feature labels and current documentation.
 
-- [ ] Merge upstream locale changes by key while retaining fork-only keys and validate every JSON file.
-- [ ] Remove Beta labels for Overlay, Crossfade and App Icon.
-- [ ] Remove the stale Listen Together website label and refresh README/changelog without importing Ofuda or upstream release identity.
-- [ ] Run locale validation, lint and build.
+- [x] Merge upstream locale changes by key while retaining fork-only keys and validate every JSON file.
+- [x] Remove Beta labels for Overlay, Crossfade and App Icon.
+- [x] Remove the stale Listen Together website label and refresh README/changelog without importing Ofuda or upstream release identity.
+- [x] Run locale validation, lint and build.
 
 ### Task 4: Record ancestry and verify the integration
 
@@ -107,7 +107,7 @@
 - Consumes: the verified adapted tree from Tasks 1–3.
 - Produces: upstream merge ancestry and final project hand-off.
 
-- [ ] Merge `upstream/master` with `--no-commit`, resolve the tree to the verified adapted implementation, and exclude protected/inapplicable upstream files.
-- [ ] Run JavaScript tests, Rust tests, `npm run lint`, `npm run build`, JSON validation and `git diff --check`.
-- [ ] Record dispositions, exact validation results and remaining platform limitations.
-- [ ] Commit the completed merge.
+- [x] Merge `upstream/master` with `--no-commit`, resolve the tree to the verified adapted implementation, and exclude protected/inapplicable upstream files.
+- [x] Run JavaScript tests, Rust tests, `npm run lint`, `npm run build`, JSON validation and `git diff --check`.
+- [x] Record dispositions, exact validation results and remaining platform limitations.
+- [x] Commit the completed merge.

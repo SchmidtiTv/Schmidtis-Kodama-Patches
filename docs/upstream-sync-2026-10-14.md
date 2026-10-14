@@ -19,4 +19,11 @@ The user approved the recommended integration: adapt all Together recovery impro
 
 ## Validation
 
-Pending implementation.
+- JavaScript: 72 tests passed.
+- Rust: 46 tests passed. Cargo retained the existing macOS `unexpected_cfgs` warning and future-incompatibility notice for `block 0.1.6`.
+- Frontend production build passed. Vite retained its existing dynamic-import and large-chunk warnings.
+- Every locale JSON file parsed successfully and `git diff --check` passed.
+- ESLint reported no new errors in the changed integration files. The repository-wide check remains blocked by four pre-existing Unicode character-class errors in `src/shared/i18n/i18n.js` (lines 79–80); it also reports the existing warning backlog.
+- Live recovery across two devices was not exercised in this environment and remains a platform verification item.
+
+The final merge keeps `upstream/master` as an ancestor while its legacy monolithic frontend paths, Ofuda migration messaging, and release/version files remain excluded from the resulting tree.
