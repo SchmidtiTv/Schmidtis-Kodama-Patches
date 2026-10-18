@@ -21,8 +21,9 @@ pub const FREQS: [f32; BANDS] = [
 ];
 
 /// Q for a one-octave bandwidth: 1 / (2 * sinh(ln2 / 2)). Wider would make neighbouring
-/// bands fight each other, narrower would leave audible gaps between them.
-const Q: f32 = 1.414_213_6;
+/// bands fight each other, narrower would leave audible gaps between them. That works out
+/// to exactly √2.
+const Q: f32 = std::f32::consts::SQRT_2;
 
 /// Below this a band is treated as flat. A slider at 0.0 must cost nothing at all, and a
 /// twentieth of a decibel is inaudible.
