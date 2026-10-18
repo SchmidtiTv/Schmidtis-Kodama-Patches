@@ -18,7 +18,8 @@ const _listeners = new Set();
 export function setNowPlaying(s) {
   let changed = false;
   for (const k in s) {
-    if (_state[k] !== s[k]) {
+    // `at` is when the snapshot was taken, which differs every time.
+    if (k !== "at" && _state[k] !== s[k]) {
       changed = true;
       break;
     }

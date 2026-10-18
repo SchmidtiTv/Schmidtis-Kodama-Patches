@@ -627,6 +627,9 @@ export function Player({
       unlistenShowMain();
     };
   }, []);
+  // Whole seconds: the snapshot is a timestamped anchor the receivers interpolate from, so it
+  // only needs resending when the second changes, not on every 100 ms progress tick.
+  const progressSecond = Math.floor(progress || 0);
   // Player bridge: expose playback commands (re-registered each render so they close over
   // current state) + push a formatted now-playing snapshot to the in-process store.
   useEffect(() => {
@@ -649,7 +652,7 @@ export function Player({
       artists,
       thumbnail: tr?.thumbnail || "",
       isPlaying: !!isPlaying,
-      position: Math.floor(progress || 0),
+      position: progressSecond,
       duration: Math.floor(duration || 0),
       hasTrack: !!tr,
       shuffle: !!shuffle,
@@ -660,7 +663,7 @@ export function Player({
     latestNowPlayingRef.current = snapshot;
     playerSetNowPlaying(snapshot);
     emitNowPlaying(snapshot);
-  }, [track, isPlaying, progress, duration, shuffle, repeat]);
+  }, [track, isPlaying, progressSecond, duration, shuffle, repeat]);
 
   // Seek drag state for the HeroUI seek slider (seconds while dragging, else null).
   const [seekDrag, setSeekDrag] = useState(null);
