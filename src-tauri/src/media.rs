@@ -12,6 +12,8 @@ use souvlaki::{
     SeekDirection,
 };
 use tauri::{AppHandle, Emitter};
+#[cfg(target_os = "windows")]
+use tauri::Manager;
 
 use crate::audio::engine::{PlaybackSourceRequest, PlaybackStatus, TransportUpdate};
 use crate::audio::player::AudioCmd;
