@@ -5,13 +5,14 @@ from pathlib import Path
 from typing import Optional, cast
 
 from src.config import config_dirs
+from src.lib.security.file_names import require_safe_file_stem
 
 
 class Meta:
     @staticmethod
     def active_meta_path(profile_name: Optional[str] = None) -> Path:
         profile = profile_name or "default"
-        return config_dirs.PROFILES_DIR / f"{profile}.meta.json"
+        return config_dirs.PROFILES_DIR / f"{require_safe_file_stem(profile)}.meta.json"
 
     def read_active_meta(self, profile_name: Optional[str] = None) -> dict[str, object]:
         try:
@@ -25,4 +26,4 @@ class Meta:
             json.dump(meta, meta_file)
 
     def meta_path(self, name: str) -> Path:
-        return config_dirs.PROFILES_DIR / f"{name}.meta.json"
+        return config_dirs.PROFILES_DIR / f"{require_safe_file_stem(name)}.meta.json"

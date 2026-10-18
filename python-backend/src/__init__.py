@@ -37,16 +37,8 @@ from src.lib import (
     setup_log_tee,
     setup_logger,
 )
+from src.lib.security.local_access import APP_ORIGINS, install_local_access_guard
 from src.routes import register_blueprints
-
-CORS_ORIGINS = [
-    "http://localhost:1421",  # Tauri dev server
-    "tauri://localhost",  # Tauri production (Windows/Linux)
-    "https://tauri.localhost",  # Tauri production (Tauri 2.x, WebView2)
-    "http://tauri.localhost",  # fallback
-    "http://localhost",
-    "http://127.0.0.1",
-]
 
 
 def create_app() -> Flask:
@@ -57,7 +49,8 @@ def create_app() -> Flask:
         app.config.from_object(Config)
         # Cache CORS preflights so the frequent local overlay updates do not issue
         # an OPTIONS request before every browser POST.
-        CORS(app, origins=CORS_ORIGINS, max_age=600)
+        CORS(app, origins=list(APP_ORIGINS), max_age=600)
+        install_local_access_guard(app)
         app.extensions["server_start_time"] = time.time()
         app.extensions["feedback_webhook_url"] = load_feedback_webhook()
         app.extensions["network_settings"] = NetworkSettings()

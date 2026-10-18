@@ -32,6 +32,12 @@ export function joinExportPath(directory, filename) {
   return `${directory.replace(/[\\/]+$/, "")}${separator}${filename}`;
 }
 
+// GTK save dialogs do not add the filter's extension, and the backend only writes audio files.
+export function withExportExtension(path, format) {
+  if (format === "mp3") return /\.mp3$/i.test(path) ? path : `${path}.mp3`;
+  return /\.(opus|webm)$/i.test(path) ? path : `${path}.opus`;
+}
+
 export function shouldRememberExportDirectory(storage) {
   return storage.getItem(REMEMBER_EXPORT_DIRECTORY_KEY) !== "false";
 }

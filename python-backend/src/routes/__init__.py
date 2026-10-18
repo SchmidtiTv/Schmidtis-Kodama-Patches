@@ -1,7 +1,7 @@
 import logging
 from typing import List, Tuple
 
-from flask import Flask, Blueprint
+from flask import Flask, Blueprint, Response, jsonify
 from .auth import blueprint as auth_blueprint
 from .news import blueprint as news_blueprint
 from .clientlog import blueprint as clientlog_blueprint
@@ -18,6 +18,7 @@ from .profiles import blueprint as profiles_blueprint
 from .root import blueprint as root_blueprint
 from .streaming import blueprint as streaming_blueprint
 from src.config import Config
+from src.lib.security.file_names import UnsafeFileNameError
 
 
 logger = logging.getLogger(__name__)
@@ -42,8 +43,13 @@ blueprints: List[Tuple[Blueprint, bool]] = [
 ]
 
 
+def _reject_unsafe_file_name(_error: UnsafeFileNameError) -> tuple[Response, int]:
+    return jsonify({"error": "invalid name"}), 400
+
+
 def register_blueprints(application: Flask) -> None:
     try:
+        application.register_error_handler(UnsafeFileNameError, _reject_unsafe_file_name)
         for bp in blueprints:
             blueprint, is_debug = bp
 

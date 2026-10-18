@@ -8,7 +8,8 @@ from . import blueprint
 from src.type_defs import RouteResponse
 
 
-@blueprint.route("/shutdown", methods=["GET", "POST"])
+# POST only: a GET could be fired by any web page through an <img> tag.
+@blueprint.route("/shutdown", methods=["POST"])
 def shutdown() -> RouteResponse:
     def stop_process() -> None:
         time.sleep(0.2)

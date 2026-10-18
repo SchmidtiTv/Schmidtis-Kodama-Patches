@@ -2,6 +2,7 @@
 
 import collections
 import logging
+import re
 from typing import override
 import sys
 import threading
@@ -11,6 +12,15 @@ from typing import TextIO
 DEBUG_LOG = collections.deque(maxlen=500)
 DEBUG_LOG_LOCK = threading.Lock()
 FEEDBACK_LOG_RING = collections.deque(maxlen=300)
+
+# Query parameters whose values must never reach /debug/info or a bug report.
+_SECRET_QUERY = re.compile(
+    r"((?:^|[?&\s])(?:token|hostToken|api_key|session_key|sk)=)[^&\s\"']+", re.IGNORECASE
+)
+
+
+def redact_secrets(text: str) -> str:
+    return _SECRET_QUERY.sub(r"\1[redacted]", text)
 
 
 class LogTee:
@@ -43,6 +53,7 @@ class LogTee:
             )
             transient = split_at == carriage_return and (newline < 0 or carriage_return < newline)
             line, self._buffer = self._buffer[:split_at], self._buffer[split_at + 1 :]
+            line = redact_secrets(line)
             if line.strip():
                 entry = {
                     "ts": time.time(),
@@ -84,7 +95,7 @@ class _RingBufferHandler(logging.Handler):
                     {
                         "ts": time.time(),
                         "level": level,
-                        "msg": self.format(record),
+                        "msg": redact_secrets(self.format(record)),
                         "source": "backend",
                     }
                 )
@@ -95,7 +106,7 @@ class _RingBufferHandler(logging.Handler):
 # Endpoints called on a timer. Their access log is never diagnostic, and at ~2 requests a
 # second /overlay/push alone filled 81% of the ring — leaving bug reports with two minutes of
 # it and nothing else. Dropped from the ring only; real log records are unaffected.
-_NOISY_PATHS = (
+TIMER_DRIVEN_PATHS = (
     "/overlay/push",
     "/overlay/status",
     "/status",
@@ -103,6 +114,7 @@ _NOISY_PATHS = (
     "/remote/_sync",
     "/remote/_poll",
     "/remote/_status",
+    "/remote/state",
 )
 
 
@@ -112,7 +124,7 @@ class _DropNoisyAccessLogs(logging.Filter):
     @override
     def filter(self, record: logging.LogRecord) -> bool:
         message = record.getMessage()
-        return not any(path in message for path in _NOISY_PATHS)
+        return not any(path in message for path in TIMER_DRIVEN_PATHS)
 
 
 _ring_handler = _RingBufferHandler()

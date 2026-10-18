@@ -1,10 +1,26 @@
 """Export a song to a user-chosen path, resolving the release year first."""
 
+import os
+
 from flask import jsonify, request
 
 from . import blueprint
 from ._services import export_service, ffmpeg, music_session
 from src.type_defs import RouteResponse
+
+# The save dialog's filters. Holding the target to an audio extension keeps a forged request
+# from overwriting anything but an audio file.
+_EXPORT_EXTENSIONS = {"mp3": (".mp3",), "opus": (".opus", ".webm")}
+
+
+def _valid_export_target(output_path: object, fmt: object) -> bool:
+    return (
+        isinstance(output_path, str)
+        and isinstance(fmt, str)
+        and fmt in _EXPORT_EXTENSIONS
+        and os.path.isabs(output_path)
+        and output_path.lower().endswith(_EXPORT_EXTENSIONS[fmt])
+    )
 
 
 @blueprint.route("/song/export/<video_id>", methods=["POST"])
@@ -15,6 +31,8 @@ def export_audio(video_id: str) -> RouteResponse:
     fmt = data.get("format", "opus")  # "mp3" or "opus"
     if not output_path:
         return jsonify({"error": "output_path required"}), 400
+    if not _valid_export_target(output_path, fmt):
+        return jsonify({"error": "invalid output_path or format"}), 400
     if service.status.get(video_id) == "exporting":
         return jsonify({"ok": True, "status": "exporting"})
     year = data.get("year", "")

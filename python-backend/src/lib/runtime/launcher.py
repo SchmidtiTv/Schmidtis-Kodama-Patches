@@ -48,7 +48,9 @@ def _port_is_free(port: int) -> bool:
 
 def _request_existing_shutdown(port: int, startup_log: StartupLog) -> None:
     try:
-        urllib.request.urlopen(f"http://127.0.0.1:{port}/shutdown", timeout=2)
+        urllib.request.urlopen(
+            urllib.request.Request(f"http://127.0.0.1:{port}/shutdown", method="POST"), timeout=2
+        )
         startup_log.write("sent /shutdown to existing server")
     except Exception:
         pass

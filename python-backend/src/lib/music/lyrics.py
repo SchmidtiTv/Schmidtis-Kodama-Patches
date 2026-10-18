@@ -21,6 +21,7 @@ from src.lib.integrations.musixmatch import MusixMatch
 from src.lib.music.youtube_music import YoutubeMusicSession
 from src.lib.runtime.cache import CacheSettings
 from src.lib.runtime.metadata_cache import MetadataCache
+from src.lib.security.file_names import is_safe_file_stem, require_safe_file_stem
 
 CacheValue = TypeVar("CacheValue")
 logger = logging.getLogger(__name__)
@@ -842,9 +843,15 @@ class LyricsService:
             cache.popitem(last=False)
 
     @staticmethod
+    def _custom_path(video_id: str, extension: str) -> Path:
+        return config_dirs.CUSTOM_LYRICS_DIR / f"{require_safe_file_stem(video_id)}.{extension}"
+
+    @staticmethod
     def get_custom(video_id: str) -> Optional[Dict[str, str]]:
+        if not is_safe_file_stem(video_id):
+            return None
         for extension in ("lrc", "ttml"):
-            path = config_dirs.CUSTOM_LYRICS_DIR / f"{video_id}.{extension}"
+            path = LyricsService._custom_path(video_id, extension)
             if path.is_file():
                 return {"content": path.read_text(encoding="utf-8"), "format": extension}
         return None
@@ -852,18 +859,18 @@ class LyricsService:
     @staticmethod
     def save_custom(video_id: str, content: str, lyric_format: str) -> None:
         for extension in ("lrc", "ttml"):
-            path = config_dirs.CUSTOM_LYRICS_DIR / f"{video_id}.{extension}"
+            path = LyricsService._custom_path(video_id, extension)
             if path.is_file():
                 path.unlink()
-        (config_dirs.CUSTOM_LYRICS_DIR / f"{video_id}.{lyric_format}").write_text(
-            content, encoding="utf-8"
-        )
+        LyricsService._custom_path(video_id, lyric_format).write_text(content, encoding="utf-8")
 
     @staticmethod
     def delete_custom(video_id: str) -> bool:
+        if not is_safe_file_stem(video_id):
+            return False
         deleted = False
         for extension in ("lrc", "ttml"):
-            path = config_dirs.CUSTOM_LYRICS_DIR / f"{video_id}.{extension}"
+            path = LyricsService._custom_path(video_id, extension)
             if path.is_file():
                 path.unlink()
                 deleted = True

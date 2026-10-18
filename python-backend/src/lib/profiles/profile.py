@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Optional, cast
 
 from src.config import PROJECT_ROOT, config_dirs
+from src.lib.security.file_names import is_safe_file_stem, require_safe_file_stem
 
 from .meta import Meta
 
@@ -51,11 +52,11 @@ class Profile:
 
     # Old server.py: profile_path
     def profile_file_path(self, name: str) -> Path:
-        return self._profiles_dir / f"{name}.json"
+        return self._profiles_dir / f"{require_safe_file_stem(name)}.json"
 
     # Old server.py: local_db_path
     def local_database_path(self, name: str) -> Path:
-        return self._profiles_dir / f"{name}.db"
+        return self._profiles_dir / f"{require_safe_file_stem(name)}.db"
 
     def metadata_file_path(self, name: str) -> Path:
         return self._meta.meta_path(name)
@@ -175,7 +176,8 @@ class Profile:
         seen: set[str] = set()
         for path in self.directory.glob("*.json"):
             name = path.stem
-            if name.endswith(".meta") or name in seen:
+            # Stray files (a macOS "._" companion, say) must not take the listing down.
+            if name.endswith(".meta") or name in seen or not is_safe_file_stem(name):
                 continue
             meta = self._read_metadata(name)
             if meta.get("type") == "local":
@@ -195,7 +197,7 @@ class Profile:
 
         for path in self.directory.glob("*.meta.json"):
             name = path.name[: -len(".meta.json")]
-            if name in seen:
+            if name in seen or not is_safe_file_stem(name):
                 continue
             meta = self._read_metadata(name)
             if not meta:

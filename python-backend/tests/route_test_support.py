@@ -748,6 +748,12 @@ class FakeUpstream:
     def raise_for_status(self) -> None:
         return None
 
+    def __enter__(self) -> "FakeUpstream":
+        return self
+
+    def __exit__(self, *_exc: object) -> None:
+        return None
+
 
 class FakeStreamService:
     def __init__(self) -> None:

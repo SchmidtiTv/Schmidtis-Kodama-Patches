@@ -6,6 +6,7 @@ import {
   EXPORT_DIRECTORY_KEY,
   buildExportFilename,
   joinExportPath,
+  withExportExtension,
   shouldRememberExportDirectory,
   storedFilenamePattern,
 } from "@/shared/lib/export-preferences.js";
@@ -248,7 +249,7 @@ export function useDownloadManager({ addToast, language }) {
         const { save } = await import("@tauri-apps/plugin-dialog");
         const defaultName = buildExportFilename(track, format, storedFilenamePattern(localStorage));
         const defaultDir = localStorage.getItem(EXPORT_DIRECTORY_KEY) || undefined;
-        const filePath = await save({
+        const chosenPath = await save({
           title: translate(language, format === "mp3" ? "saveAsMp3" : "saveAsOpus"),
           defaultPath: joinExportPath(defaultDir, defaultName),
           filters:
@@ -256,7 +257,8 @@ export function useDownloadManager({ addToast, language }) {
               ? [{ name: "MP3", extensions: ["mp3"] }]
               : [{ name: "OPUS", extensions: ["opus", "webm"] }],
         });
-        if (!filePath) return;
+        if (!chosenPath) return;
+        const filePath = withExportExtension(chosenPath, format);
         if (exportingIdsRef.current.has(track.videoId)) return;
         exportingIdsRef.current.add(track.videoId);
         const dir = filePath.replace(/[\\/][^\\/]+$/, "");

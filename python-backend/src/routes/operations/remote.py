@@ -71,7 +71,10 @@ def remote_hello() -> RouteResponse:
 
 @blueprint.route("/remote/state")
 def remote_state() -> RouteResponse:
-    payload, status = remote_control().get_state(request.args.get("token"), request.args.get("deviceId"))
+    # The token rides in a header so it stays out of access logs; the query form is only for
+    # phone tabs opened before the page changed.
+    token = request.headers.get("X-Remote-Token") or request.args.get("token")
+    payload, status = remote_control().get_state(token, request.args.get("deviceId"))
     return jsonify(payload), status
 
 

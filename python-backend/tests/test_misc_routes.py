@@ -6,7 +6,8 @@ from route_test_support import FakeUpstream, RouteTestCase
 
 class MiscRouteTests(RouteTestCase):
     def test_imgproxy_news_feedback_clientlog_and_shutdown(self) -> None:
-        image_response = FakeUpstream(status_code=200, content=b"img", content_type="image/jpeg")
+        jpeg = b"\xff\xd8\xff\xe0img"
+        image_response = FakeUpstream(status_code=200, content=jpeg, content_type="image/jpeg")
         with (
             patch("src.routes.root.imgproxy.config_dirs", self.cache_dirs),
             patch("src.routes.root.imgproxy.requests.get", return_value=image_response),
@@ -14,7 +15,7 @@ class MiscRouteTests(RouteTestCase):
             proxied = self.client.get("/imgproxy?url=https://example.test/image.jpg")
         self.assertEqual(proxied.status_code, 200)
         self.assertEqual(proxied.headers["X-Cache"], "MISS")
-        self.assertEqual(proxied.data, b"img")
+        self.assertEqual(proxied.data, jpeg)
 
         project_root = self.root / "python-backend"
         news_path = project_root.parent / "updates" / "news.json"

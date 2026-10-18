@@ -208,7 +208,7 @@
     document.getElementById("qlist").classList.toggle("open", open);
   };
   function loop() {
-    fetch("/remote/state?token=" + encodeURIComponent(token) + "&deviceId=" + encodeURIComponent(did))
+    fetch("/remote/state?deviceId=" + encodeURIComponent(did), { headers: { "X-Remote-Token": token } })
       .then(function (r) { return r.json(); })
       .then(function (d) {
         if (d.error) { show(false); setMsg("This link is no longer valid. Re-open it from the app."); return; }
