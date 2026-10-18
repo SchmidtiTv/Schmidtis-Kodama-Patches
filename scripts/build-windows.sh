@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Cross-build Kodama's Windows x64 NSIS installer on macOS.
 #
-# Mirrors the Windows job of the former release workflow, with two macOS-specific twists:
+# Mirrors the Windows job of the former release workflow, minus the bgutil PO-token
+# generator: this fork's backend never starts it, so it would only ship ~96 MB of
+# node_modules. Two macOS-specific twists:
 #   * The Python sidecar is a PyInstaller exe, and PyInstaller cannot cross-compile. It is
 #     built with Windows Python running under Wine inside an amd64 Docker container
 #     (scripts/windows-sidecar.Dockerfile), unless a sidecar exe already exists or is passed with --sidecar.
@@ -21,7 +23,6 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TARGET=x86_64-pc-windows-msvc
 NODE_VERSION=22.18.0
-POTGEN_VERSION=1.3.1
 SIDECAR_IMAGE=kodama-windows-sidecar
 
 SIDECAR="$ROOT/src-tauri/binaries/kodama-server-$TARGET.exe"
@@ -55,7 +56,7 @@ check_prerequisites() {
   [ "$(uname -s)" = Darwin ] || die "this script cross-builds from macOS"
 
   local missing=()
-  for tool in npm jq curl git cargo rustup cargo-xwin makensis; do
+  for tool in npm jq curl cargo rustup cargo-xwin makensis; do
     command -v "$tool" >/dev/null || missing+=("$tool")
   done
 
@@ -140,47 +141,12 @@ download_node() {
   mv "$WORK/node.exe" "$RESOURCES/node.exe"
 }
 
-build_potgen() {
-  step "Building the PO-token generator (bgutil $POTGEN_VERSION)"
-  git clone -q --single-branch --branch "$POTGEN_VERSION" --depth 1 \
-    https://github.com/Brainicism/bgutil-ytdlp-pot-provider.git "$WORK/potgen-src"
-  (
-    cd "$WORK/potgen-src/server"
-    npm ci --no-audit --no-fund
-    npx tsc
-    npm prune --omit=dev --no-audit --no-fund
-  )
-  # npm installed native addons (canvas) for macOS. Swap each for its published win32-x64
-  # prebuild, which is what npm would have fetched on a Windows machine.
-  local addon package
-  find "$WORK/potgen-src/server/node_modules" -name '*.node' -path '*/build/Release/*' \
-    | while read -r addon; do
-        package="${addon%/build/Release/*}"
-        jq -e '.scripts.install // "" | test("prebuild-install")' "$package/package.json" >/dev/null \
-          || die "$(basename "$package") has a native addon without a prebuild; it cannot be cross-built"
-        echo "Fetching the win32-x64 prebuild of $(basename "$package")"
-        rm -rf "$package/build"
-        (cd "$package" && "$WORK/potgen-src/server/node_modules/.bin/prebuild-install" \
-          -r napi --platform win32 --arch x64)
-      done
-  if find "$WORK/potgen-src/server/node_modules" -name '*.node' -exec file {} + \
-    | grep -v 'MS Windows' | grep -q .; then
-    die "the PO-token generator still contains a non-Windows native addon"
-  fi
-
-  local dest="$RESOURCES/potgen/server"
-  rm -rf "$dest"
-  mkdir -p "$dest"
-  cp -R "$WORK/potgen-src/server/build" "$WORK/potgen-src/server/package.json" \
-    "$WORK/potgen-src/server/node_modules" "$dest/"
-}
-
 # Build-only config overrides go to a temp file passed with --config, so the tracked
 # tauri.windows.conf.json stays untouched.
 write_config() {
   local without_node="$1" config="$2"
   jq -n --argjson signed "$signed" --argjson slim "$without_node" '
-    {bundle: {resources: {"resources/potgen/server": "potgen/server"}}}
+    {}
     | if $slim then .bundle.resources["resources/node.exe"] = null else . end
     | if $signed then . else .bundle.createUpdaterArtifacts = false end
   ' > "$config"
@@ -221,7 +187,6 @@ fi
 
 prepare_sidecar
 download_node
-build_potgen
 
 step "Installing frontend dependencies"
 (cd "$ROOT" && npm install --no-audit --no-fund)
