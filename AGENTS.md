@@ -31,6 +31,71 @@ Keep these boundaries explicit. Frontend code talks to backend code through
 the existing HTTP API and to native code through Tauri commands; it must not
 reach into backend or Rust internals.
 
+## Fork History and Upstream Updates
+
+This repository is a heavily refactored fork of
+[`KiyoshiTheDevil/Kodama`](https://github.com/KiyoshiTheDevil/Kodama)
+(remote `upstream`, branch `master`). The fork's own branch is `main`; its local
+`master` is stale and must not be used as a baseline (see
+[D-2](.ai/DECISIONS.md)).
+
+### Where the fork came from
+
+Upstream is a monolith: one `src/App.jsx`, one `python-backend/server.py`,
+frontend-managed audio. `main` branched from it in July 2026 and replaced that
+structure, in roughly this order:
+
+1. **Backend split.** `server.py` became a thin entry point over
+   `python-backend/src/{routes,lib}` with service/lib modules per domain
+   (accounts, music, providers, integrations, profiles, runtime, security).
+2. **Frontend reorganisation.** The flat `src/` tree (`views/`, `ui/`,
+   `settings/`, `modals/`, `icons.jsx`, ...) became `src/app` (shell),
+   `src/features/*` (one folder per domain) and `src/shared/*` (API, i18n,
+   icons, hooks, UI primitives). Settings, overlays and big-picture code were
+   split and colocated.
+3. **Native Rust playback.** The frontend player was replaced by an engine in
+   `src-tauri/src/audio` that owns playback state, queue, crossfade, media
+   controls, Discord, Last.fm and remote/overlay updates; the frontend talks to
+   it through a central Tauri command bridge ([D-1](.ai/DECISIONS.md)).
+4. **Performance and polish.** SQLite metadata caching, per-profile
+   recommendation caching, concurrent lyrics providers, lazy overlays, hidden
+   panels not rendered, optimised fonts and artwork, once-a-second now-playing
+   snapshots.
+5. **Tooling and release.** uv-managed Python, stricter lint, local-backend
+   hardening (app and LAN remote only), macOS and cross-built Windows
+   installers, Font Awesome replaced by a local `Icon` component.
+
+Net effect against the last common point with upstream: about 1,400 files
+changed on `main` versus about 360 on upstream.
+
+### How upstream has been integrated so far
+
+Policy is [D-3](.ai/DECISIONS.md): merge `upstream/master` so its commits
+become ancestors, but adapt each behavior into the owning modules by hand. The
+history therefore contains many `merge: integrate/adapt/record upstream ...`
+commits, some of which only record ancestry after a manual port. Never restore
+legacy `src/App.jsx`, `python-backend/server.py` or the upstream audio-player
+architecture, and keep fork versions, release config and `analytics/worker.js`.
+
+Last integrated upstream release: `v1.0.0-alpha.42`. Upstream has since added
+`alpha.43`, a landing page and docs for "Kodama Next", Android project files
+(`src-tauri/gen/android`), and updater/privacy changes. About 47 files are
+touched on both sides, mostly frontend files `main` has moved.
+
+### Updating from upstream
+
+1. `git fetch upstream` and work on a throwaway branch, never directly on `main`.
+2. `git log <last-merge-base>..upstream/master` and `git diff --name-only` to
+   list what upstream changed. Ignore `docs/`, `updates/` and
+   `src-tauri/gen/android` unless the task says otherwise.
+3. `git merge upstream/master`. For a changed file that `main` moved, find the
+   new location, read upstream's diff against the old path and re-apply its
+   intent in the owning module.
+4. Resolve config files (`package.json`, `Cargo.toml`, `tauri.conf.json`,
+   `release.yml`) keeping fork versions and release settings.
+5. Run the checks below, then document what was integrated, preserved and
+   skipped as earlier syncs did in `docs/`.
+
 ## Composer Restriction
 
 The `composer/` directory is off limits. Do not inspect, modify, test, or
