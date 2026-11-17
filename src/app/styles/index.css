@@ -130,29 +130,6 @@ img.img-failed {
   --font-size-t32: var(--t32);
 }
 
-/* Font Awesome subsets contain every glyph referenced by the application. */
-@font-face {
-  font-family: "Font Awesome 6 Pro";
-  font-style: normal;
-  font-weight: 900;
-  font-display: block;
-  src: url("../../shared/assets/fonts/fa-solid-used.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Font Awesome 6 Pro";
-  font-style: normal;
-  font-weight: 400;
-  font-display: block;
-  src: url("../../shared/assets/fonts/fa-regular-used.woff2") format("woff2");
-}
-@font-face {
-  font-family: "Font Awesome 6 Brands";
-  font-style: normal;
-  font-weight: 400;
-  font-display: block;
-  src: url("../../shared/assets/fonts/fa-brands-used.woff2?no-inline") format("woff2");
-}
-
 @font-face {
   font-family: "MiSans Latin";
   src: url("../../shared/assets/fonts/MiSansLatin-Regular.woff2") format("woff2");

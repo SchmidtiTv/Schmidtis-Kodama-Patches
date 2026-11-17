@@ -57,6 +57,25 @@ explaining the new architectural boundary.
 - Prefer precise filenames that match their primary export or responsibility.
   Avoid catch-all files and unrelated groups of exports.
 
+## Icons (Tabler)
+
+- Icons come from `@tabler/icons-react` (browse at https://tabler.io/icons).
+- Render them through the `Icon` component in `shared/ui/icon.jsx`, not
+  directly: `<Icon icon={IconHome} size="sm" />`. It sets the size scale
+  (`sm` 16, `md` 20, `lg` 24, `xl` 32; a number or CSS length also works), a
+  1.75 stroke, and accessibility.
+- Pass `label` when the icon carries meaning on its own (icon-only buttons).
+  Without `label` the icon is hidden from screen readers.
+- Icons use `currentColor`. Set color on the parent, or pass `className` /
+  `style` to the icon.
+- `shared/icons/icons.jsx` holds the app's named icons (`Play`, `Gear`, ...)
+  built on `Icon`. They default to `1em` and take `weight="fill"` for the
+  filled Tabler variant or `weight="bold"` for a heavier stroke. Add a name
+  there when an icon is reused across features. Icons Tabler cannot draw stay
+  as masked SVGs in `public/` via `svgIcon`.
+- Import icons by name from the package root so they are tree-shaken. Never
+  use the package's dynamic imports or import the whole package.
+
 ## Feature Changes
 
 For a new frontend capability:

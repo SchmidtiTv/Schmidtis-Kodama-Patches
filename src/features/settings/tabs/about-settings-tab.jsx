@@ -268,8 +268,8 @@ export function AboutSettingsTab({ t }) {
             link: "https://figma.com",
           },
           {
-            name: "Font Awesome",
-            link: "https://fontawesome.com",
+            name: "Tabler Icons",
+            link: "https://tabler.io/icons",
           },
         ].map((tool) => (
           <button

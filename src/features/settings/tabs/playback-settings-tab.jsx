@@ -11,7 +11,15 @@ import {
 import { useEffect, useState } from "react";
 import { native } from "@/shared/api/tauri.js";
 import { EqualizerSettings } from "@/features/player/equalizer-settings.jsx";
-import { EyeSlash, PlayCircle, Sliders, Trash, WaveformLines } from "@/shared/icons/icons.jsx";
+import {
+  ChartBar,
+  EyeSlash,
+  ListNumbers,
+  PlayCircle,
+  Sliders,
+  Trash,
+  WaveformLines,
+} from "@/shared/icons/icons.jsx";
 import {
   SettingRow,
   SettingsSectionLabel,
@@ -53,7 +61,10 @@ export function PlaybackSettingsTab({
 }) {
   const [outputDevices, setOutputDevices] = useState([]);
   useEffect(() => {
-    native.audioOutputs().then(({ devices = [] }) => setOutputDevices(devices)).catch(() => {});
+    native
+      .audioOutputs()
+      .then(({ devices = [] }) => setOutputDevices(devices))
+      .catch(() => {});
   }, []);
   const selectedOutput = outputDevices.includes(audioOutput) ? audioOutput : "default";
   const queueVideoIds = new Set((crossfadeQueue || []).map((track) => track?.videoId));
@@ -113,11 +124,7 @@ export function PlaybackSettingsTab({
       >
         <Toggle value={mixTransitionsEnabled} onChange={onMixTransitionsEnabledChange} />
       </SettingRow>
-      <SettingRow
-        label={t("mixTempoLock")}
-        description={t("mixTempoLockDesc")}
-        icon={<Sliders />}
-      >
+      <SettingRow label={t("mixTempoLock")} description={t("mixTempoLockDesc")} icon={<Sliders />}>
         <Toggle value={mixTempoLockEnabled} onChange={onMixTempoLockEnabledChange} />
       </SettingRow>
       <div className="text-t11 text-muted px-1 mb-2 leading-snug">{t("mixFallbackDesc")}</div>
@@ -271,30 +278,14 @@ export function PlaybackSettingsTab({
       <SettingRow
         label={t("trackNumbers")}
         description={t("trackNumbersDesc")}
-        icon={
-          <i
-            className="fa-solid fa-list-ol"
-            style={{
-              fontSize: 15,
-            }}
-            aria-hidden="true"
-          />
-        }
+        icon={<ListNumbers size={15} />}
       >
         <Toggle value={showTrackNumbers} onChange={onTrackNumbersChange} />
       </SettingRow>
       <SettingRow
         label={t("anonStats")}
         description={t("anonStatsDesc")}
-        icon={
-          <i
-            className="fa-solid fa-chart-simple"
-            style={{
-              fontSize: 15,
-            }}
-            aria-hidden="true"
-          />
-        }
+        icon={<ChartBar size={15} />}
       >
         <Toggle value={anonStats} onChange={onAnonStatsChange} />
       </SettingRow>
